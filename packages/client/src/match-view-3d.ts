@@ -1,7 +1,7 @@
-import { World, type Command, type UnitType } from '@ra2web/game';
+import { World, categoryOf, type Command, type ProdCategory, type UnitType } from '@ra2web/game';
 import { ThreeCameraController } from './three-camera';
 import { cellToWorld3D, worldToCell3D } from './three-coords';
-import { buildingButtonState } from './three-build-ui';
+import { productionButtonState } from './three-build-ui';
 import { idsInScreenRect, nearestIdWithinRadius } from './three-selection';
 import { ThreeWorldRenderer } from './three-world-renderer';
 
@@ -15,13 +15,17 @@ export const MATCH_3D_STYLE = `
 .mv3-top a { color: #6db3e8; text-decoration: none; }
 .mv3-build { position: fixed; right: 12px; top: 12px; z-index: 10; width: 172px; display: grid; gap: 6px;
   padding: 8px; background: rgba(8,12,16,.86); border: 1px solid rgba(120,150,170,.2); border-radius: 8px; }
-.mv3-build-title { font-size: 12px; color: #92a3ae; text-transform: uppercase; letter-spacing: .04em; }
-.mv3-build button { height: 46px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px;
+.mv3-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.mv3-tabs button { height: 30px; padding: 0; border: 1px solid rgba(125,150,165,.2); border-radius: 5px;
+  background: #0d151c; color: #8ea0aa; cursor: pointer; font-size: 12px; }
+.mv3-tabs button.on { color: #fff; border-color: #58a7d8; background: #173046; }
+.mv3-prod-list { display: grid; gap: 6px; }
+.mv3-prod-list button { height: 46px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px;
   padding: 7px 8px; border: 1px solid rgba(125,150,165,.28); border-radius: 6px; cursor: pointer;
   background: linear-gradient(#18232c, #101820); color: #dce6ed; text-align: left; }
-.mv3-build button:disabled { cursor: default; color: #6f7a82; background: #0b1116; border-color: rgba(125,150,165,.12); }
-.mv3-build button.ready { border-color: #58d478; box-shadow: inset 0 0 0 1px rgba(88,212,120,.25); }
-.mv3-build button.placing { border-color: #e0c74c; color: #fff2a8; }
+.mv3-prod-list button:disabled { cursor: default; color: #6f7a82; background: #0b1116; border-color: rgba(125,150,165,.12); }
+.mv3-prod-list button.ready { border-color: #58d478; box-shadow: inset 0 0 0 1px rgba(88,212,120,.25); }
+.mv3-prod-list button.placing { border-color: #e0c74c; color: #fff2a8; }
 .mv3-build .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mv3-build .state { color: #f0d040; font-variant-numeric: tabular-nums; font-size: 12px; }
 .mv3-chip { position: fixed; left: 12px; bottom: 12px; z-index: 10; padding: 7px 12px;
@@ -36,8 +40,10 @@ export class MatchView3D {
   private creditsEl!: HTMLElement;
   private powerEl!: HTMLElement;
   private selBox!: HTMLElement;
+  private tabsEl!: HTMLElement;
   private buildEl!: HTMLElement;
   private lastStepAt = 0;
+  private activeCategory: ProdCategory = 'building';
   private placingType: UnitType | null = null;
   private readonly selected = new Set<number>();
   private readonly localCommands: Command[] = [];
@@ -110,15 +116,20 @@ export class MatchView3D {
         <span id="mv3-selected"></span>
         <a href="#">Exit</a>
       </div>
-      <div class="mv3-build" id="mv3-build"><div class="mv3-build-title">Buildings</div></div>
+      <div class="mv3-build">
+        <div class="mv3-tabs" id="mv3-tabs"></div>
+        <div class="mv3-prod-list" id="mv3-prod-list"></div>
+      </div>
       <div class="mv3-selbox" id="mv3-selbox"></div>
-      <div class="mv3-chip">Build: click button, wait Ready, click again then place | Select/move still works</div>`,
+      <div class="mv3-chip">Produce: choose tab, click item | Buildings need Ready then placement</div>`,
     );
     this.creditsEl = this.root.querySelector('#mv3-credits')!;
     this.powerEl = this.root.querySelector('#mv3-power')!;
     this.selBox = this.root.querySelector('#mv3-selbox')!;
-    this.buildEl = this.root.querySelector('#mv3-build')!;
-    this.buildBuildPanel();
+    this.tabsEl = this.root.querySelector('#mv3-tabs')!;
+    this.buildEl = this.root.querySelector('#mv3-prod-list')!;
+    this.buildProductionTabs();
+    this.rebuildProductionPanel();
   }
 
   private updateHud(): void {
@@ -130,13 +141,33 @@ export class MatchView3D {
     this.refreshBuildPanel();
   }
 
-  private buildBuildPanel(): void {
+  private buildProductionTabs(): void {
+    const labels: Record<ProdCategory, string> = { building: 'Build', infantry: 'Inf', vehicle: 'Veh' };
+    for (const category of ['building', 'infantry', 'vehicle'] as ProdCategory[]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = labels[category];
+      button.addEventListener('click', () => {
+        this.activeCategory = category;
+        this.cancelPlacement();
+        this.rebuildProductionPanel();
+      });
+      this.tabsEl.appendChild(button);
+    }
+    this.refreshTabs();
+  }
+
+  private rebuildProductionPanel(): void {
+    this.buildEl.innerHTML = '';
     this.buildButtons.length = 0;
     const localSide = this.world.players.get(this.localPlayerId)?.side;
-    const buildings = [...this.world.rules.units.values()].filter(
-      (type) => type.domain === 'building' && type.builtBy === 'conyard' && (!localSide || type.side === localSide),
+    const units = [...this.world.rules.units.values()].filter(
+      (type) =>
+        categoryOf(type) === this.activeCategory &&
+        (!localSide || type.side === localSide || type.id === 'harvester') &&
+        type.builtBy !== '',
     );
-    for (const type of buildings) {
+    for (const type of units) {
       const button = document.createElement('button');
       button.type = 'button';
       button.title = `${type.name} $${type.cost}`;
@@ -146,18 +177,20 @@ export class MatchView3D {
       const state = document.createElement('span');
       state.className = 'state';
       button.append(name, state);
-      button.addEventListener('click', () => this.onBuildButton(type));
+      button.addEventListener('click', () => this.onProductionButton(type));
       this.buildEl.appendChild(button);
       this.buildButtons.push({ button, state, type });
     }
+    this.refreshTabs();
+    this.refreshBuildPanel();
   }
 
   private refreshBuildPanel(): void {
     for (const entry of this.buildButtons) {
-      const state = buildingButtonState(
+      const state = productionButtonState(
         entry.type,
         this.world.canBuild(this.localPlayerId, entry.type),
-        this.world.queueFor(this.localPlayerId, 'building'),
+        this.world.queueFor(this.localPlayerId, categoryOf(entry.type)),
         this.placingType?.id ?? null,
       );
       entry.button.disabled = state.disabled;
@@ -167,13 +200,21 @@ export class MatchView3D {
     }
   }
 
-  private onBuildButton(type: UnitType): void {
+  private refreshTabs(): void {
+    const categories = ['building', 'infantry', 'vehicle'] as ProdCategory[];
+    [...this.tabsEl.children].forEach((child, index) => {
+      child.classList.toggle('on', categories[index] === this.activeCategory);
+    });
+  }
+
+  private onProductionButton(type: UnitType): void {
     if (this.placingType?.id === type.id) {
       this.cancelPlacement();
       return;
     }
-    const q = this.world.queueFor(this.localPlayerId, 'building');
-    if (q?.readyToPlace && q.items[0] === type.id) {
+    const category = categoryOf(type);
+    const q = this.world.queueFor(this.localPlayerId, category);
+    if (type.domain === 'building' && q?.readyToPlace && q.items[0] === type.id) {
       this.placingType = type;
       this.selected.clear();
       return;
@@ -309,6 +350,11 @@ export class MatchView3D {
       warfactory: 'War Factory',
       pillbox: 'Pillbox',
       battlelab: 'Battle Lab',
+      gi: 'British Soldier',
+      engineer: 'Engineer',
+      grizzly: 'British Tank',
+      arty: 'Artillery',
+      harvester: 'Harvester',
     };
     return labels[type.id] ?? type.name;
   }

@@ -1,18 +1,18 @@
 import type { ProductionQueue, UnitType } from '@ra2web/game';
 
-export interface BuildingButtonState {
+export interface ProductionButtonState {
   disabled: boolean;
   progressText: string;
   ready: boolean;
   activePlace: boolean;
 }
 
-export function buildingButtonState(
+export function productionButtonState(
   type: UnitType,
   canBuild: boolean,
   queue: ProductionQueue | undefined,
   placingTypeId: string | null,
-): BuildingButtonState {
+): ProductionButtonState {
   const isHead = queue?.items[0] === type.id;
   const ready = !!isHead && queue.readyToPlace;
   let progressText = `$${type.cost}`;
@@ -33,3 +33,5 @@ export function buildingButtonState(
     activePlace: placingTypeId === type.id,
   };
 }
+
+export const buildingButtonState = productionButtonState;
