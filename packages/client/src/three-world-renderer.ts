@@ -100,6 +100,17 @@ export class ThreeWorldRenderer {
     return null;
   }
 
+  pickEntity(camera: Camera, clientX: number, clientY: number): number | null {
+    this.setPointerFromClient(clientX, clientY);
+    this.raycaster.setFromCamera(this.pointer, camera);
+    const hits = this.raycaster.intersectObjects(this.entityLayer.children, true);
+    for (const hit of hits) {
+      const id = this.entityIdOf(hit.object);
+      if (id !== null && this.world.entities.has(id)) return id;
+    }
+    return null;
+  }
+
   ownUnitScreenPoints(camera: Camera): { id: number; x: number; y: number }[] {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const out: { id: number; x: number; y: number }[] = [];

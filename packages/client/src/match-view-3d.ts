@@ -2,6 +2,7 @@ import { World, categoryOf, type Command, type ProdCategory, type UnitType } fro
 import { ThreeCameraController } from './three-camera';
 import { cellToWorld3D, worldToCell3D } from './three-coords';
 import { productionButtonState } from './three-build-ui';
+import { rightClickCommand } from './three-orders';
 import { idsInScreenRect, nearestIdWithinRadius } from './three-selection';
 import { ThreeWorldRenderer } from './three-world-renderer';
 
@@ -234,7 +235,7 @@ export class MatchView3D {
           this.cancelPlacement();
           return;
         }
-        this.issueMove(e.clientX, e.clientY);
+        this.issueRightClickOrder(e.clientX, e.clientY);
         return;
       }
       if (e.button === 0 && this.placingType && !e.altKey) {
@@ -296,13 +297,31 @@ export class MatchView3D {
     for (const id of ids) this.selected.add(id);
   }
 
-  private issueMove(clientX: number, clientY: number): void {
-    if (this.selected.size === 0) return;
+  private selectedCombatIds(): number[] {
+    const out: number[] = [];
+    for (const id of this.selected) {
+      const e = this.world.entities.get(id);
+      const type = e && this.world.rules.units.get(e.typeId);
+      if (type && type.domain !== 'building' && type.weapon) out.push(id);
+    }
+    return out.sort((a, b) => a - b);
+  }
+
+  private issueRightClickOrder(clientX: number, clientY: number): void {
     const hit = this.camera.groundAt(clientX, clientY);
-    if (!hit) return;
-    const cell = worldToCell3D(hit.x, hit.z);
-    if (cell.x < 0 || cell.y < 0 || cell.x >= this.mapW || cell.y >= this.mapH) return;
-    this.localCommands.push({ kind: 'move', entityIds: [...this.selected].sort((a, b) => a - b), cellX: cell.x, cellY: cell.y });
+    const rawCell = hit ? worldToCell3D(hit.x, hit.z) : null;
+    const cell =
+      rawCell && rawCell.x >= 0 && rawCell.y >= 0 && rawCell.x < this.mapW && rawCell.y < this.mapH ? rawCell : null;
+    const targetId = this.renderer.pickEntity(this.camera.camera, clientX, clientY);
+    const target = targetId === null ? null : this.world.entities.get(targetId);
+    const cmd = rightClickCommand({
+      selectedIds: [...this.selected],
+      combatIds: this.selectedCombatIds(),
+      target: target ? { id: target.id, owner: target.owner } : null,
+      localPlayerId: this.localPlayerId,
+      cell,
+    });
+    if (cmd) this.localCommands.push(cmd);
   }
 
   private tryPlaceBuilding(clientX: number, clientY: number): void {
