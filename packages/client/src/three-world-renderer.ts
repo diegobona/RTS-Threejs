@@ -1,11 +1,13 @@
 import {
   AmbientLight,
+  Box3,
   BoxGeometry,
   type Camera,
   CapsuleGeometry,
   Color,
   ConeGeometry,
   DirectionalLight,
+  Fog,
   Group,
   Mesh,
   MeshLambertMaterial,
@@ -18,12 +20,15 @@ import {
   Scene,
   SphereGeometry,
   Vector2,
+  Vector3,
   WebGLRenderer,
   type BufferGeometry,
   type Material,
 } from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { World, UnitType } from '@ra2web/game';
 import { cellToWorld3D, leptonToWorld3D, THREE_CELL_SIZE } from './three-coords';
+import { WW1_MODEL_SPECS, type Ww1ModelSpec } from './ww1-model-manifest';
 
 interface EntityView {
   root: Group;
@@ -40,6 +45,8 @@ export class ThreeWorldRenderer {
   private readonly projectileLayer = new Group();
   private readonly previewLayer = new Group();
   private readonly views = new Map<number, EntityView>();
+  private readonly modelTemplates = new Map<string, Object3D>();
+  private readonly gltfLoader = new GLTFLoader();
   private readonly tileGeo = new PlaneGeometry(THREE_CELL_SIZE, THREE_CELL_SIZE);
   private readonly oreGeo = new OctahedronGeometry(0.18, 0);
   private readonly projectileGeo = new SphereGeometry(0.12, 8, 8);
@@ -65,7 +72,8 @@ export class ThreeWorldRenderer {
     this.renderer.domElement.className = 'mv3-canvas';
     host.appendChild(this.renderer.domElement);
 
-    this.scene.background = new Color(0x070b0d);
+    this.scene.background = new Color(0x8fb0c9);
+    this.scene.fog = new Fog(0x8fb0c9, 70, 260);
     this.scene.add(new AmbientLight(0x9fb2c0, 1.8));
     const sun = new DirectionalLight(0xffffff, 2.2);
     sun.position.set(-8, 18, 10);
@@ -73,6 +81,23 @@ export class ThreeWorldRenderer {
 
     this.drawTerrain();
     this.drawOre();
+  }
+
+  async loadModels(): Promise<void> {
+    await Promise.all(
+      WW1_MODEL_SPECS.map(async (spec) => {
+        const type = this.world.rules.units.get(spec.typeId);
+        if (!type) return;
+        try {
+          const res = await fetch(spec.src);
+          if (!res.ok) return;
+          const gltf = await this.gltfLoader.parseAsync(await res.arrayBuffer(), this.assetBasePath(spec.src));
+          this.modelTemplates.set(spec.typeId, this.prepareModelTemplate(gltf.scene, type, spec));
+        } catch (err) {
+          console.warn(`Failed to load 3D model ${spec.src}`, err);
+        }
+      }),
+    );
   }
 
   resize(camera: { updateProjectionMatrix(): void }): void {
@@ -147,12 +172,20 @@ export class ThreeWorldRenderer {
   dispose(): void {
     for (const view of this.views.values()) this.disposeObject(view.root);
     this.views.clear();
+    for (const template of this.modelTemplates.values()) this.disposeObject(template);
+    this.modelTemplates.clear();
     this.disposeObject(this.scene);
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
 
   private drawTerrain(): void {
+    const ground = new Mesh(this.largeGroundGeo(), this.largeGroundMat());
+    const center = cellToWorld3D((this.world.terrain.width - 1) / 2, (this.world.terrain.height - 1) / 2);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.set(center.x, -0.035, center.z);
+    this.scene.add(ground);
+
     const passMatA = new MeshLambertMaterial({ color: 0x244020 });
     const passMatB = new MeshLambertMaterial({ color: 0x1d351b });
     const blockMat = new MeshLambertMaterial({ color: 0x332d25 });
@@ -166,6 +199,14 @@ export class ThreeWorldRenderer {
         this.scene.add(tile);
       }
     }
+  }
+
+  private largeGroundGeo(): PlaneGeometry {
+    return new PlaneGeometry(this.world.terrain.width * THREE_CELL_SIZE * 4, this.world.terrain.height * THREE_CELL_SIZE * 4, this.world.terrain.width * 4, this.world.terrain.height * 4);
+  }
+
+  private largeGroundMat(): MeshLambertMaterial {
+    return new MeshLambertMaterial({ color: 0x244020 });
   }
 
   private drawOre(): void {
@@ -231,8 +272,11 @@ export class ThreeWorldRenderer {
     root.userData.entityId = entityId;
     root.userData.typeId = type.id;
     const ownerColor = PLAYER_COLORS[(owner - 1) % PLAYER_COLORS.length] ?? 0xcccccc;
+    const model = this.createModelInstance(type, entityId);
 
-    if (type.building) {
+    if (model) {
+      root.add(model);
+    } else if (type.building) {
       root.add(this.createBuilding(type, ownerColor));
     } else if (type.domain === 'vehicle') {
       const body = new Mesh(this.vehicleGeo, new MeshLambertMaterial({ color: ownerColor }));
@@ -276,6 +320,52 @@ export class ThreeWorldRenderer {
       root.add(roof);
     }
     return root;
+  }
+
+  private createModelInstance(type: UnitType, entityId: number): Object3D | null {
+    const template = this.modelTemplates.get(type.id);
+    if (!template) return null;
+    const instance = template.clone(true);
+    instance.traverse((child) => {
+      child.userData.entityId = entityId;
+      const mesh = child as Mesh;
+      if (!mesh.isMesh) return;
+      mesh.geometry = mesh.geometry.clone();
+      const mat = mesh.material as Material | Material[];
+      mesh.material = Array.isArray(mat) ? mat.map((m) => m.clone()) : mat.clone();
+    });
+    return instance;
+  }
+
+  private prepareModelTemplate(scene: Object3D, type: UnitType, spec: Ww1ModelSpec): Object3D {
+    const root = new Group();
+    root.name = `ww1-model:${type.id}`;
+    const model = scene.clone(true);
+    root.add(model);
+    const box = new Box3().setFromObject(model);
+    if (box.isEmpty()) return root;
+    const size = new Vector3();
+    box.getSize(size);
+    const span = Math.max(size.x, size.z, 0.001);
+    model.scale.setScalar((this.targetModelSpan(type) / span) * (spec.scale ?? 1));
+    model.rotation.y = ((spec.yawDeg ?? 0) * Math.PI) / 180;
+    const fitted = new Box3().setFromObject(model);
+    const center = new Vector3();
+    fitted.getCenter(center);
+    model.position.x -= center.x;
+    model.position.z -= center.z;
+    model.position.y -= fitted.min.y;
+    return root;
+  }
+
+  private targetModelSpan(type: UnitType): number {
+    if (type.building) return Math.max(type.building.footprintW, type.building.footprintH) * THREE_CELL_SIZE * 0.85;
+    if (type.domain === 'vehicle') return 1.55;
+    return 0.75;
+  }
+
+  private assetBasePath(src: string): string {
+    return src.slice(0, src.lastIndexOf('/') + 1);
   }
 
   private createHpBar(width: number, y: number): Group {

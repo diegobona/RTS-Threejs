@@ -6,6 +6,11 @@ import { rightClickCommand } from './three-orders';
 import { idsInScreenRect, nearestIdWithinRadius } from './three-selection';
 import { ThreeWorldRenderer } from './three-world-renderer';
 
+export function initialCameraFocus3D(mapW: number, mapH: number): { x: number; z: number } {
+  const center = cellToWorld3D((mapW - 1) / 2, (mapH - 1) / 2);
+  return { x: center.x, z: center.z };
+}
+
 export const MATCH_3D_STYLE = `
 .mv3-root { position: fixed; inset: 0; overflow: hidden; background: #070b0d;
   font: 13px/1.4 system-ui, 'PingFang SC', sans-serif; color: #d8e0e6; touch-action: none; }
@@ -62,19 +67,10 @@ export class MatchView3D {
     this.root.innerHTML = '';
     this.root.className = 'mv3-root';
     this.renderer = new ThreeWorldRenderer(this.root, this.world, this.localPlayerId);
+    await this.renderer.loadModels();
     this.camera = new ThreeCameraController(this.renderer.renderer, this.mapW, this.mapH);
-    const spawn =
-      [...this.world.entities.values()].find((e) => {
-        const type = this.world.rules.units.get(e.typeId);
-        return e.owner === this.localPlayerId && type && type.domain !== 'building';
-      }) ??
-      [...this.world.entities.values()].find(
-        (e) => e.owner === this.localPlayerId && this.world.rules.units.get(e.typeId)?.building,
-      );
-    if (spawn) {
-      const focus = cellToWorld3D(spawn.cellX, spawn.cellY);
-      this.camera.focus(focus.x, focus.z);
-    }
+    const focus = initialCameraFocus3D(this.mapW, this.mapH);
+    this.camera.focus(focus.x, focus.z);
     this.buildDom();
     this.bindCameraInput();
     this.lastStepAt = performance.now();
