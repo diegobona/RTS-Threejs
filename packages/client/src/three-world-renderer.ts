@@ -2,13 +2,16 @@ import {
   AmbientLight,
   Box3,
   BoxGeometry,
+  CatmullRomCurve3,
   type Camera,
   CapsuleGeometry,
   Color,
   ConeGeometry,
+  CylinderGeometry,
   DirectionalLight,
   Fog,
   Group,
+  HemisphereLight,
   Mesh,
   MeshLambertMaterial,
   MeshStandardMaterial,
@@ -130,6 +133,11 @@ export class ThreeWorldRenderer {
   private readonly fighterWingtipGeo = new BoxGeometry(0.14, 0.09, 0.18);
   private readonly fighterStripeGeo = new BoxGeometry(0.08, 0.34, 0.42);
   private readonly aircraftShadowGeo = new PlaneGeometry(3.25, 1.6);
+  private readonly roadSegmentGeo = new BoxGeometry(1, 0.045, 1);
+  private readonly grassTuftGeo = new ConeGeometry(0.16, 0.42, 5);
+  private readonly treeTrunkGeo = new CylinderGeometry(0.08, 0.13, 0.72, 5);
+  private readonly treeCrownGeo = new SphereGeometry(0.46, 7, 5);
+  private readonly rockGeo = new OctahedronGeometry(0.34, 0);
   private readonly selectionRingGeo = new RingGeometry(0.52, 0.64, 32);
   private readonly selectionRingMat = new MeshLambertMaterial({ color: 0x68f07a });
   private readonly hpBackMat = new MeshBasicLike(0x101010);
@@ -149,11 +157,12 @@ export class ThreeWorldRenderer {
     this.renderer.domElement.className = 'mv3-canvas';
     host.appendChild(this.renderer.domElement);
 
-    this.scene.background = new Color(0x8fb0c9);
-    this.scene.fog = new Fog(0x8fb0c9, 70, 260);
-    this.scene.add(new AmbientLight(0x9fb2c0, 1.8));
-    const sun = new DirectionalLight(0xffffff, 2.2);
-    sun.position.set(-8, 18, 10);
+    this.scene.background = new Color(0xb8d3df);
+    this.scene.fog = new Fog(0xb8d3df, 105, 330);
+    this.scene.add(new HemisphereLight(0xe5f4ff, 0x789168, 2.45));
+    this.scene.add(new AmbientLight(0xd8edf2, 1.55));
+    const sun = new DirectionalLight(0xfff4d7, 3.1);
+    sun.position.set(-20, 42, 28);
     this.scene.add(sun, this.entityLayer, this.projectileLayer, this.previewLayer);
 
     this.drawTerrain();
@@ -267,9 +276,9 @@ export class ThreeWorldRenderer {
     ground.position.set(center.x, -0.035, center.z);
     this.scene.add(ground);
 
-    const passMatA = new MeshLambertMaterial({ color: 0x244020 });
-    const passMatB = new MeshLambertMaterial({ color: 0x1d351b });
-    const blockMat = new MeshLambertMaterial({ color: 0x332d25 });
+    const passMatA = new MeshLambertMaterial({ color: 0x7f9f70, transparent: true, opacity: 0.16 });
+    const passMatB = new MeshLambertMaterial({ color: 0x729568, transparent: true, opacity: 0.12 });
+    const blockMat = new MeshLambertMaterial({ color: 0x8b8063, transparent: true, opacity: 0.48 });
     for (let y = 0; y < this.world.terrain.height; y++) {
       for (let x = 0; x < this.world.terrain.width; x++) {
         const m = this.world.terrain.passable(x, y) ? ((x + y) % 2 === 0 ? passMatA : passMatB) : blockMat;
@@ -280,6 +289,9 @@ export class ThreeWorldRenderer {
         this.scene.add(tile);
       }
     }
+    this.drawGrassBands(center.x, center.z);
+    this.drawRoads();
+    this.drawLandscapeProps();
   }
 
   private largeGroundGeo(): PlaneGeometry {
@@ -287,7 +299,166 @@ export class ThreeWorldRenderer {
   }
 
   private largeGroundMat(): MeshLambertMaterial {
-    return new MeshLambertMaterial({ color: 0x244020 });
+    return new MeshLambertMaterial({ color: 0x779868 });
+  }
+
+  private drawGrassBands(centerX: number, centerZ: number): void {
+    const mapW = this.world.terrain.width * THREE_CELL_SIZE;
+    const mapH = this.world.terrain.height * THREE_CELL_SIZE;
+    const bandMatA = new MeshLambertMaterial({ color: 0x8cad78, transparent: true, opacity: 0.16, depthWrite: false });
+    const bandMatB = new MeshLambertMaterial({ color: 0x66895e, transparent: true, opacity: 0.1, depthWrite: false });
+    for (let i = 0; i < 10; i++) {
+      const band = new Mesh(new PlaneGeometry(mapW * 1.8, 6 + (i % 3) * 2), i % 2 === 0 ? bandMatA : bandMatB);
+      band.rotation.x = -Math.PI / 2;
+      band.rotation.z = -0.08 + i * 0.014;
+      band.position.set(centerX, 0.004 + i * 0.001, centerZ - mapH * 0.58 + i * mapH * 0.13);
+      this.scene.add(band);
+    }
+  }
+
+  private drawRoads(): void {
+    const w = this.world.terrain.width - 1;
+    const h = this.world.terrain.height - 1;
+    this.addRoad(
+      [
+        [-4, h * 0.34],
+        [w * 0.18, h * 0.36],
+        [w * 0.42, h * 0.32],
+        [w * 0.66, h * 0.35],
+        [w + 4, h * 0.3],
+      ],
+      1.45,
+    );
+    this.addRoad(
+      [
+        [w * 0.55, h + 4],
+        [w * 0.53, h * 0.72],
+        [w * 0.51, h * 0.52],
+        [w * 0.55, h * 0.35],
+        [w * 0.6, -4],
+      ],
+      1.35,
+    );
+    this.addRoad(
+      [
+        [w * 0.18, -3],
+        [w * 0.26, h * 0.16],
+        [w * 0.37, h * 0.28],
+        [w * 0.55, h * 0.35],
+      ],
+      1.05,
+    );
+  }
+
+  private addRoad(points: [number, number][], width: number): void {
+    const roadMat = new MeshLambertMaterial({ color: 0xa99d85, transparent: true, opacity: 0.9 });
+    const vergeMat = new MeshLambertMaterial({ color: 0x8a806d, transparent: true, opacity: 0.28, depthWrite: false });
+    const curve = new CatmullRomCurve3(points.map(([x, y]) => {
+      const p = cellToWorld3D(x, y);
+      return new Vector3(p.x, 0.025, p.z);
+    }));
+    const sampleCount = Math.max(8, Math.ceil(curve.getLength() / 1.4));
+    const samples = curve.getPoints(sampleCount);
+    for (let i = 0; i < samples.length - 1; i++) {
+      const a = samples[i]!;
+      const b = samples[i + 1]!;
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const len = Math.max(0.01, Math.hypot(dx, dz));
+      const road = new Mesh(this.roadSegmentGeo, roadMat);
+      road.scale.set(width, 1, len + 0.28);
+      road.rotation.y = Math.atan2(dx, dz);
+      road.position.set((a.x + b.x) / 2, 0.026, (a.z + b.z) / 2);
+      this.scene.add(road);
+
+      if (i % 2 === 0) {
+        const verge = new Mesh(this.roadSegmentGeo, vergeMat);
+        verge.scale.set(width + 0.85, 0.7, len + 0.36);
+        verge.rotation.y = road.rotation.y;
+        verge.position.set(road.position.x, 0.018, road.position.z);
+        this.scene.add(verge);
+      }
+    }
+  }
+
+  private drawLandscapeProps(): void {
+    const trunkMat = new MeshLambertMaterial({ color: 0x795642 });
+    const crownMatA = new MeshLambertMaterial({ color: 0x315c2b });
+    const crownMatB = new MeshLambertMaterial({ color: 0x4d6d33 });
+    const rockMat = new MeshLambertMaterial({ color: 0x68716a });
+    const shrubMat = new MeshLambertMaterial({ color: 0x496f36 });
+    const flowerMat = new MeshLambertMaterial({ color: 0xd49a36 });
+    const dryGrassMat = new MeshLambertMaterial({ color: 0x9a9a72 });
+
+    for (let y = 2; y < this.world.terrain.height - 2; y += 3) {
+      for (let x = 2; x < this.world.terrain.width - 2; x += 3) {
+        if (!this.world.terrain.passable(x, y) || this.world.oreAt(x, y) > 0 || this.nearInitialEntityCell(x, y, 5)) continue;
+        const r = this.randCell(x, y);
+        if (r > 0.24) continue;
+        const pos = cellToWorld3D(x + this.randCell(x, y, 2) * 1.4 - 0.7, y + this.randCell(x, y, 3) * 1.4 - 0.7);
+        if (r < 0.075) {
+          const tree = this.createLandscapeTree(trunkMat, this.randCell(x, y, 4) > 0.45 ? crownMatA : crownMatB);
+          tree.position.set(pos.x, 0.05, pos.z);
+          tree.rotation.y = this.randCell(x, y, 5) * Math.PI * 2;
+          tree.scale.setScalar(0.8 + this.randCell(x, y, 6) * 0.55);
+          this.scene.add(tree);
+        } else if (r < 0.115) {
+          const rock = new Mesh(this.rockGeo, rockMat);
+          rock.position.set(pos.x, 0.2, pos.z);
+          rock.rotation.set(this.randCell(x, y, 7), this.randCell(x, y, 8) * Math.PI, this.randCell(x, y, 9));
+          rock.scale.set(1.2, 0.55 + this.randCell(x, y, 10) * 0.35, 0.85);
+          this.scene.add(rock);
+        } else {
+          const plant = this.createGrassClump(r < 0.18 ? shrubMat : flowerMat, dryGrassMat, x, y);
+          plant.position.set(pos.x, 0.04, pos.z);
+          plant.rotation.y = this.randCell(x, y, 11) * Math.PI * 2;
+          this.scene.add(plant);
+        }
+      }
+    }
+  }
+
+  private createLandscapeTree(trunkMat: MeshLambertMaterial, crownMat: MeshLambertMaterial): Object3D {
+    const root = new Group();
+    const trunk = new Mesh(this.treeTrunkGeo, trunkMat);
+    trunk.position.y = 0.38;
+    trunk.rotation.z = 0.08;
+    const crownA = new Mesh(this.treeCrownGeo, crownMat);
+    crownA.position.set(0, 0.98, 0);
+    crownA.scale.set(1, 0.82, 1);
+    const crownB = new Mesh(this.treeCrownGeo, crownMat);
+    crownB.position.set(0.22, 1.18, -0.12);
+    crownB.scale.set(0.78, 0.68, 0.78);
+    root.add(trunk, crownA, crownB);
+    return root;
+  }
+
+  private createGrassClump(primaryMat: MeshLambertMaterial, dryGrassMat: MeshLambertMaterial, cellX: number, cellY: number): Object3D {
+    const root = new Group();
+    for (let i = 0; i < 3; i++) {
+      const blade = new Mesh(this.grassTuftGeo, i === 0 ? primaryMat : dryGrassMat);
+      blade.position.set((this.randCell(cellX, cellY, 20 + i) - 0.5) * 0.62, 0.2, (this.randCell(cellX, cellY, 30 + i) - 0.5) * 0.62);
+      blade.rotation.y = this.randCell(cellX, cellY, 40 + i) * Math.PI * 2;
+      blade.rotation.z = (this.randCell(cellX, cellY, 50 + i) - 0.5) * 0.35;
+      blade.scale.setScalar(0.72 + this.randCell(cellX, cellY, 60 + i) * 0.5);
+      root.add(blade);
+    }
+    return root;
+  }
+
+  private nearInitialEntityCell(cellX: number, cellY: number, radius: number): boolean {
+    for (const e of this.world.entities.values()) {
+      const type = this.world.rules.units.get(e.typeId);
+      const ex = type?.building ? e.cellX + (type.building.footprintW - 1) / 2 : e.x / 256;
+      const ey = type?.building ? e.cellY + (type.building.footprintH - 1) / 2 : e.y / 256;
+      if (Math.hypot(cellX - ex, cellY - ey) <= radius) return true;
+    }
+    return false;
+  }
+
+  private randCell(x: number, y: number, salt = 0): number {
+    const v = Math.sin(x * 127.1 + y * 311.7 + salt * 74.7) * 43758.5453123;
+    return v - Math.floor(v);
   }
 
   private drawOre(): void {
@@ -703,7 +874,7 @@ export class ThreeWorldRenderer {
     const flag = addPart('small-flag', new Mesh(new BoxGeometry(0.48, 0.25, 0.06), accentMat));
     flag.position.set(1.98, 1.42, 1.22);
 
-    const sandbags = [
+    const sandbags: [number, number][] = [
       [-1.45, 1.42],
       [-0.85, 1.46],
       [-0.25, 1.46],
@@ -715,7 +886,7 @@ export class ThreeWorldRenderer {
       [1.48, -1.18],
     ];
     for (let i = 0; i < sandbags.length; i++) {
-      const [x, z] = sandbags[i];
+      const [x, z] = sandbags[i]!;
       const bag = addPart(`sandbag-${i}`, new Mesh(new BoxGeometry(0.52, 0.25, 0.24), sandMat));
       bag.position.set(x, 0.34, z);
       bag.rotation.y = i % 2 === 0 ? 0.08 : -0.12;
@@ -887,7 +1058,7 @@ export class ThreeWorldRenderer {
     const stripeB = addPart('team-stripe-b', new Mesh(new BoxGeometry(0.12, 0.68, 0.9), accentMat));
     stripeB.position.set(1.58, 1.18, -0.35);
 
-    const corners = [
+    const corners: [number, number][] = [
       [-2.15, -2.15],
       [-1.25, -2.15],
       [1.15, -2.15],
@@ -898,7 +1069,7 @@ export class ThreeWorldRenderer {
       [2.05, 2.15],
     ];
     for (let i = 0; i < corners.length; i++) {
-      const [x, z] = corners[i];
+      const [x, z] = corners[i]!;
       const block = addPart(`perimeter-block-${i}`, new Mesh(new BoxGeometry(0.62, 0.42, 0.32), sandMat));
       block.position.set(x, 0.48, z);
       block.rotation.y = z < 0 ? 0 : Math.PI;
