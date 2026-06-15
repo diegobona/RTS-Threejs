@@ -30,9 +30,16 @@ describe('WW1 3D model manifest', () => {
     }
   });
 
-  it('does not add runtime yaw to Blender-aligned GLB models', () => {
-    for (const spec of WW1_MODEL_SPECS) {
-      expect(spec.yawDeg ?? 0).toBe(0);
+  it('keeps placed building GLBs grid-aligned without runtime yaw', () => {
+    for (const typeId of ['conyard', 'barracks', 'warfactory', 'pillbox']) {
+      expect(ww1ModelSpec(typeId)?.yawDeg ?? 0).toBe(0);
     }
+  });
+
+  it('adds local yaw compensation for movable Blender GLBs so their front follows Entity.facing', () => {
+    for (const typeId of ['gi', 'arty']) {
+      expect(ww1ModelSpec(typeId)).toMatchObject({ yawDeg: -90 });
+    }
+    expect(ww1ModelSpec('grizzly')).toMatchObject({ yawDeg: 90 });
   });
 });
