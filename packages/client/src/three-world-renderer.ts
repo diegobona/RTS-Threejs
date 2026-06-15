@@ -84,6 +84,15 @@ export function entitySelectionRingAltitude3D(type: Pick<UnitType, 'domain'>): n
   return entityVisualAltitude3D(type) + 0.045;
 }
 
+export function entityYawForFacing3D(facing: number): number {
+  return -(((facing % 256) + 256) % 256 / 256) * Math.PI * 2;
+}
+
+export function proceduralModelYawOffset3D(type: Pick<UnitType, 'domain'>, hasExternalModel: boolean): number {
+  if (hasExternalModel) return 0;
+  return type.domain === 'vehicle' || type.domain === 'infantry' ? -Math.PI / 2 : 0;
+}
+
 export function isPickableEntityPart3D(userData: { pickable?: boolean }): boolean {
   return userData.pickable !== false;
 }
@@ -503,7 +512,7 @@ export class ThreeWorldRenderer {
         const ly = last?.y ?? e.y;
         const pos = leptonToWorld3D(lx + (e.x - lx) * alpha, ly + (e.y - ly) * alpha);
         view.root.position.set(pos.x, entityRootAltitude3D(type), pos.z);
-        view.root.rotation.y = -(e.facing / 256) * Math.PI * 2;
+        view.root.rotation.y = entityYawForFacing3D(e.facing);
         view.root.userData.last = { x: e.x, y: e.y };
       }
       view.visualRoot.scale.setScalar(selected.has(e.id) ? 1.12 : 1);
@@ -527,6 +536,7 @@ export class ThreeWorldRenderer {
     root.userData.typeId = type.id;
     const ownerColor = PLAYER_COLORS[(owner - 1) % PLAYER_COLORS.length] ?? 0xcccccc;
     const model = this.createModelInstance(type, entityId);
+    visualRoot.rotation.y = proceduralModelYawOffset3D(type, !!model);
 
     if (model) {
       visualRoot.add(model);

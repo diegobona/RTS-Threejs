@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   entityRootAltitude3D,
   entitySelectionRingAltitude3D,
+  entityYawForFacing3D,
   entityVisualAltitude3D,
   isPickableEntityPart3D,
   LOWPOLY_FIGHTER_PART_IDS,
   LOWPOLY_FIGHTER_MODEL_SCALE,
+  proceduralModelYawOffset3D,
   projectileVisualPoint3D,
 } from './three-world-renderer';
 
@@ -49,5 +51,14 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
 
   it('scales the procedural fighter large enough for close inspection', () => {
     expect(LOWPOLY_FIGHTER_MODEL_SCALE).toBeGreaterThanOrEqual(1.4);
+  });
+
+  it('aligns procedural ground unit fronts with the movement-facing convention', () => {
+    expect(entityYawForFacing3D(0)).toBeCloseTo(0);
+    expect(entityYawForFacing3D(64)).toBeCloseTo(-Math.PI / 2);
+    expect(proceduralModelYawOffset3D({ domain: 'vehicle' }, false)).toBeCloseTo(-Math.PI / 2);
+    expect(proceduralModelYawOffset3D({ domain: 'infantry' }, false)).toBeCloseTo(-Math.PI / 2);
+    expect(proceduralModelYawOffset3D({ domain: 'aircraft' }, false)).toBe(0);
+    expect(proceduralModelYawOffset3D({ domain: 'vehicle' }, true)).toBe(0);
   });
 });
