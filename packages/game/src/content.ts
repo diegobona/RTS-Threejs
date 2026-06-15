@@ -8,7 +8,7 @@
  */
 
 export type Side = 'allied' | 'soviet';
-export type Domain = 'infantry' | 'vehicle' | 'building';
+export type Domain = 'infantry' | 'vehicle' | 'aircraft' | 'building';
 
 export interface ArmorVerses {
   /** 弹头对各装甲类型的伤害百分比（默认 100）。 */
@@ -219,6 +219,22 @@ const UNIT_LIST: UnitType[] = [
     rot: 0,
     sight: 4,
     building: { footprintW: 2, footprintH: 2, power: -100, provides: 'battlelab' },
+  },
+  {
+    id: 'airbase',
+    name: '空军基地',
+    side: 'allied',
+    domain: 'building',
+    cost: 1500,
+    hp: 850,
+    armor: 'concrete',
+    buildTime: 120,
+    builtBy: 'conyard',
+    prerequisites: ['warfactory'],
+    speed: 0,
+    rot: 0,
+    sight: 6,
+    building: { footprintW: 3, footprintH: 2, power: -60, provides: 'airbase' },
   },
   // —— 步兵 ——
   {
@@ -480,6 +496,22 @@ const UNIT_LIST: UnitType[] = [
     rot: 6,
     sight: 6,
     weapon: { name: '双管加农炮', damage: 110, range: 5 * 256, cooldown: 45, projectileSpeed: 70, warhead: { none: 60, flak: 60, plate: 85, light: 100, heavy: 90, concrete: 75 }, splash: 34 },
+  },
+  {
+    id: 'fighter',
+    name: '战斗机',
+    side: 'allied',
+    domain: 'aircraft',
+    cost: 1200,
+    hp: 220,
+    armor: 'light',
+    buildTime: 80,
+    builtBy: 'airbase',
+    prerequisites: ['airbase'],
+    speed: 70,
+    rot: 24,
+    sight: 8,
+    weapon: { name: '机炮', damage: 35, range: 6 * 256, cooldown: 18, projectileSpeed: 140, warhead: { none: 90, flak: 90, plate: 75, light: 70, heavy: 45, concrete: 35 }, splash: 8 },
   },
 ];
 

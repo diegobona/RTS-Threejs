@@ -34,6 +34,26 @@ describe('电力结算', () => {
   });
 });
 
+describe('airbase and fighter production', () => {
+  it('airbase unlocks fighter production and fighters spawn from the airbase queue', () => {
+    const w = baseWorld();
+    withConyard(w, 5, 5);
+    w.spawnUnit(1, 'powerplant', 12, 5);
+    w.spawnUnit(1, 'refinery', 16, 5);
+    w.spawnUnit(1, 'warfactory', 20, 5);
+    expect(w.buildOptions(1).map((u) => u.id)).toContain('airbase');
+    w.spawnUnit(1, 'airbase', 24, 5);
+    expect(w.buildOptions(1).map((u) => u.id)).toContain('fighter');
+
+    const countBefore = [...w.entities.values()].filter((e) => e.typeId === 'fighter').length;
+    expect(w.queueProduction(1, 'fighter')).toBe(true);
+    expect(w.queueFor(1, 'aircraft')?.items).toEqual(['fighter']);
+    for (let i = 0; i < 240; i++) w.step();
+    const countAfter = [...w.entities.values()].filter((e) => e.typeId === 'fighter').length;
+    expect(countAfter).toBe(countBefore + 1);
+  });
+});
+
 describe('前置科技与建造清单', () => {
   it('只有建造场 → 只能造发电厂/兵营/精炼厂等 conyard 项的子集', () => {
     const w = baseWorld();

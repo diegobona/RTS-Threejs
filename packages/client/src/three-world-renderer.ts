@@ -37,6 +37,7 @@ interface EntityView {
 }
 
 const PLAYER_COLORS = [0xf8d020, 0x3a7fe0, 0x30c040, 0xe04030, 0xd060d0, 0xe08020, 0x40c0c0, 0xc0c0c0];
+const AIRCRAFT_ALTITUDE = 4.2;
 
 export class ThreeWorldRenderer {
   readonly renderer: WebGLRenderer;
@@ -53,6 +54,10 @@ export class ThreeWorldRenderer {
   private readonly soldierGeo = new CapsuleGeometry(0.22, 0.7, 4, 8);
   private readonly vehicleGeo = new BoxGeometry(0.9, 0.35, 1.25);
   private readonly barrelGeo = new BoxGeometry(0.16, 0.12, 0.8);
+  private readonly aircraftBodyGeo = new BoxGeometry(1.45, 0.22, 0.28);
+  private readonly aircraftWingGeo = new BoxGeometry(0.32, 0.08, 1.55);
+  private readonly aircraftTailGeo = new BoxGeometry(0.24, 0.12, 0.78);
+  private readonly aircraftNoseGeo = new ConeGeometry(0.18, 0.42, 12);
   private readonly selectionRingGeo = new RingGeometry(0.52, 0.64, 32);
   private readonly selectionRingMat = new MeshLambertMaterial({ color: 0x68f07a });
   private readonly hpBackMat = new MeshBasicLike(0x101010);
@@ -91,7 +96,9 @@ export class ThreeWorldRenderer {
         try {
           const res = await fetch(spec.src);
           if (!res.ok) return;
-          const gltf = await this.gltfLoader.parseAsync(await res.arrayBuffer(), this.assetBasePath(spec.src));
+          const bytes = await res.arrayBuffer();
+          if (!this.looksLikeGlb(bytes)) return;
+          const gltf = await this.gltfLoader.parseAsync(bytes, this.assetBasePath(spec.src));
           this.modelTemplates.set(spec.typeId, this.prepareModelTemplate(gltf.scene, type, spec));
         } catch (err) {
           console.warn(`Failed to load 3D model ${spec.src}`, err);
@@ -250,7 +257,7 @@ export class ThreeWorldRenderer {
         const lx = last?.x ?? e.x;
         const ly = last?.y ?? e.y;
         const pos = leptonToWorld3D(lx + (e.x - lx) * alpha, ly + (e.y - ly) * alpha);
-        view.root.position.set(pos.x, 0, pos.z);
+        view.root.position.set(pos.x, type.domain === 'aircraft' ? AIRCRAFT_ALTITUDE : 0, pos.z);
         view.root.rotation.y = -(e.facing / 256) * Math.PI * 2;
         view.root.userData.last = { x: e.x, y: e.y };
       }
@@ -287,6 +294,8 @@ export class ThreeWorldRenderer {
         barrel.position.set(0, 0.35, -0.55);
         root.add(barrel);
       }
+    } else if (type.domain === 'aircraft') {
+      root.add(this.createAircraft(ownerColor));
     } else {
       const soldier = new Mesh(this.soldierGeo, new MeshLambertMaterial({ color: ownerColor }));
       soldier.position.y = 0.55;
@@ -308,17 +317,43 @@ export class ThreeWorldRenderer {
   private createBuilding(type: UnitType, ownerColor: number): Object3D {
     const b = type.building!;
     const root = new Group();
-    const h = type.id === 'conyard' ? 1.8 : type.id === 'warfactory' ? 1.35 : type.id === 'pillbox' ? 0.55 : 1.1;
+    const h = type.id === 'conyard' ? 1.8 : type.id === 'warfactory' ? 1.35 : type.id === 'pillbox' ? 0.55 : type.id === 'airbase' ? 0.55 : 1.1;
     const mat = new MeshLambertMaterial({ color: type.id === 'pillbox' ? 0x77715f : ownerColor });
     const body = new Mesh(new BoxGeometry(b.footprintW * 1.65, h, b.footprintH * 1.65), mat);
     body.position.y = h / 2;
     root.add(body);
+    if (type.id === 'airbase') {
+      const runway = new Mesh(new BoxGeometry(b.footprintW * 1.5, 0.08, b.footprintH * 0.42), new MeshLambertMaterial({ color: 0x30343a }));
+      runway.position.y = h + 0.08;
+      const stripe = new Mesh(new BoxGeometry(b.footprintW * 1.25, 0.09, 0.08), new MeshLambertMaterial({ color: 0xd8d3a4 }));
+      stripe.position.y = h + 0.14;
+      const tower = new Mesh(new BoxGeometry(0.48, 1.1, 0.48), new MeshLambertMaterial({ color: 0x7b806f }));
+      tower.position.set(b.footprintW * 0.52, h + 0.55, -b.footprintH * 0.44);
+      root.add(runway, stripe, tower);
+    }
     if (type.id === 'conyard' || type.id === 'barracks') {
       const roof = new Mesh(new ConeGeometry(Math.max(b.footprintW, b.footprintH) * 1.25, 0.75, 4), new MeshLambertMaterial({ color: 0x6a624b }));
       roof.position.y = h + 0.35;
       roof.rotation.y = Math.PI / 4;
       root.add(roof);
     }
+    return root;
+  }
+
+  private createAircraft(ownerColor: number): Object3D {
+    const root = new Group();
+    const bodyMat = new MeshLambertMaterial({ color: ownerColor });
+    const darkMat = new MeshLambertMaterial({ color: 0x343a3f });
+    const body = new Mesh(this.aircraftBodyGeo, bodyMat);
+    body.position.y = 0.28;
+    const wing = new Mesh(this.aircraftWingGeo, bodyMat);
+    wing.position.y = 0.27;
+    const tail = new Mesh(this.aircraftTailGeo, bodyMat);
+    tail.position.set(-0.58, 0.42, 0);
+    const nose = new Mesh(this.aircraftNoseGeo, darkMat);
+    nose.rotation.z = -Math.PI / 2;
+    nose.position.set(0.93, 0.28, 0);
+    root.add(body, wing, tail, nose);
     return root;
   }
 
@@ -361,11 +396,18 @@ export class ThreeWorldRenderer {
   private targetModelSpan(type: UnitType): number {
     if (type.building) return Math.max(type.building.footprintW, type.building.footprintH) * THREE_CELL_SIZE * 0.85;
     if (type.domain === 'vehicle') return 1.55;
+    if (type.domain === 'aircraft') return 1.85;
     return 0.75;
   }
 
   private assetBasePath(src: string): string {
     return src.slice(0, src.lastIndexOf('/') + 1);
+  }
+
+  private looksLikeGlb(bytes: ArrayBuffer): boolean {
+    if (bytes.byteLength < 4) return false;
+    const magic = new Uint8Array(bytes, 0, 4);
+    return magic[0] === 0x67 && magic[1] === 0x6c && magic[2] === 0x54 && magic[3] === 0x46;
   }
 
   private createHpBar(width: number, y: number): Group {

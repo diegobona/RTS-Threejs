@@ -11,6 +11,8 @@ export function initialCameraFocus3D(mapW: number, mapH: number): { x: number; z
   return { x: center.x, z: center.z };
 }
 
+export const PRODUCTION_CATEGORIES_3D = ['building', 'infantry', 'vehicle', 'aircraft'] as const satisfies readonly ProdCategory[];
+
 export const MATCH_3D_STYLE = `
 .mv3-root { position: fixed; inset: 0; overflow: hidden; background: #070b0d;
   font: 13px/1.4 system-ui, 'PingFang SC', sans-serif; color: #d8e0e6; touch-action: none; }
@@ -19,9 +21,9 @@ export const MATCH_3D_STYLE = `
   padding: 8px 12px; background: rgba(8,12,16,.82); border: 1px solid rgba(120,150,170,.18); border-radius: 8px; }
 .mv3-top b { color: #f0d040; font-variant-numeric: tabular-nums; }
 .mv3-top a { color: #6db3e8; text-decoration: none; }
-.mv3-build { position: fixed; right: 12px; top: 12px; z-index: 10; width: 172px; display: grid; gap: 6px;
+.mv3-build { position: fixed; right: 12px; top: 12px; z-index: 10; width: 196px; display: grid; gap: 6px;
   padding: 8px; background: rgba(8,12,16,.86); border: 1px solid rgba(120,150,170,.2); border-radius: 8px; }
-.mv3-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.mv3-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
 .mv3-tabs button { height: 30px; padding: 0; border: 1px solid rgba(125,150,165,.2); border-radius: 5px;
   background: #0d151c; color: #8ea0aa; cursor: pointer; font-size: 12px; }
 .mv3-tabs button.on { color: #fff; border-color: #58a7d8; background: #173046; }
@@ -139,8 +141,8 @@ export class MatchView3D {
   }
 
   private buildProductionTabs(): void {
-    const labels: Record<ProdCategory, string> = { building: 'Build', infantry: 'Inf', vehicle: 'Veh' };
-    for (const category of ['building', 'infantry', 'vehicle'] as ProdCategory[]) {
+    const labels: Record<ProdCategory, string> = { building: 'Build', infantry: 'Inf', vehicle: 'Veh', aircraft: 'Air' };
+    for (const category of PRODUCTION_CATEGORIES_3D) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = labels[category];
@@ -198,9 +200,8 @@ export class MatchView3D {
   }
 
   private refreshTabs(): void {
-    const categories = ['building', 'infantry', 'vehicle'] as ProdCategory[];
     [...this.tabsEl.children].forEach((child, index) => {
-      child.classList.toggle('on', categories[index] === this.activeCategory);
+      child.classList.toggle('on', PRODUCTION_CATEGORIES_3D[index] === this.activeCategory);
     });
   }
 
@@ -363,12 +364,14 @@ export class MatchView3D {
       refinery: 'Refinery',
       barracks: 'Barracks',
       warfactory: 'War Factory',
+      airbase: 'Airbase',
       pillbox: 'Pillbox',
       battlelab: 'Battle Lab',
       gi: 'British Soldier',
       engineer: 'Engineer',
       grizzly: 'British Tank',
       arty: 'Artillery',
+      fighter: 'Fighter',
       harvester: 'Harvester',
     };
     return labels[type.id] ?? type.name;

@@ -25,6 +25,7 @@ const CATEGORY_LABEL: Record<ProdCategory, string> = {
   building: '建筑',
   infantry: '步兵',
   vehicle: '车辆',
+  aircraft: '空军',
 };
 
 /** 单位语音应答池（事件→泰伯利亚之日步兵语音文件，详见 audio-bus VOICE_FILES）。 */
@@ -45,6 +46,7 @@ const UNIT_HINT: Record<string, string> = {
   refinery: '采矿经济（含矿车）',
   barracks: '出步兵',
   warfactory: '出载具',
+  airbase: '出战斗机',
   battlelab: '解锁高级单位',
   pillbox: '防御·对步兵',
   tesla: '防御·强力',
@@ -60,6 +62,7 @@ const UNIT_HINT: Record<string, string> = {
   rhino: '主战坦克·通用',
   flaktrak: '防空履带车',
   arty: '攻城车·远程溅射、脆',
+  fighter: '战斗机·空中移动',
   v3: '攻城车·远程溅射、脆',
   prism: '光棱坦克·远程强拆/克步兵',
   apocalypse: '天启坦克·重甲猛兽',
@@ -452,7 +455,7 @@ export class MatchView {
     this.app.canvas.addEventListener('pointerdown', unlock, { once: true });
     window.addEventListener('keydown', unlock, { once: true });
 
-    for (const cat of ['building', 'infantry', 'vehicle'] as ProdCategory[]) {
+    for (const cat of ['building', 'infantry', 'vehicle', 'aircraft'] as ProdCategory[]) {
       const btn = document.createElement('button');
       btn.textContent = CATEGORY_LABEL[cat];
       btn.className = cat === this.activeTab ? 'on' : '';
@@ -1569,7 +1572,7 @@ export class MatchView {
       if (lostMine) this.eva('unitLost', '✖ 单位损失', 'alert', 4000);
     }
     // 建筑建造完成（队列首项变为就绪）→ 提示音
-    for (const cat of ['building', 'infantry', 'vehicle'] as const) {
+    for (const cat of ['building', 'infantry', 'vehicle', 'aircraft'] as const) {
       const q = this.world.queueFor(this.localPlayerId, cat);
       const ready = !!q?.readyToPlace;
       if (ready && !this.prevReady[cat]) {

@@ -7,10 +7,12 @@ describe('WW1 3D model manifest', () => {
       conyard: '/ww1/models/conyard-hq.glb',
       barracks: '/ww1/models/barracks-british.glb',
       warfactory: '/ww1/models/warfactory-british.glb',
+      airbase: '/ww1/models/airbase-british.glb',
       pillbox: '/ww1/models/pillbox-british.glb',
       gi: '/ww1/models/infantry-british.glb',
       grizzly: '/ww1/models/tank-british.glb',
       arty: '/ww1/models/artillery-british.glb',
+      fighter: '/ww1/models/fighter-british.glb',
     });
   });
 
@@ -22,6 +24,7 @@ describe('WW1 3D model manifest', () => {
   it('keeps per-model transform overrides for generated building assets', () => {
     expect(ww1ModelSpec('barracks')).toMatchObject({ yawDeg: 0, scale: 2.9 });
     expect(ww1ModelSpec('warfactory')).toMatchObject({ yawDeg: 0, scale: 2.9 });
+    expect(ww1ModelSpec('airbase')).toMatchObject({ yawDeg: 0, scale: 2 });
   });
 
   it('doubles every shipped GLB model by default for the 3D view', () => {
@@ -31,13 +34,13 @@ describe('WW1 3D model manifest', () => {
   });
 
   it('keeps placed building GLBs grid-aligned without runtime yaw', () => {
-    for (const typeId of ['conyard', 'barracks', 'warfactory', 'pillbox']) {
+    for (const typeId of ['conyard', 'barracks', 'warfactory', 'airbase', 'pillbox']) {
       expect(ww1ModelSpec(typeId)?.yawDeg ?? 0).toBe(0);
     }
   });
 
   it('adds local yaw compensation for movable Blender GLBs so their front follows Entity.facing', () => {
-    for (const typeId of ['gi', 'arty']) {
+    for (const typeId of ['gi', 'arty', 'fighter']) {
       expect(ww1ModelSpec(typeId)).toMatchObject({ yawDeg: -90 });
     }
     expect(ww1ModelSpec('grizzly')).toMatchObject({ yawDeg: 90 });

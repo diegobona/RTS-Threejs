@@ -11,3 +11,21 @@ describe('WWI British display names', () => {
     expect(DEFAULT_RULES.units.get('arty')?.name).toBe('英军大炮');
   });
 });
+
+describe('WWI air force content', () => {
+  it('defines an airbase that unlocks fighter production', () => {
+    expect(DEFAULT_RULES.units.get('airbase')).toMatchObject({
+      id: 'airbase',
+      domain: 'building',
+      builtBy: 'conyard',
+      prerequisites: ['warfactory'],
+      building: { footprintW: 3, footprintH: 2, provides: 'airbase' },
+    });
+    expect(DEFAULT_RULES.units.get('fighter')).toMatchObject({
+      id: 'fighter',
+      domain: 'aircraft',
+      builtBy: 'airbase',
+      prerequisites: ['airbase'],
+    });
+  });
+});

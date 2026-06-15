@@ -39,7 +39,7 @@ export interface Player {
 }
 
 /** 生产分类：建筑/步兵/车辆各一条并行队列。 */
-export type ProdCategory = 'building' | 'infantry' | 'vehicle';
+export type ProdCategory = 'building' | 'infantry' | 'vehicle' | 'aircraft';
 
 export interface ProductionQueue {
   /** 队列中的 typeId（含正在生产的队首）。 */
@@ -134,6 +134,7 @@ const CATEGORY_PRODUCER: Record<ProdCategory, string> = {
   building: 'conyard',
   infantry: 'barracks',
   vehicle: 'warfactory',
+  aircraft: 'airbase',
 };
 
 const HARVEST_RATE = 30;
@@ -483,7 +484,7 @@ export class World {
       if (player.defeated) continue;
       // 低电时建造减速：电力不足 → 半速
       const powerOk = player.powerProduced >= player.powerDrained;
-      for (const category of ['building', 'infantry', 'vehicle'] as ProdCategory[]) {
+      for (const category of ['building', 'infantry', 'vehicle', 'aircraft'] as ProdCategory[]) {
         const q = this.queueFor(player.id, category);
         if (!q || q.items.length === 0 || q.readyToPlace) continue;
         const type = this.rules.units.get(q.items[0]!);
