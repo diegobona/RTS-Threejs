@@ -511,7 +511,7 @@ const UNIT_LIST: UnitType[] = [
     speed: 70,
     rot: 24,
     sight: 8,
-    weapon: { name: '机炮', damage: 35, range: 6 * 256, cooldown: 18, projectileSpeed: 140, warhead: { none: 90, flak: 90, plate: 75, light: 70, heavy: 45, concrete: 35 }, splash: 8 },
+    weapon: { name: '航弹', damage: 65, range: 2 * 256, cooldown: 36, projectileSpeed: 100, warhead: { none: 80, flak: 80, plate: 90, light: 100, heavy: 70, concrete: 95 }, splash: 48 },
   },
 ];
 

@@ -28,4 +28,11 @@ describe('WWI air force content', () => {
       prerequisites: ['airbase'],
     });
   });
+
+  it('makes fighters use a short-range bomb so visual drops align with the target area', () => {
+    expect(DEFAULT_RULES.units.get('fighter')?.weapon).toMatchObject({
+      name: '航弹',
+      range: 2 * 256,
+    });
+  });
 });

@@ -11,7 +11,7 @@ export const WW1_MODEL_SPECS: readonly Ww1ModelSpec[] = [
   { typeId: 'warfactory', src: '/ww1/models/warfactory-british.glb', yawDeg: 0, scale: 2.9 },
   { typeId: 'airbase', src: '/ww1/models/airbase-british.glb', yawDeg: 0, scale: 2 },
   { typeId: 'pillbox', src: '/ww1/models/pillbox-british.glb', scale: 2 },
-  { typeId: 'gi', src: '/ww1/models/infantry-british.glb', yawDeg: -90, scale: 2 },
+  { typeId: 'gi', src: '/ww1/models/infantry-british.glb', yawDeg: 90, scale: 2 },
   { typeId: 'grizzly', src: '/ww1/models/tank-british.glb', yawDeg: 90, scale: 2 },
   { typeId: 'arty', src: '/ww1/models/artillery-british.glb', yawDeg: -90, scale: 2 },
   { typeId: 'fighter', src: '/ww1/models/fighter-british.glb', yawDeg: -90, scale: 2 },

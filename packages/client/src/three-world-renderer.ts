@@ -32,12 +32,45 @@ import { WW1_MODEL_SPECS, type Ww1ModelSpec } from './ww1-model-manifest';
 
 interface EntityView {
   root: Group;
+  visualRoot: Group;
   hpBar: Group;
   selectionRing: Mesh;
 }
 
 const PLAYER_COLORS = [0xf8d020, 0x3a7fe0, 0x30c040, 0xe04030, 0xd060d0, 0xe08020, 0x40c0c0, 0xc0c0c0];
-const AIRCRAFT_ALTITUDE = 4.2;
+const AIRCRAFT_ALTITUDE = 8;
+
+export function entityRootAltitude3D(_type: Pick<UnitType, 'domain'>): number {
+  return 0;
+}
+
+export function entityVisualAltitude3D(type: Pick<UnitType, 'domain'>): number {
+  return type.domain === 'aircraft' ? AIRCRAFT_ALTITUDE : 0;
+}
+
+export function entitySelectionRingAltitude3D(type: Pick<UnitType, 'domain'>): number {
+  return entityVisualAltitude3D(type) + 0.045;
+}
+
+export function isPickableEntityPart3D(userData: { pickable?: boolean }): boolean {
+  return userData.pickable !== false;
+}
+
+export function projectileVisualPoint3D(
+  shooterType: Pick<UnitType, 'domain'> | null | undefined,
+  projectile: { x: number; y: number },
+  shooter: { x: number; y: number } | null | undefined,
+  target: { x: number; y: number } | null | undefined,
+): Vector3 {
+  if (shooterType?.domain !== 'aircraft' || !shooter || !target) {
+    const pos = leptonToWorld3D(projectile.x, projectile.y);
+    return new Vector3(pos.x, 0.55, pos.z);
+  }
+  const shooterPos = leptonToWorld3D(shooter.x, shooter.y);
+  const full = Math.max(1, Math.hypot(target.x - shooter.x, target.y - shooter.y));
+  const remaining = Math.min(1, Math.max(0, Math.hypot(target.x - projectile.x, target.y - projectile.y) / full));
+  return new Vector3(shooterPos.x, 0.35 + AIRCRAFT_ALTITUDE * remaining, shooterPos.z);
+}
 
 export class ThreeWorldRenderer {
   readonly renderer: WebGLRenderer;
@@ -58,6 +91,7 @@ export class ThreeWorldRenderer {
   private readonly aircraftWingGeo = new BoxGeometry(0.32, 0.08, 1.55);
   private readonly aircraftTailGeo = new BoxGeometry(0.24, 0.12, 0.78);
   private readonly aircraftNoseGeo = new ConeGeometry(0.18, 0.42, 12);
+  private readonly aircraftShadowGeo = new PlaneGeometry(1.8, 0.75);
   private readonly selectionRingGeo = new RingGeometry(0.52, 0.64, 32);
   private readonly selectionRingMat = new MeshLambertMaterial({ color: 0x68f07a });
   private readonly hpBackMat = new MeshBasicLike(0x101010);
@@ -150,7 +184,9 @@ export class ThreeWorldRenderer {
       const e = this.world.entities.get(id);
       const type = e && this.world.rules.units.get(e.typeId);
       if (!e || e.owner !== this.localPlayerId || !type || type.domain === 'building') continue;
-      const p = view.root.position.clone().project(camera);
+      const p = view.root.position.clone();
+      p.y += entityVisualAltitude3D(type);
+      p.project(camera);
       out.push({
         id,
         x: rect.left + ((p.x + 1) / 2) * rect.width,
@@ -251,17 +287,17 @@ export class ThreeWorldRenderer {
 
       if (type.building) {
         const pos = cellToWorld3D(e.cellX + (type.building.footprintW - 1) / 2, e.cellY + (type.building.footprintH - 1) / 2);
-        view.root.position.set(pos.x, 0, pos.z);
+        view.root.position.set(pos.x, entityRootAltitude3D(type), pos.z);
       } else {
         const last = view.root.userData.last as { x: number; y: number } | undefined;
         const lx = last?.x ?? e.x;
         const ly = last?.y ?? e.y;
         const pos = leptonToWorld3D(lx + (e.x - lx) * alpha, ly + (e.y - ly) * alpha);
-        view.root.position.set(pos.x, type.domain === 'aircraft' ? AIRCRAFT_ALTITUDE : 0, pos.z);
+        view.root.position.set(pos.x, entityRootAltitude3D(type), pos.z);
         view.root.rotation.y = -(e.facing / 256) * Math.PI * 2;
         view.root.userData.last = { x: e.x, y: e.y };
       }
-      view.root.scale.setScalar(selected.has(e.id) ? 1.12 : 1);
+      view.visualRoot.scale.setScalar(selected.has(e.id) ? 1.12 : 1);
       view.selectionRing.visible = selected.has(e.id);
       this.updateHpBar(view.hpBar, e.hp / e.maxHp);
     }
@@ -276,42 +312,48 @@ export class ThreeWorldRenderer {
 
   private createEntityView(type: UnitType, owner: number, entityId: number): EntityView {
     const root = new Group();
+    const visualRoot = new Group();
+    visualRoot.position.y = entityVisualAltitude3D(type);
     root.userData.entityId = entityId;
     root.userData.typeId = type.id;
     const ownerColor = PLAYER_COLORS[(owner - 1) % PLAYER_COLORS.length] ?? 0xcccccc;
     const model = this.createModelInstance(type, entityId);
 
     if (model) {
-      root.add(model);
+      visualRoot.add(model);
     } else if (type.building) {
-      root.add(this.createBuilding(type, ownerColor));
+      visualRoot.add(this.createBuilding(type, ownerColor));
     } else if (type.domain === 'vehicle') {
       const body = new Mesh(this.vehicleGeo, new MeshLambertMaterial({ color: ownerColor }));
       body.position.y = 0.22;
-      root.add(body);
+      visualRoot.add(body);
       if (type.weapon) {
         const barrel = new Mesh(this.barrelGeo, new MeshLambertMaterial({ color: 0x343a3f }));
         barrel.position.set(0, 0.35, -0.55);
-        root.add(barrel);
+        visualRoot.add(barrel);
       }
     } else if (type.domain === 'aircraft') {
-      root.add(this.createAircraft(ownerColor));
+      visualRoot.add(this.createAircraft(ownerColor));
+      root.add(this.createAircraftShadow());
     } else {
       const soldier = new Mesh(this.soldierGeo, new MeshLambertMaterial({ color: ownerColor }));
       soldier.position.y = 0.55;
-      root.add(soldier);
+      visualRoot.add(soldier);
     }
 
-    const hpBar = this.createHpBar(type.building ? 1.6 : 0.9, type.building ? 1.6 : 1.35);
+    root.add(visualRoot);
+
+    const hpBar = this.createHpBar(type.building ? 1.6 : 0.9, type.building ? 1.6 : entityVisualAltitude3D(type) + 1.35);
     const selectionRing = new Mesh(this.selectionRingGeo, this.selectionRingMat);
     selectionRing.rotation.x = -Math.PI / 2;
-    selectionRing.position.y = 0.045;
+    selectionRing.position.y = entitySelectionRingAltitude3D(type);
+    selectionRing.scale.setScalar(type.domain === 'aircraft' ? 1.7 : 1);
     selectionRing.visible = false;
     root.add(selectionRing, hpBar);
     root.traverse((child) => {
       child.userData.entityId = entityId;
     });
-    return { root, hpBar, selectionRing };
+    return { root, visualRoot, hpBar, selectionRing };
   }
 
   private createBuilding(type: UnitType, ownerColor: number): Object3D {
@@ -355,6 +397,17 @@ export class ThreeWorldRenderer {
     nose.position.set(0.93, 0.28, 0);
     root.add(body, wing, tail, nose);
     return root;
+  }
+
+  private createAircraftShadow(): Object3D {
+    const shadow = new Mesh(
+      this.aircraftShadowGeo,
+      new MeshLambertMaterial({ color: 0x050808, transparent: true, opacity: 0.35 }),
+    );
+    shadow.userData.pickable = false;
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.035;
+    return shadow;
   }
 
   private createModelInstance(type: UnitType, entityId: number): Object3D | null {
@@ -432,9 +485,12 @@ export class ThreeWorldRenderer {
   private syncProjectiles(): void {
     this.projectileLayer.clear();
     for (const p of this.world.projectiles) {
-      const pos = leptonToWorld3D(p.x, p.y);
+      const shooter = this.world.entities.get(p.shooterId);
+      const shooterType = shooter && this.world.rules.units.get(shooter.typeId);
+      const target = this.world.entities.get(p.targetId);
+      const pos = projectileVisualPoint3D(shooterType, p, shooter, target);
       const sp = new Mesh(this.projectileGeo, this.projectileMat);
-      sp.position.set(pos.x, 0.55, pos.z);
+      sp.position.set(pos.x, pos.y, pos.z);
       this.projectileLayer.add(sp);
     }
   }
@@ -463,6 +519,7 @@ export class ThreeWorldRenderer {
   private entityIdOf(obj: Object3D): number | null {
     let cur: Object3D | null = obj;
     while (cur) {
+      if (!isPickableEntityPart3D(cur.userData)) return null;
       const id = cur.userData.entityId as number | undefined;
       if (typeof id === 'number') return id;
       cur = cur.parent;

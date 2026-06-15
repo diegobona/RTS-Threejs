@@ -40,9 +40,9 @@ describe('WW1 3D model manifest', () => {
   });
 
   it('adds local yaw compensation for movable Blender GLBs so their front follows Entity.facing', () => {
-    for (const typeId of ['gi', 'arty', 'fighter']) {
-      expect(ww1ModelSpec(typeId)).toMatchObject({ yawDeg: -90 });
-    }
+    expect(ww1ModelSpec('gi')).toMatchObject({ yawDeg: 90 });
     expect(ww1ModelSpec('grizzly')).toMatchObject({ yawDeg: 90 });
+    expect(ww1ModelSpec('arty')).toMatchObject({ yawDeg: -90 });
+    expect(ww1ModelSpec('fighter')).toMatchObject({ yawDeg: -90 });
   });
 });
