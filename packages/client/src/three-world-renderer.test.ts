@@ -4,6 +4,8 @@ import {
   entitySelectionRingAltitude3D,
   entityVisualAltitude3D,
   isPickableEntityPart3D,
+  LOWPOLY_FIGHTER_PART_IDS,
+  LOWPOLY_FIGHTER_MODEL_SCALE,
   projectileVisualPoint3D,
 } from './three-world-renderer';
 
@@ -36,5 +38,16 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(point.z).toBe(20);
     expect(point.y).toBeGreaterThan(0.55);
     expect(point.y).toBeLessThan(entityVisualAltitude3D({ domain: 'aircraft' }) + 1);
+  });
+
+  it('builds the procedural fighter from detailed low-poly parts', () => {
+    expect(LOWPOLY_FIGHTER_PART_IDS).toEqual(
+      expect.arrayContaining(['fuselage', 'nose', 'cockpit', 'main-wing', 'tail-wing', 'vertical-tail', 'intake', 'hardpoint']),
+    );
+    expect(LOWPOLY_FIGHTER_PART_IDS.length).toBeGreaterThanOrEqual(12);
+  });
+
+  it('scales the procedural fighter large enough for close inspection', () => {
+    expect(LOWPOLY_FIGHTER_MODEL_SCALE).toBeGreaterThanOrEqual(1.4);
   });
 });

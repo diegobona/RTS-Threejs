@@ -40,6 +40,35 @@ interface EntityView {
 const PLAYER_COLORS = [0xf8d020, 0x3a7fe0, 0x30c040, 0xe04030, 0xd060d0, 0xe08020, 0x40c0c0, 0xc0c0c0];
 const AIRCRAFT_ALTITUDE = 8;
 
+export const LOWPOLY_FIGHTER_MODEL_SCALE = 1.45;
+
+export const LOWPOLY_FIGHTER_PART_IDS = [
+  'fuselage',
+  'spine',
+  'nose',
+  'cockpit',
+  'canopy',
+  'main-wing',
+  'main-wing-left',
+  'main-wing-right',
+  'tail-wing',
+  'tail-wing-left',
+  'tail-wing-right',
+  'vertical-tail',
+  'intake',
+  'intake-left',
+  'intake-right',
+  'engine-nozzle',
+  'hardpoint',
+  'hardpoint-left-inner',
+  'hardpoint-left-outer',
+  'hardpoint-right-inner',
+  'hardpoint-right-outer',
+  'wingtip-left',
+  'wingtip-right',
+  'team-stripe',
+] as const;
+
 export function entityRootAltitude3D(_type: Pick<UnitType, 'domain'>): number {
   return 0;
 }
@@ -87,11 +116,20 @@ export class ThreeWorldRenderer {
   private readonly soldierGeo = new CapsuleGeometry(0.22, 0.7, 4, 8);
   private readonly vehicleGeo = new BoxGeometry(0.9, 0.35, 1.25);
   private readonly barrelGeo = new BoxGeometry(0.16, 0.12, 0.8);
-  private readonly aircraftBodyGeo = new BoxGeometry(1.45, 0.22, 0.28);
-  private readonly aircraftWingGeo = new BoxGeometry(0.32, 0.08, 1.55);
-  private readonly aircraftTailGeo = new BoxGeometry(0.24, 0.12, 0.78);
-  private readonly aircraftNoseGeo = new ConeGeometry(0.18, 0.42, 12);
-  private readonly aircraftShadowGeo = new PlaneGeometry(1.8, 0.75);
+  private readonly fighterFuselageGeo = new BoxGeometry(1.7, 0.32, 0.36);
+  private readonly fighterSpineGeo = new BoxGeometry(0.74, 0.16, 0.24);
+  private readonly fighterNoseGeo = new ConeGeometry(0.22, 0.58, 6);
+  private readonly fighterCockpitGeo = new BoxGeometry(0.42, 0.16, 0.28);
+  private readonly fighterWingGeo = new BoxGeometry(0.72, 0.08, 1);
+  private readonly fighterTailWingGeo = new BoxGeometry(0.35, 0.07, 0.5);
+  private readonly fighterVerticalTailGeo = new BoxGeometry(0.18, 0.46, 0.08);
+  private readonly fighterIntakeGeo = new BoxGeometry(0.36, 0.14, 0.14);
+  private readonly fighterNozzleGeo = new ConeGeometry(0.2, 0.3, 6);
+  private readonly fighterHardpointGeo = new BoxGeometry(0.34, 0.06, 0.09);
+  private readonly fighterHardpointNoseGeo = new ConeGeometry(0.05, 0.13, 6);
+  private readonly fighterWingtipGeo = new BoxGeometry(0.14, 0.09, 0.18);
+  private readonly fighterStripeGeo = new BoxGeometry(0.08, 0.34, 0.42);
+  private readonly aircraftShadowGeo = new PlaneGeometry(3.25, 1.6);
   private readonly selectionRingGeo = new RingGeometry(0.52, 0.64, 32);
   private readonly selectionRingMat = new MeshLambertMaterial({ color: 0x68f07a });
   private readonly hpBackMat = new MeshBasicLike(0x101010);
@@ -324,21 +362,18 @@ export class ThreeWorldRenderer {
     } else if (type.building) {
       visualRoot.add(this.createBuilding(type, ownerColor));
     } else if (type.domain === 'vehicle') {
-      const body = new Mesh(this.vehicleGeo, new MeshLambertMaterial({ color: ownerColor }));
-      body.position.y = 0.22;
-      visualRoot.add(body);
-      if (type.weapon) {
-        const barrel = new Mesh(this.barrelGeo, new MeshLambertMaterial({ color: 0x343a3f }));
-        barrel.position.set(0, 0.35, -0.55);
-        visualRoot.add(barrel);
-      }
+      visualRoot.add(
+        type.id === 'grizzly'
+          ? this.createTank(ownerColor)
+          : type.id === 'harvester'
+            ? this.createHarvester(ownerColor)
+            : this.createVehiclePlaceholder(ownerColor, !!type.weapon),
+      );
     } else if (type.domain === 'aircraft') {
       visualRoot.add(this.createAircraft(ownerColor));
       root.add(this.createAircraftShadow());
     } else {
-      const soldier = new Mesh(this.soldierGeo, new MeshLambertMaterial({ color: ownerColor }));
-      soldier.position.y = 0.55;
-      visualRoot.add(soldier);
+      visualRoot.add(this.createInfantry(ownerColor));
     }
 
     root.add(visualRoot);
@@ -356,7 +391,27 @@ export class ThreeWorldRenderer {
     return { root, visualRoot, hpBar, selectionRing };
   }
 
+  private createVehiclePlaceholder(ownerColor: number, armed: boolean): Object3D {
+    const root = new Group();
+    const body = new Mesh(this.vehicleGeo, new MeshLambertMaterial({ color: ownerColor }));
+    body.position.y = 0.22;
+    root.add(body);
+    if (armed) {
+      const barrel = new Mesh(this.barrelGeo, new MeshLambertMaterial({ color: 0x343a3f }));
+      barrel.position.set(0, 0.35, -0.55);
+      root.add(barrel);
+    }
+    return root;
+  }
+
   private createBuilding(type: UnitType, ownerColor: number): Object3D {
+    if (type.id === 'conyard') return this.createConstructionYard(ownerColor);
+    if (type.id === 'barracks') return this.createBarracks(ownerColor);
+    if (type.id === 'warfactory') return this.createWarFactory(ownerColor);
+    if (type.id === 'airbase') return this.createAirbase(ownerColor);
+    if (type.id === 'refinery') return this.createRefinery(ownerColor);
+    if (type.id === 'powerplant') return this.createPowerPlant(ownerColor);
+
     const b = type.building!;
     const root = new Group();
     const h = type.id === 'conyard' ? 1.8 : type.id === 'warfactory' ? 1.35 : type.id === 'pillbox' ? 0.55 : type.id === 'airbase' ? 0.55 : 1.1;
@@ -382,20 +437,759 @@ export class ThreeWorldRenderer {
     return root;
   }
 
+  private createAirbase(ownerColor: number): Object3D {
+    const root = new Group();
+    root.name = 'lowpoly-airbase';
+    const concreteMat = new MeshLambertMaterial({ color: 0x686d64 });
+    const runwayMat = new MeshLambertMaterial({ color: 0x30383c });
+    const hangarMat = new MeshLambertMaterial({ color: 0x5f6a63 });
+    const roofMat = new MeshLambertMaterial({ color: 0x384246 });
+    const metalMat = new MeshLambertMaterial({ color: 0x2d3438 });
+    const stripeMat = new MeshLambertMaterial({ color: 0xd8d3a4 });
+    const glassMat = new MeshLambertMaterial({ color: 0x26384a });
+    const accentMat = new MeshLambertMaterial({ color: ownerColor });
+    const addPart = (name: string, mesh: Mesh): Mesh => {
+      mesh.name = `airbase-${name}`;
+      root.add(mesh);
+      return mesh;
+    };
+
+    const pad = addPart('foundation', new Mesh(new BoxGeometry(5.75, 0.18, 3.75), concreteMat));
+    pad.position.y = 0.09;
+
+    const runway = addPart('runway', new Mesh(new BoxGeometry(5.25, 0.08, 1.08), runwayMat));
+    runway.position.set(0, 0.23, 0.72);
+    for (let i = 0; i < 5; i++) {
+      const stripe = addPart(`runway-stripe-${i}`, new Mesh(new BoxGeometry(0.42, 0.09, 0.08), stripeMat));
+      stripe.position.set(-1.9 + i * 0.95, 0.29, 0.72);
+    }
+
+    const apron = addPart('apron', new Mesh(new BoxGeometry(2.25, 0.1, 1.35), runwayMat));
+    apron.position.set(-1.35, 0.25, -0.82);
+    const helipad = addPart('service-pad', new Mesh(new BoxGeometry(1.08, 0.11, 1.08), concreteMat));
+    helipad.position.set(1.85, 0.27, -0.68);
+    const padMarkA = addPart('service-pad-mark-a', new Mesh(new BoxGeometry(0.72, 0.12, 0.08), stripeMat));
+    padMarkA.position.set(1.85, 0.34, -0.68);
+    const padMarkB = addPart('service-pad-mark-b', new Mesh(new BoxGeometry(0.08, 0.12, 0.72), stripeMat));
+    padMarkB.position.set(1.85, 0.35, -0.68);
+
+    const hangar = addPart('hangar', new Mesh(new BoxGeometry(1.65, 0.92, 1.45), hangarMat));
+    hangar.position.set(-1.7, 0.72, -0.72);
+    const hangarDoor = addPart('hangar-door', new Mesh(new BoxGeometry(1.18, 0.62, 0.08), metalMat));
+    hangarDoor.position.set(-1.7, 0.58, 0.04);
+    const hangarRoof = addPart('hangar-roof', new Mesh(new ConeGeometry(1.08, 0.56, 4), roofMat));
+    hangarRoof.position.set(-1.7, 1.35, -0.72);
+    hangarRoof.rotation.y = Math.PI / 4;
+    hangarRoof.scale.z = 0.78;
+
+    const tower = addPart('control-tower', new Mesh(new BoxGeometry(0.55, 1.65, 0.55), hangarMat));
+    tower.position.set(1.76, 1.04, -1.18);
+    const towerCab = addPart('control-cab', new Mesh(new BoxGeometry(0.82, 0.42, 0.72), glassMat));
+    towerCab.position.set(1.76, 1.98, -1.18);
+    const towerRoof = addPart('control-roof', new Mesh(new BoxGeometry(0.92, 0.16, 0.82), roofMat));
+    towerRoof.position.set(1.76, 2.28, -1.18);
+    const antenna = addPart('tower-antenna', new Mesh(new BoxGeometry(0.05, 0.9, 0.05), metalMat));
+    antenna.position.set(1.76, 2.82, -1.18);
+
+    const radarMast = addPart('radar-mast', new Mesh(new BoxGeometry(0.09, 0.85, 0.09), metalMat));
+    radarMast.position.set(2.28, 0.88, -0.38);
+    const radarDish = addPart('radar-dish', new Mesh(new ConeGeometry(0.28, 0.13, 12), metalMat));
+    radarDish.position.set(2.28, 1.36, -0.18);
+    radarDish.rotation.x = Math.PI / 2;
+
+    for (let i = 0; i < 2; i++) {
+      const tank = addPart(`fuel-tank-${i}`, new Mesh(new BoxGeometry(0.44, 0.5, 0.72), metalMat));
+      tank.position.set(-0.28 + i * 0.58, 0.5, -1.38);
+      const cap = addPart(`fuel-tank-cap-${i}`, new Mesh(new BoxGeometry(0.5, 0.08, 0.78), roofMat));
+      cap.position.set(-0.28 + i * 0.58, 0.8, -1.38);
+    }
+
+    const teamPanel = addPart('team-panel', new Mesh(new BoxGeometry(0.9, 0.1, 0.12), accentMat));
+    teamPanel.position.set(-1.7, 1.05, 0.06);
+    const beacon = addPart('beacon', new Mesh(new BoxGeometry(0.18, 0.2, 0.18), accentMat));
+    beacon.position.set(1.76, 2.48, -1.18);
+
+    return root;
+  }
+
+  private createRefinery(ownerColor: number): Object3D {
+    const root = new Group();
+    root.name = 'lowpoly-refinery';
+    const concreteMat = new MeshLambertMaterial({ color: 0x696f66 });
+    const wallMat = new MeshLambertMaterial({ color: 0x626d65 });
+    const darkWallMat = new MeshLambertMaterial({ color: 0x3d4744 });
+    const roofMat = new MeshLambertMaterial({ color: 0x343d3f });
+    const metalMat = new MeshLambertMaterial({ color: 0x2d3436 });
+    const oreMat = new MeshLambertMaterial({ color: 0xd8a51d });
+    const stripeMat = new MeshLambertMaterial({ color: 0xd2bd4c });
+    const accentMat = new MeshLambertMaterial({ color: ownerColor });
+    const addPart = (name: string, mesh: Mesh): Mesh => {
+      mesh.name = `refinery-${name}`;
+      root.add(mesh);
+      return mesh;
+    };
+
+    const pad = addPart('foundation', new Mesh(new BoxGeometry(5.85, 0.2, 5.75), concreteMat));
+    pad.position.y = 0.1;
+
+    const processingHall = addPart('processing-hall', new Mesh(new BoxGeometry(2.4, 1.35, 2.15), wallMat));
+    processingHall.position.set(-0.75, 0.88, -0.35);
+    const hallRoof = addPart('processing-roof', new Mesh(new BoxGeometry(2.55, 0.18, 2.32), roofMat));
+    hallRoof.position.set(-0.75, 1.64, -0.35);
+
+    const unloadingBay = addPart('unloading-bay', new Mesh(new BoxGeometry(2.25, 0.82, 1.15), darkWallMat));
+    unloadingBay.position.set(0.95, 0.6, 1.48);
+    const bayDoor = addPart('unloading-door', new Mesh(new BoxGeometry(1.68, 0.54, 0.08), metalMat));
+    bayDoor.position.set(0.95, 0.5, 2.08);
+    const ramp = addPart('ore-ramp', new Mesh(new BoxGeometry(2.1, 0.12, 0.92), concreteMat));
+    ramp.position.set(0.95, 0.22, 2.58);
+    ramp.rotation.x = -0.1;
+
+    const hopper = addPart('ore-hopper', new Mesh(new ConeGeometry(0.92, 0.78, 4), darkWallMat));
+    hopper.position.set(1.42, 1.25, -0.62);
+    hopper.rotation.y = Math.PI / 4;
+    hopper.scale.z = 0.72;
+    const hopperTop = addPart('hopper-top', new Mesh(new BoxGeometry(1.45, 0.22, 1.05), metalMat));
+    hopperTop.position.set(1.42, 1.76, -0.62);
+
+    const conveyor = addPart('conveyor', new Mesh(new BoxGeometry(2.35, 0.22, 0.34), metalMat));
+    conveyor.position.set(0.55, 1.12, 0.52);
+    conveyor.rotation.z = 0.12;
+    const conveyorOre = addPart('conveyor-ore', new Mesh(new BoxGeometry(1.45, 0.08, 0.22), oreMat));
+    conveyorOre.position.set(0.55, 1.28, 0.52);
+    conveyorOre.rotation.z = 0.12;
+
+    for (let i = 0; i < 3; i++) {
+      const silo = addPart(`storage-silo-${i}`, new Mesh(new BoxGeometry(0.68, 1.35, 0.68), metalMat));
+      silo.position.set(1.25 + i * 0.58, 0.9, -1.78);
+      const cap = addPart(`storage-silo-cap-${i}`, new Mesh(new ConeGeometry(0.44, 0.34, 8), roofMat));
+      cap.position.set(1.25 + i * 0.58, 1.74, -1.78);
+    }
+
+    for (let i = 0; i < 5; i++) {
+      const nugget = addPart(`ore-pile-${i}`, new Mesh(this.oreGeo, oreMat));
+      nugget.position.set(-1.78 + (i % 3) * 0.38, 0.32 + i * 0.03, 1.72 + Math.floor(i / 3) * 0.32);
+      nugget.scale.setScalar(1.15 + i * 0.08);
+    }
+
+    const pipeA = addPart('pipe-a', new Mesh(new BoxGeometry(0.16, 0.16, 2.15), metalMat));
+    pipeA.position.set(-2.0, 1.38, -0.42);
+    const pipeB = addPart('pipe-b', new Mesh(new BoxGeometry(0.16, 1.0, 0.16), metalMat));
+    pipeB.position.set(-2.0, 0.94, 0.6);
+    const teamPanel = addPart('team-panel', new Mesh(new BoxGeometry(0.95, 0.1, 0.12), accentMat));
+    teamPanel.position.set(-0.75, 1.22, 0.75);
+    const hazard = addPart('bay-hazard-line', new Mesh(new BoxGeometry(1.65, 0.1, 0.08), stripeMat));
+    hazard.position.set(0.95, 0.9, 2.12);
+
+    return root;
+  }
+
+  private createPowerPlant(ownerColor: number): Object3D {
+    const root = new Group();
+    root.name = 'lowpoly-power-plant';
+    const concreteMat = new MeshLambertMaterial({ color: 0x6b7068 });
+    const wallMat = new MeshLambertMaterial({ color: 0x5c675f });
+    const roofMat = new MeshLambertMaterial({ color: 0x323a3c });
+    const metalMat = new MeshLambertMaterial({ color: 0x303538 });
+    const darkMat = new MeshLambertMaterial({ color: 0x252b2d });
+    const glowMat = new MeshLambertMaterial({ color: 0xe0c94b });
+    const accentMat = new MeshLambertMaterial({ color: ownerColor });
+    const addPart = (name: string, mesh: Mesh): Mesh => {
+      mesh.name = `powerplant-${name}`;
+      root.add(mesh);
+      return mesh;
+    };
+
+    const pad = addPart('foundation', new Mesh(new BoxGeometry(3.75, 0.18, 3.75), concreteMat));
+    pad.position.y = 0.09;
+
+    const generatorHall = addPart('generator-hall', new Mesh(new BoxGeometry(2.15, 1.25, 1.8), wallMat));
+    generatorHall.position.set(-0.38, 0.78, -0.1);
+    const roof = addPart('generator-roof', new Mesh(new BoxGeometry(2.32, 0.18, 1.98), roofMat));
+    roof.position.set(-0.38, 1.49, -0.1);
+
+    const turbineBox = addPart('turbine-box', new Mesh(new BoxGeometry(1.05, 0.72, 1.22), metalMat));
+    turbineBox.position.set(1.1, 0.55, 0.55);
+    const turbineTop = addPart('turbine-top', new Mesh(new BoxGeometry(1.15, 0.15, 1.32), darkMat));
+    turbineTop.position.set(1.1, 0.98, 0.55);
+
+    for (let i = 0; i < 3; i++) {
+      const vent = addPart(`roof-vent-${i}`, new Mesh(new BoxGeometry(0.38, 0.18, 0.42), metalMat));
+      vent.position.set(-1.0 + i * 0.62, 1.68, -0.12);
+    }
+
+    const chimneyA = addPart('chimney-a', new Mesh(new BoxGeometry(0.32, 1.65, 0.32), metalMat));
+    chimneyA.position.set(1.28, 1.35, -1.18);
+    const chimneyB = addPart('chimney-b', new Mesh(new BoxGeometry(0.26, 1.28, 0.26), metalMat));
+    chimneyB.position.set(1.66, 1.15, -0.82);
+    const capA = addPart('chimney-cap-a', new Mesh(new BoxGeometry(0.48, 0.12, 0.48), roofMat));
+    capA.position.set(1.28, 2.22, -1.18);
+    const capB = addPart('chimney-cap-b', new Mesh(new BoxGeometry(0.4, 0.1, 0.4), roofMat));
+    capB.position.set(1.66, 1.82, -0.82);
+
+    const transformerA = addPart('transformer-a', new Mesh(new BoxGeometry(0.45, 0.56, 0.45), darkMat));
+    transformerA.position.set(-1.44, 0.43, 1.22);
+    const transformerB = addPart('transformer-b', new Mesh(new BoxGeometry(0.45, 0.56, 0.45), darkMat));
+    transformerB.position.set(-0.86, 0.43, 1.22);
+    const busBar = addPart('bus-bar', new Mesh(new BoxGeometry(1.1, 0.08, 0.08), glowMat));
+    busBar.position.set(-1.15, 0.82, 1.22);
+
+    const cableA = addPart('cable-a', new Mesh(new BoxGeometry(0.08, 0.08, 1.35), metalMat));
+    cableA.position.set(-1.14, 0.78, 0.52);
+    cableA.rotation.x = 0.1;
+    const cableB = addPart('cable-b', new Mesh(new BoxGeometry(0.08, 0.08, 1.1), metalMat));
+    cableB.position.set(-0.6, 0.78, 0.48);
+    cableB.rotation.x = -0.08;
+
+    const teamPanel = addPart('team-panel', new Mesh(new BoxGeometry(0.72, 0.1, 0.12), accentMat));
+    teamPanel.position.set(-0.42, 1.1, 0.82);
+    const warningLight = addPart('warning-light', new Mesh(new BoxGeometry(0.18, 0.16, 0.18), glowMat));
+    warningLight.position.set(0.55, 1.66, 0.72);
+
+    return root;
+  }
+
+  private createBarracks(ownerColor: number): Object3D {
+    const root = new Group();
+    root.name = 'lowpoly-barracks';
+    const concreteMat = new MeshLambertMaterial({ color: 0x6c7065 });
+    const wallMat = new MeshLambertMaterial({ color: 0x737f70 });
+    const roofMat = new MeshLambertMaterial({ color: 0x48544c });
+    const darkMat = new MeshLambertMaterial({ color: 0x2f3737 });
+    const canvasMat = new MeshLambertMaterial({ color: 0x80785f });
+    const sandMat = new MeshLambertMaterial({ color: 0xa08f66 });
+    const accentMat = new MeshLambertMaterial({ color: ownerColor });
+    const addPart = (name: string, mesh: Mesh): Mesh => {
+      mesh.name = `barracks-${name}`;
+      root.add(mesh);
+      return mesh;
+    };
+
+    const pad = addPart('foundation', new Mesh(new BoxGeometry(3.75, 0.18, 3.55), concreteMat));
+    pad.position.y = 0.09;
+
+    const main = addPart('main-hut', new Mesh(new BoxGeometry(2.45, 1.05, 1.85), wallMat));
+    main.position.set(-0.15, 0.7, 0);
+
+    const roofLeft = addPart('roof-left-slope', new Mesh(new BoxGeometry(2.65, 0.16, 1.08), roofMat));
+    roofLeft.position.set(-0.15, 1.31, 0.47);
+    roofLeft.rotation.x = 0.34;
+    const roofRight = addPart('roof-right-slope', new Mesh(new BoxGeometry(2.65, 0.16, 1.08), roofMat));
+    roofRight.position.set(-0.15, 1.31, -0.47);
+    roofRight.rotation.x = -0.34;
+
+    const entrance = addPart('front-entry', new Mesh(new BoxGeometry(0.82, 0.74, 0.18), darkMat));
+    entrance.position.set(-0.85, 0.56, 0.98);
+    const porch = addPart('porch-awning', new Mesh(new BoxGeometry(1.15, 0.12, 0.58), canvasMat));
+    porch.position.set(-0.85, 1.05, 1.22);
+    porch.rotation.x = 0.16;
+
+    const sideTent = addPart('side-canvas-annex', new Mesh(new BoxGeometry(1.1, 0.72, 1.45), canvasMat));
+    sideTent.position.set(1.17, 0.58, -0.18);
+    const tentRoof = addPart('side-canvas-roof', new Mesh(new ConeGeometry(0.96, 0.52, 4), canvasMat));
+    tentRoof.position.set(1.17, 1.18, -0.18);
+    tentRoof.rotation.y = Math.PI / 4;
+    tentRoof.scale.z = 0.72;
+
+    for (let i = 0; i < 3; i++) {
+      const win = addPart(`side-window-${i}`, new Mesh(new BoxGeometry(0.34, 0.22, 0.06), darkMat));
+      win.position.set(-0.9 + i * 0.62, 0.82, -0.95);
+    }
+
+    const teamPlate = addPart('team-plate', new Mesh(new BoxGeometry(0.72, 0.09, 0.08), accentMat));
+    teamPlate.position.set(0.45, 1.16, 0.98);
+    const flagPole = addPart('flag-pole', new Mesh(new BoxGeometry(0.06, 1.25, 0.06), darkMat));
+    flagPole.position.set(1.72, 0.92, 1.22);
+    const flag = addPart('small-flag', new Mesh(new BoxGeometry(0.48, 0.25, 0.06), accentMat));
+    flag.position.set(1.98, 1.42, 1.22);
+
+    const sandbags = [
+      [-1.45, 1.42],
+      [-0.85, 1.46],
+      [-0.25, 1.46],
+      [0.35, 1.44],
+      [1.18, 1.27],
+      [-1.55, -1.36],
+      [-0.9, -1.4],
+      [0.95, -1.38],
+      [1.48, -1.18],
+    ];
+    for (let i = 0; i < sandbags.length; i++) {
+      const [x, z] = sandbags[i];
+      const bag = addPart(`sandbag-${i}`, new Mesh(new BoxGeometry(0.52, 0.25, 0.24), sandMat));
+      bag.position.set(x, 0.34, z);
+      bag.rotation.y = i % 2 === 0 ? 0.08 : -0.12;
+    }
+
+    const crate = addPart('supply-crate', new Mesh(new BoxGeometry(0.46, 0.36, 0.46), sandMat));
+    crate.position.set(1.42, 0.36, 0.82);
+    const antenna = addPart('radio-antenna', new Mesh(new BoxGeometry(0.045, 1.1, 0.045), darkMat));
+    antenna.position.set(-1.18, 1.7, -0.72);
+
+    return root;
+  }
+
+  private createWarFactory(ownerColor: number): Object3D {
+    const root = new Group();
+    root.name = 'lowpoly-war-factory';
+    const concreteMat = new MeshLambertMaterial({ color: 0x686d64 });
+    const wallMat = new MeshLambertMaterial({ color: 0x59645f });
+    const darkWallMat = new MeshLambertMaterial({ color: 0x3d4846 });
+    const roofMat = new MeshLambertMaterial({ color: 0x303a3c });
+    const metalMat = new MeshLambertMaterial({ color: 0x2f3336 });
+    const rampMat = new MeshLambertMaterial({ color: 0x575b57 });
+    const hazardMat = new MeshLambertMaterial({ color: 0xd6b82f });
+    const accentMat = new MeshLambertMaterial({ color: ownerColor });
+    const addPart = (name: string, mesh: Mesh): Mesh => {
+      mesh.name = `warfactory-${name}`;
+      root.add(mesh);
+      return mesh;
+    };
+
+    const pad = addPart('foundation', new Mesh(new BoxGeometry(5.85, 0.22, 5.7), concreteMat));
+    pad.position.y = 0.11;
+
+    const hall = addPart('assembly-hall', new Mesh(new BoxGeometry(3.65, 1.45, 3.15), wallMat));
+    hall.position.set(-0.25, 0.94, -0.22);
+
+    const roofLeft = addPart('roof-left', new Mesh(new BoxGeometry(3.85, 0.18, 1.78), roofMat));
+    roofLeft.position.set(-0.25, 1.72, 0.66);
+    roofLeft.rotation.x = 0.26;
+    const roofRight = addPart('roof-right', new Mesh(new BoxGeometry(3.85, 0.18, 1.78), roofMat));
+    roofRight.position.set(-0.25, 1.72, -1.1);
+    roofRight.rotation.x = -0.26;
+
+    const doorFrame = addPart('vehicle-door-frame', new Mesh(new BoxGeometry(2.35, 1.15, 0.18), darkWallMat));
+    doorFrame.position.set(-0.3, 0.76, 1.48);
+    const door = addPart('vehicle-door', new Mesh(new BoxGeometry(1.9, 0.86, 0.09), metalMat));
+    door.position.set(-0.3, 0.62, 1.61);
+    for (let i = 0; i < 4; i++) {
+      const slat = addPart(`door-slat-${i}`, new Mesh(new BoxGeometry(1.88, 0.05, 0.04), roofMat));
+      slat.position.set(-0.3, 0.32 + i * 0.18, 1.67);
+    }
+
+    const ramp = addPart('vehicle-ramp', new Mesh(new BoxGeometry(2.45, 0.16, 1.1), rampMat));
+    ramp.position.set(-0.3, 0.23, 2.18);
+    ramp.rotation.x = -0.12;
+    for (let i = 0; i < 4; i++) {
+      const stripe = addPart(`hazard-stripe-${i}`, new Mesh(new BoxGeometry(0.22, 0.18, 0.08), hazardMat));
+      stripe.position.set(-1.1 + i * 0.72, 0.36, 1.72);
+      stripe.rotation.z = -0.45;
+    }
+
+    const annex = addPart('side-annex', new Mesh(new BoxGeometry(1.35, 1, 2.25), darkWallMat));
+    annex.position.set(2.0, 0.68, -0.18);
+    const annexRoof = addPart('side-annex-roof', new Mesh(new BoxGeometry(1.48, 0.18, 2.42), roofMat));
+    annexRoof.position.set(2.0, 1.25, -0.18);
+
+    for (let i = 0; i < 3; i++) {
+      const vent = addPart(`roof-vent-${i}`, new Mesh(new BoxGeometry(0.5, 0.22, 0.34), metalMat));
+      vent.position.set(-1.25 + i * 0.85, 1.93, -0.2);
+    }
+
+    const smokeA = addPart('smokestack-a', new Mesh(new BoxGeometry(0.3, 1.45, 0.3), metalMat));
+    smokeA.position.set(1.52, 1.85, -1.42);
+    const smokeB = addPart('smokestack-b', new Mesh(new BoxGeometry(0.24, 1.1, 0.24), metalMat));
+    smokeB.position.set(1.95, 1.62, -1.18);
+    const capA = addPart('smokestack-cap-a', new Mesh(new BoxGeometry(0.46, 0.12, 0.46), roofMat));
+    capA.position.set(1.52, 2.62, -1.42);
+    const capB = addPart('smokestack-cap-b', new Mesh(new BoxGeometry(0.38, 0.1, 0.38), roofMat));
+    capB.position.set(1.95, 2.19, -1.18);
+
+    const gantryLeft = addPart('gantry-left-post', new Mesh(new BoxGeometry(0.16, 1.25, 0.16), metalMat));
+    gantryLeft.position.set(-1.75, 0.9, 2.02);
+    const gantryRight = addPart('gantry-right-post', new Mesh(new BoxGeometry(0.16, 1.25, 0.16), metalMat));
+    gantryRight.position.set(1.18, 0.9, 2.02);
+    const gantryBeam = addPart('gantry-beam', new Mesh(new BoxGeometry(3.2, 0.18, 0.18), metalMat));
+    gantryBeam.position.set(-0.28, 1.55, 2.02);
+    const hook = addPart('gantry-hook', new Mesh(new BoxGeometry(0.2, 0.28, 0.2), accentMat));
+    hook.position.set(-0.25, 1.22, 2.02);
+
+    const teamBand = addPart('team-band', new Mesh(new BoxGeometry(0.14, 0.86, 2.2), accentMat));
+    teamBand.position.set(1.18, 1.03, 1.0);
+    const serviceCrateA = addPart('service-crate-a', new Mesh(new BoxGeometry(0.58, 0.38, 0.5), rampMat));
+    serviceCrateA.position.set(-2.25, 0.41, -1.9);
+    const serviceCrateB = addPart('service-crate-b', new Mesh(new BoxGeometry(0.45, 0.32, 0.62), metalMat));
+    serviceCrateB.position.set(-2.25, 0.38, -1.25);
+
+    return root;
+  }
+
+  private createConstructionYard(ownerColor: number): Object3D {
+    const root = new Group();
+    root.name = 'lowpoly-construction-yard';
+    const concreteMat = new MeshLambertMaterial({ color: 0x6f7469 });
+    const wallMat = new MeshLambertMaterial({ color: 0x7f887a });
+    const darkWallMat = new MeshLambertMaterial({ color: 0x46514b });
+    const roofMat = new MeshLambertMaterial({ color: 0x4d5a52 });
+    const metalMat = new MeshLambertMaterial({ color: 0x30383b });
+    const glassMat = new MeshLambertMaterial({ color: 0x26384a });
+    const accentMat = new MeshLambertMaterial({ color: ownerColor });
+    const sandMat = new MeshLambertMaterial({ color: 0xa08f66 });
+    const addPart = (name: string, mesh: Mesh): Mesh => {
+      mesh.name = `conyard-${name}`;
+      root.add(mesh);
+      return mesh;
+    };
+
+    const base = addPart('foundation', new Mesh(new BoxGeometry(5.65, 0.22, 5.65), concreteMat));
+    base.position.y = 0.11;
+
+    const yardPad = addPart('inner-pad', new Mesh(new BoxGeometry(4.7, 0.06, 4.45), darkWallMat));
+    yardPad.position.y = 0.26;
+
+    const command = addPart('command-block', new Mesh(new BoxGeometry(1.95, 1.35, 1.65), wallMat));
+    command.position.set(-0.25, 0.94, -0.35);
+
+    const commandRoof = addPart('command-roof', new Mesh(new ConeGeometry(1.45, 0.52, 4), roofMat));
+    commandRoof.position.set(-0.25, 1.88, -0.35);
+    commandRoof.rotation.y = Math.PI / 4;
+    commandRoof.scale.z = 0.82;
+
+    const frontBay = addPart('front-garage', new Mesh(new BoxGeometry(2.05, 0.85, 1.1), darkWallMat));
+    frontBay.position.set(0.95, 0.71, 1.05);
+    const frontDoor = addPart('front-garage-door', new Mesh(new BoxGeometry(1.55, 0.58, 0.08), metalMat));
+    frontDoor.position.set(0.95, 0.58, 1.63);
+
+    const sideBay = addPart('side-garage', new Mesh(new BoxGeometry(1.2, 0.78, 1.8), darkWallMat));
+    sideBay.position.set(-1.65, 0.68, 0.9);
+    const sideDoor = addPart('side-garage-door', new Mesh(new BoxGeometry(0.08, 0.5, 1.35), metalMat));
+    sideDoor.position.set(-2.27, 0.54, 0.9);
+
+    const tower = addPart('comms-tower', new Mesh(new BoxGeometry(0.62, 2.1, 0.62), wallMat));
+    tower.position.set(1.25, 1.32, -1.35);
+    const towerGlass = addPart('tower-glass', new Mesh(new BoxGeometry(0.66, 0.44, 0.68), glassMat));
+    towerGlass.position.set(1.25, 2.52, -1.35);
+    const towerRoof = addPart('tower-roof', new Mesh(new ConeGeometry(0.58, 0.36, 4), roofMat));
+    towerRoof.position.set(1.25, 2.92, -1.35);
+    towerRoof.rotation.y = Math.PI / 4;
+
+    const antenna = addPart('antenna-mast', new Mesh(new BoxGeometry(0.09, 1.7, 0.09), metalMat));
+    antenna.position.set(1.25, 3.72, -1.35);
+    const dish = addPart('radar-dish', new Mesh(new ConeGeometry(0.36, 0.16, 12), metalMat));
+    dish.position.set(1.25, 3.42, -1.02);
+    dish.rotation.x = Math.PI / 2;
+
+    const craneBase = addPart('crane-base', new Mesh(new BoxGeometry(0.42, 0.46, 0.42), metalMat));
+    craneBase.position.set(-1.65, 0.5, -1.65);
+    const craneMast = addPart('crane-mast', new Mesh(new BoxGeometry(0.14, 1.8, 0.14), metalMat));
+    craneMast.position.set(-1.65, 1.55, -1.65);
+    const craneBoom = addPart('crane-boom', new Mesh(new BoxGeometry(1.95, 0.12, 0.12), metalMat));
+    craneBoom.position.set(-0.82, 2.38, -1.65);
+    craneBoom.rotation.z = -0.12;
+    const craneCable = addPart('crane-cable', new Mesh(new BoxGeometry(0.05, 0.78, 0.05), metalMat));
+    craneCable.position.set(0.05, 1.98, -1.65);
+    const craneHook = addPart('crane-hook', new Mesh(new BoxGeometry(0.18, 0.14, 0.18), accentMat));
+    craneHook.position.set(0.05, 1.54, -1.65);
+
+    const stripeA = addPart('team-stripe-a', new Mesh(new BoxGeometry(1.55, 0.1, 0.12), accentMat));
+    stripeA.position.set(0.95, 1.18, 1.62);
+    const stripeB = addPart('team-stripe-b', new Mesh(new BoxGeometry(0.12, 0.68, 0.9), accentMat));
+    stripeB.position.set(1.58, 1.18, -0.35);
+
+    const corners = [
+      [-2.15, -2.15],
+      [-1.25, -2.15],
+      [1.15, -2.15],
+      [2.05, -2.15],
+      [-2.15, 2.15],
+      [-1.25, 2.15],
+      [1.15, 2.15],
+      [2.05, 2.15],
+    ];
+    for (let i = 0; i < corners.length; i++) {
+      const [x, z] = corners[i];
+      const block = addPart(`perimeter-block-${i}`, new Mesh(new BoxGeometry(0.62, 0.42, 0.32), sandMat));
+      block.position.set(x, 0.48, z);
+      block.rotation.y = z < 0 ? 0 : Math.PI;
+    }
+
+    const crateA = addPart('supply-crate-a', new Mesh(new BoxGeometry(0.42, 0.34, 0.42), sandMat));
+    crateA.position.set(-1.35, 0.44, 1.95);
+    const crateB = addPart('supply-crate-b', new Mesh(new BoxGeometry(0.36, 0.3, 0.56), metalMat));
+    crateB.position.set(-1.88, 0.42, 1.72);
+
+    return root;
+  }
+
+  private createInfantry(ownerColor: number): Object3D {
+    const root = new Group();
+    root.name = 'lowpoly-infantry';
+    const uniformMat = new MeshLambertMaterial({ color: 0x59634d });
+    const darkUniformMat = new MeshLambertMaterial({ color: 0x394235 });
+    const skinMat = new MeshLambertMaterial({ color: 0xb08a65 });
+    const helmetMat = new MeshLambertMaterial({ color: 0x465143 });
+    const rifleMat = new MeshLambertMaterial({ color: 0x2e302c });
+    const woodMat = new MeshLambertMaterial({ color: 0x6c4e30 });
+    const accentMat = new MeshLambertMaterial({ color: ownerColor });
+    const addPart = (name: string, mesh: Mesh): Mesh => {
+      mesh.name = `infantry-${name}`;
+      root.add(mesh);
+      return mesh;
+    };
+
+    const body = addPart('body', new Mesh(this.soldierGeo, uniformMat));
+    body.position.y = 0.68;
+    body.scale.set(0.88, 0.92, 0.78);
+
+    const head = addPart('head', new Mesh(new SphereGeometry(0.18, 8, 8), skinMat));
+    head.position.set(0, 1.24, -0.03);
+    const helmet = addPart('helmet', new Mesh(new ConeGeometry(0.23, 0.16, 8), helmetMat));
+    helmet.position.set(0, 1.39, -0.03);
+    helmet.rotation.y = Math.PI / 8;
+
+    const backpack = addPart('backpack', new Mesh(new BoxGeometry(0.28, 0.38, 0.16), darkUniformMat));
+    backpack.position.set(0, 0.78, 0.24);
+
+    const leftArm = addPart('left-arm', new Mesh(new BoxGeometry(0.12, 0.5, 0.12), darkUniformMat));
+    leftArm.position.set(-0.28, 0.82, -0.08);
+    leftArm.rotation.x = -0.75;
+    leftArm.rotation.z = -0.16;
+    const rightArm = addPart('right-arm', new Mesh(new BoxGeometry(0.12, 0.5, 0.12), darkUniformMat));
+    rightArm.position.set(0.28, 0.82, -0.1);
+    rightArm.rotation.x = -0.65;
+    rightArm.rotation.z = 0.18;
+
+    const leftLeg = addPart('left-leg', new Mesh(new BoxGeometry(0.13, 0.48, 0.13), darkUniformMat));
+    leftLeg.position.set(-0.11, 0.25, 0.02);
+    leftLeg.rotation.x = -0.12;
+    const rightLeg = addPart('right-leg', new Mesh(new BoxGeometry(0.13, 0.48, 0.13), darkUniformMat));
+    rightLeg.position.set(0.11, 0.25, -0.02);
+    rightLeg.rotation.x = 0.12;
+
+    const rifleStock = addPart('rifle-stock', new Mesh(new BoxGeometry(0.12, 0.1, 0.3), woodMat));
+    rifleStock.position.set(0.2, 0.86, -0.31);
+    rifleStock.rotation.x = -0.15;
+    const rifleBarrel = addPart('rifle-barrel', new Mesh(new BoxGeometry(0.06, 0.06, 0.72), rifleMat));
+    rifleBarrel.position.set(0.14, 0.9, -0.72);
+    rifleBarrel.rotation.x = -0.06;
+
+    const teamPatch = addPart('team-patch', new Mesh(new BoxGeometry(0.08, 0.16, 0.035), accentMat));
+    teamPatch.position.set(0.24, 0.96, -0.21);
+
+    return root;
+  }
+
+  private createHarvester(ownerColor: number): Object3D {
+    const root = new Group();
+    root.name = 'lowpoly-harvester';
+    const hullMat = new MeshLambertMaterial({ color: 0x59645a });
+    const armorMat = new MeshLambertMaterial({ color: 0x46534b });
+    const darkMat = new MeshLambertMaterial({ color: 0x2c3231 });
+    const trackMat = new MeshLambertMaterial({ color: 0x252a29 });
+    const bucketMat = new MeshLambertMaterial({ color: 0x3d4542 });
+    const glassMat = new MeshLambertMaterial({ color: 0x26384a });
+    const oreMat = new MeshLambertMaterial({ color: 0xd8a51d });
+    const accentMat = new MeshLambertMaterial({ color: ownerColor });
+    const addPart = (name: string, mesh: Mesh): Mesh => {
+      mesh.name = `harvester-${name}`;
+      root.add(mesh);
+      return mesh;
+    };
+
+    const leftTrack = addPart('left-track', new Mesh(new BoxGeometry(0.32, 0.34, 1.95), trackMat));
+    leftTrack.position.set(-0.62, 0.27, 0.04);
+    const rightTrack = addPart('right-track', new Mesh(new BoxGeometry(0.32, 0.34, 1.95), trackMat));
+    rightTrack.position.set(0.62, 0.27, 0.04);
+
+    for (let i = 0; i < 5; i++) {
+      const z = -0.72 + i * 0.36;
+      const wheelL = addPart(`left-wheel-${i}`, new Mesh(new BoxGeometry(0.35, 0.16, 0.14), darkMat));
+      wheelL.position.set(-0.64, 0.3, z);
+      const wheelR = addPart(`right-wheel-${i}`, new Mesh(new BoxGeometry(0.35, 0.16, 0.14), darkMat));
+      wheelR.position.set(0.64, 0.3, z);
+    }
+
+    const chassis = addPart('chassis', new Mesh(new BoxGeometry(1.2, 0.44, 1.95), hullMat));
+    chassis.position.set(0, 0.52, 0.02);
+
+    const cab = addPart('cab', new Mesh(new BoxGeometry(0.78, 0.7, 0.72), armorMat));
+    cab.position.set(0, 0.98, -0.48);
+    const windshield = addPart('windshield', new Mesh(new BoxGeometry(0.62, 0.28, 0.06), glassMat));
+    windshield.position.set(0, 1.06, -0.86);
+
+    const hopper = addPart('ore-bin', new Mesh(new BoxGeometry(1.02, 0.7, 0.95), bucketMat));
+    hopper.position.set(0, 0.93, 0.55);
+    hopper.rotation.x = -0.08;
+    const binLip = addPart('ore-bin-lip', new Mesh(new BoxGeometry(1.14, 0.12, 1.05), darkMat));
+    binLip.position.set(0, 1.34, 0.55);
+
+    for (let i = 0; i < 6; i++) {
+      const nugget = addPart(`ore-load-${i}`, new Mesh(this.oreGeo, oreMat));
+      nugget.position.set(-0.32 + (i % 3) * 0.32, 1.47 + i * 0.015, 0.35 + Math.floor(i / 3) * 0.32);
+      nugget.scale.setScalar(0.9 + i * 0.05);
+    }
+
+    const frontArmL = addPart('front-arm-left', new Mesh(new BoxGeometry(0.12, 0.12, 0.82), darkMat));
+    frontArmL.position.set(-0.42, 0.48, -1.1);
+    frontArmL.rotation.x = -0.2;
+    const frontArmR = addPart('front-arm-right', new Mesh(new BoxGeometry(0.12, 0.12, 0.82), darkMat));
+    frontArmR.position.set(0.42, 0.48, -1.1);
+    frontArmR.rotation.x = -0.2;
+    const scoop = addPart('front-scoop', new Mesh(new BoxGeometry(1.35, 0.28, 0.42), bucketMat));
+    scoop.position.set(0, 0.32, -1.45);
+    scoop.rotation.x = -0.18;
+
+    const rearGate = addPart('rear-dump-gate', new Mesh(new BoxGeometry(0.9, 0.58, 0.12), darkMat));
+    rearGate.position.set(0, 0.82, 1.58);
+    const sidePanelL = addPart('left-team-panel', new Mesh(new BoxGeometry(0.06, 0.26, 0.58), accentMat));
+    sidePanelL.position.set(-0.79, 0.74, 0.14);
+    const sidePanelR = addPart('right-team-panel', new Mesh(new BoxGeometry(0.06, 0.26, 0.58), accentMat));
+    sidePanelR.position.set(0.79, 0.74, 0.14);
+    const beacon = addPart('roof-beacon', new Mesh(new BoxGeometry(0.16, 0.16, 0.16), accentMat));
+    beacon.position.set(0, 1.42, -0.48);
+
+    return root;
+  }
+
+  private createTank(ownerColor: number): Object3D {
+    const root = new Group();
+    root.name = 'lowpoly-tank';
+    const hullMat = new MeshLambertMaterial({ color: 0x566356 });
+    const armorMat = new MeshLambertMaterial({ color: 0x465248 });
+    const darkMat = new MeshLambertMaterial({ color: 0x2d3435 });
+    const trackMat = new MeshLambertMaterial({ color: 0x272b2b });
+    const metalMat = new MeshLambertMaterial({ color: 0x353c3d });
+    const accentMat = new MeshLambertMaterial({ color: ownerColor });
+    const addPart = (name: string, mesh: Mesh): Mesh => {
+      mesh.name = `tank-${name}`;
+      root.add(mesh);
+      return mesh;
+    };
+
+    const leftTrack = addPart('left-track', new Mesh(new BoxGeometry(0.3, 0.34, 1.8), trackMat));
+    leftTrack.position.set(-0.54, 0.26, 0);
+    const rightTrack = addPart('right-track', new Mesh(new BoxGeometry(0.3, 0.34, 1.8), trackMat));
+    rightTrack.position.set(0.54, 0.26, 0);
+
+    for (let i = 0; i < 4; i++) {
+      const z = -0.62 + i * 0.42;
+      const wheelL = addPart(`left-roadwheel-${i}`, new Mesh(new BoxGeometry(0.34, 0.17, 0.16), metalMat));
+      wheelL.position.set(-0.55, 0.28, z);
+      const wheelR = addPart(`right-roadwheel-${i}`, new Mesh(new BoxGeometry(0.34, 0.17, 0.16), metalMat));
+      wheelR.position.set(0.55, 0.28, z);
+    }
+
+    const hull = addPart('hull', new Mesh(this.vehicleGeo, hullMat));
+    hull.position.y = 0.48;
+    hull.scale.set(1.25, 1.08, 1.18);
+
+    const frontArmor = addPart('front-armor', new Mesh(new BoxGeometry(0.92, 0.28, 0.18), armorMat));
+    frontArmor.position.set(0, 0.6, -0.78);
+    frontArmor.rotation.x = -0.18;
+    const rearDeck = addPart('rear-engine-deck', new Mesh(new BoxGeometry(0.72, 0.12, 0.38), darkMat));
+    rearDeck.position.set(0, 0.72, 0.54);
+
+    const turret = addPart('turret', new Mesh(new BoxGeometry(0.74, 0.32, 0.62), armorMat));
+    turret.position.set(0, 0.86, -0.12);
+    turret.rotation.y = 0;
+    const turretSlope = addPart('turret-front-slope', new Mesh(new BoxGeometry(0.58, 0.22, 0.16), armorMat));
+    turretSlope.position.set(0, 0.86, -0.5);
+    turretSlope.rotation.x = -0.12;
+
+    const barrel = addPart('barrel', new Mesh(this.barrelGeo, metalMat));
+    barrel.position.set(0, 0.88, -0.86);
+    const muzzle = addPart('muzzle-brake', new Mesh(new BoxGeometry(0.22, 0.16, 0.12), darkMat));
+    muzzle.position.set(0, 0.88, -1.3);
+
+    const hatch = addPart('commander-hatch', new Mesh(new BoxGeometry(0.28, 0.12, 0.28), darkMat));
+    hatch.position.set(-0.2, 1.08, 0.05);
+    const antenna = addPart('radio-antenna', new Mesh(new BoxGeometry(0.035, 0.82, 0.035), darkMat));
+    antenna.position.set(0.34, 1.34, 0.18);
+
+    const teamPlate = addPart('team-plate', new Mesh(new BoxGeometry(0.42, 0.08, 0.12), accentMat));
+    teamPlate.position.set(0, 0.72, -0.69);
+    const sideMarkL = addPart('left-team-mark', new Mesh(new BoxGeometry(0.05, 0.18, 0.34), accentMat));
+    sideMarkL.position.set(-0.72, 0.52, -0.18);
+    const sideMarkR = addPart('right-team-mark', new Mesh(new BoxGeometry(0.05, 0.18, 0.34), accentMat));
+    sideMarkR.position.set(0.72, 0.52, -0.18);
+
+    return root;
+  }
+
   private createAircraft(ownerColor: number): Object3D {
     const root = new Group();
-    const bodyMat = new MeshLambertMaterial({ color: ownerColor });
-    const darkMat = new MeshLambertMaterial({ color: 0x343a3f });
-    const body = new Mesh(this.aircraftBodyGeo, bodyMat);
-    body.position.y = 0.28;
-    const wing = new Mesh(this.aircraftWingGeo, bodyMat);
-    wing.position.y = 0.27;
-    const tail = new Mesh(this.aircraftTailGeo, bodyMat);
-    tail.position.set(-0.58, 0.42, 0);
-    const nose = new Mesh(this.aircraftNoseGeo, darkMat);
+    root.name = 'lowpoly-strike-fighter';
+    root.scale.setScalar(LOWPOLY_FIGHTER_MODEL_SCALE);
+    const hullMat = new MeshLambertMaterial({ color: 0x7f897b });
+    const panelMat = new MeshLambertMaterial({ color: 0x5f6a62 });
+    const darkMat = new MeshLambertMaterial({ color: 0x30383b });
+    const canopyMat = new MeshLambertMaterial({ color: 0x26394b });
+    const hardpointMat = new MeshLambertMaterial({ color: 0xd0d0bc });
+    const accentMat = new MeshLambertMaterial({ color: ownerColor });
+    const addPart = (id: string, mesh: Mesh): Mesh => {
+      mesh.name = id;
+      root.add(mesh);
+      return mesh;
+    };
+
+    const fuselage = addPart('fuselage', new Mesh(this.fighterFuselageGeo, hullMat));
+    fuselage.position.y = 0.36;
+
+    const spine = addPart('spine', new Mesh(this.fighterSpineGeo, panelMat));
+    spine.position.set(-0.18, 0.56, 0);
+
+    const nose = addPart('nose', new Mesh(this.fighterNoseGeo, darkMat));
     nose.rotation.z = -Math.PI / 2;
-    nose.position.set(0.93, 0.28, 0);
-    root.add(body, wing, tail, nose);
+    nose.position.set(1.14, 0.36, 0);
+
+    const cockpit = addPart('cockpit', new Mesh(this.fighterCockpitGeo, canopyMat));
+    cockpit.position.set(0.34, 0.58, 0);
+    cockpit.rotation.z = -0.08;
+
+    const canopy = addPart('canopy', new Mesh(this.fighterCockpitGeo, canopyMat));
+    canopy.position.set(0.16, 0.7, 0);
+    canopy.scale.set(0.55, 0.58, 0.72);
+
+    const mainWingLeft = addPart('main-wing-left', new Mesh(this.fighterWingGeo, hullMat));
+    mainWingLeft.position.set(-0.08, 0.33, 0.62);
+    mainWingLeft.rotation.y = -0.35;
+
+    const mainWingRight = addPart('main-wing-right', new Mesh(this.fighterWingGeo, hullMat));
+    mainWingRight.position.set(-0.08, 0.33, -0.62);
+    mainWingRight.rotation.y = 0.35;
+
+    const tailWingLeft = addPart('tail-wing-left', new Mesh(this.fighterTailWingGeo, panelMat));
+    tailWingLeft.position.set(-0.72, 0.46, 0.38);
+    tailWingLeft.rotation.y = -0.25;
+
+    const tailWingRight = addPart('tail-wing-right', new Mesh(this.fighterTailWingGeo, panelMat));
+    tailWingRight.position.set(-0.72, 0.46, -0.38);
+    tailWingRight.rotation.y = 0.25;
+
+    const verticalTail = addPart('vertical-tail', new Mesh(this.fighterVerticalTailGeo, panelMat));
+    verticalTail.position.set(-0.78, 0.76, 0);
+    verticalTail.rotation.z = 0.1;
+
+    const intakeLeft = addPart('intake-left', new Mesh(this.fighterIntakeGeo, darkMat));
+    intakeLeft.position.set(0.28, 0.27, 0.33);
+
+    const intakeRight = addPart('intake-right', new Mesh(this.fighterIntakeGeo, darkMat));
+    intakeRight.position.set(0.28, 0.27, -0.33);
+
+    const nozzle = addPart('engine-nozzle', new Mesh(this.fighterNozzleGeo, darkMat));
+    nozzle.rotation.z = Math.PI / 2;
+    nozzle.position.set(-1.02, 0.36, 0);
+
+    const addHardpoint = (id: string, x: number, z: number): void => {
+      const body = addPart(id, new Mesh(this.fighterHardpointGeo, hardpointMat));
+      body.position.set(x, 0.21, z);
+      const tip = addPart(`${id}-nose`, new Mesh(this.fighterHardpointNoseGeo, darkMat));
+      tip.rotation.z = -Math.PI / 2;
+      tip.position.set(x + 0.23, 0.21, z);
+    };
+    addHardpoint('hardpoint-left-inner', 0.04, 0.58);
+    addHardpoint('hardpoint-left-outer', -0.34, 0.82);
+    addHardpoint('hardpoint-right-inner', 0.04, -0.58);
+    addHardpoint('hardpoint-right-outer', -0.34, -0.82);
+
+    const wingtipLeft = addPart('wingtip-left', new Mesh(this.fighterWingtipGeo, accentMat));
+    wingtipLeft.position.set(-0.06, 0.36, 1.13);
+    const wingtipRight = addPart('wingtip-right', new Mesh(this.fighterWingtipGeo, accentMat));
+    wingtipRight.position.set(-0.06, 0.36, -1.13);
+
+    const stripe = addPart('team-stripe', new Mesh(this.fighterStripeGeo, accentMat));
+    stripe.position.set(-0.44, 0.53, 0);
     return root;
   }
 
