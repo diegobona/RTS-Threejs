@@ -18,6 +18,18 @@ function countType(w: World, typeId: string): number {
   return [...w.entities.values()].filter((e) => e.typeId === typeId).length;
 }
 
+function unitsOfType(w: World, typeId: string) {
+  return [...w.entities.values()].filter((e) => e.typeId === typeId);
+}
+
+function cellKey(e: { cellX: number; cellY: number }): string {
+  return `${e.cellX},${e.cellY}`;
+}
+
+function goalKey(e: { goal: { x: number; y: number } | null }): string {
+  return e.goal ? `${e.goal.x},${e.goal.y}` : 'none';
+}
+
 describe('automatic production buildings', () => {
   it('produces infantry from every barracks in parallel', () => {
     const w = baseWorld(10000);
@@ -66,6 +78,36 @@ describe('automatic production buildings', () => {
 
     expect(countType(w, 'gi')).toBe(0);
     expect(countType(w, 'rocketsoldier')).toBe(1);
+  });
+
+  it('fans infantry and tanks out around their rally point instead of stacking goals', () => {
+    const w = baseWorld(50000);
+    const barracks = w.spawnUnit(1, 'barracks', 10, 10)!;
+    const factory = w.spawnUnit(1, 'warfactory', 16, 10)!;
+    barracks.rallyX = 35;
+    barracks.rallyY = 35;
+    factory.rallyX = 35;
+    factory.rallyY = 31;
+
+    runTicks(w, 95);
+
+    const infantry = unitsOfType(w, 'gi');
+    const tanks = unitsOfType(w, 'grizzly');
+    expect(infantry.length).toBeGreaterThanOrEqual(3);
+    expect(tanks.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(infantry.map(goalKey)).size).toBe(infantry.length);
+    expect(new Set(tanks.map(goalKey)).size).toBe(tanks.length);
+  });
+
+  it('spawns aircraft into separate air slots around the airbase', () => {
+    const w = baseWorld(50000);
+    w.spawnUnit(1, 'airbase', 10, 10)!;
+
+    runTicks(w, 165);
+
+    const fighters = unitsOfType(w, 'fighter');
+    expect(fighters.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(fighters.map(cellKey)).size).toBe(fighters.length);
   });
 });
 

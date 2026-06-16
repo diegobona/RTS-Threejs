@@ -575,9 +575,11 @@ export class World {
       }
     }
     if (!exit) return;
-    const unit = this.makeEntity(owner, type, cellToLepton(exit.x), cellToLepton(exit.y));
+    const spawn = this.findFreeUnitSlotNear(exit.x, exit.y, type.domain, 6, -1, true) ?? exit;
+    const unit = this.makeEntity(owner, type, cellToLepton(spawn.x), cellToLepton(spawn.y));
     // 有集结点则前往
-    if (rally) this.orderMove(unit, rally.x, rally.y);
+    const dest = rally ? this.findFreeUnitSlotNear(rally.x, rally.y, type.domain, 12, unit.id) ?? rally : null;
+    if (dest) this.orderMove(unit, dest.x, dest.y);
   }
 
   /** 修理：开启修理的建筑每隔若干 tick 扣钱回血。 */
@@ -677,20 +679,75 @@ export class World {
   }
 
   private spawnFromProducer(building: Entity, type: UnitType): boolean {
-    let unit: Entity;
-    if (type.domain === 'aircraft') {
-      unit = this.makeEntity(building.owner, type, building.x, building.y);
-    } else {
-      const exit = building.producerExit;
-      if (!exit) return false;
-      unit = this.makeEntity(building.owner, type, cellToLepton(exit.x), cellToLepton(exit.y));
-    }
-    const rally = building.rallyX >= 0 && building.rallyY >= 0 ? { x: building.rallyX, y: building.rallyY } : null;
     const exit = building.producerExit;
-    const disperse = exit ? this.passableNear(exit.x, exit.y + 1, 6) : null;
-    const dest = rally ?? disperse;
+    let spawn: { x: number; y: number } | null;
+    if (type.domain === 'aircraft') {
+      const anchor = this.airProducerAnchor(building);
+      spawn = this.findFreeUnitSlotNear(anchor.x, anchor.y, type.domain, 8) ?? anchor;
+    } else {
+      if (!exit) return false;
+      spawn = this.findFreeUnitSlotNear(exit.x, exit.y, type.domain, 6, -1, true) ?? exit;
+    }
+    const unit = this.makeEntity(building.owner, type, cellToLepton(spawn.x), cellToLepton(spawn.y));
+    const rally = building.rallyX >= 0 && building.rallyY >= 0 ? { x: building.rallyX, y: building.rallyY } : null;
+    const disperse = exit ? this.findFreeUnitSlotNear(exit.x, exit.y + 1, type.domain, 8, unit.id) : null;
+    const dest = rally ? this.findFreeUnitSlotNear(rally.x, rally.y, type.domain, 12, unit.id) ?? rally : disperse;
     if (dest && (dest.x !== unit.cellX || dest.y !== unit.cellY)) this.orderMove(unit, dest.x, dest.y);
     return true;
+  }
+
+  private airProducerAnchor(building: Entity): { x: number; y: number } {
+    const b = this.rules.units.get(building.typeId)?.building;
+    const x = b ? building.cellX + Math.floor(b.footprintW / 2) : building.cellX;
+    const y = b ? building.cellY + b.footprintH + 1 : building.cellY + 1;
+    return {
+      x: Math.max(0, Math.min(this.terrain.width - 1, x)),
+      y: Math.max(0, Math.min(this.terrain.height - 1, y)),
+    };
+  }
+
+  private findFreeUnitSlotNear(
+    cx: number,
+    cy: number,
+    domain: UnitType['domain'],
+    maxR: number,
+    ignoreId = -1,
+    allowReservedExit = false,
+  ): { x: number; y: number } | null {
+    const taken = this.unitSlotKeys(domain, ignoreId);
+    const tryCell = (x: number, y: number): { x: number; y: number } | null => {
+      if (x < 0 || y < 0 || x >= this.terrain.width || y >= this.terrain.height) return null;
+      if (domain !== 'aircraft' && this.isCellBlocked(x, y)) return null;
+      if (!allowReservedExit && domain !== 'aircraft' && this.reservedProducerExits.has(y * this.terrain.width + x)) return null;
+      if (taken.has(y * this.terrain.width + x)) return null;
+      return { x, y };
+    };
+    const center = tryCell(cx, cy);
+    if (center) return center;
+    for (let r = 1; r <= maxR; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          const cell = tryCell(cx + dx, cy + dy);
+          if (cell) return cell;
+        }
+      }
+    }
+    return null;
+  }
+
+  private unitSlotKeys(domain: UnitType['domain'], ignoreId: number): Set<number> {
+    const taken = new Set<number>();
+    const wantsAir = domain === 'aircraft';
+    for (const e of this.entities.values()) {
+      if (e.id === ignoreId) continue;
+      const type = this.rules.units.get(e.typeId);
+      if (!type || type.domain === 'building') continue;
+      if ((type.domain === 'aircraft') !== wantsAir) continue;
+      taken.add(e.cellY * this.terrain.width + e.cellX);
+      if (e.goal) taken.add(e.goal.y * this.terrain.width + e.goal.x);
+    }
+    return taken;
   }
 
   private stepRepair(): void {

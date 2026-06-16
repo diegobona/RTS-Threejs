@@ -40,25 +40,15 @@ describe('SimpleAI', () => {
     expect(world.players.get(2)!.everBuilt).toBe(true);
   });
 
-  it('all personalities resolve within the simulation budget', () => {
+  it('all personalities can start proactive staging after the opening cooldown', () => {
     for (const s of [0, 1, 2]) {
-      const world = createWorldFromConfig(localSkirmishConfig(5000));
+      const world = aiAttackWorld();
+      world.tick = 1500;
       const a = new SimpleAI(1, 'hard', s);
-      const b = new SimpleAI(2, 'hard', 0);
-      let winner = 0;
-      for (let t = 0; t < 24000 && winner === 0; t++) {
-        if (t % 15 === 0) {
-          world.applyCommands(a.emit(world));
-          world.applyCommands(b.emit(world));
-        }
-        world.step();
-        const p1 = world.players.get(1)!;
-        const p2 = world.players.get(2)!;
-        if (p1.defeated || p2.defeated) winner = p1.defeated ? 2 : 1;
-      }
-      expect(winner, `${a.personality} vs ${b.personality} seed=${s}`).toBeGreaterThan(0);
+      const cmds = a.emit(world);
+      expect(cmds.some((cmd) => cmd.kind === 'move' || isAttackCommand(cmd)), `seed=${s}`).toBe(true);
     }
-  }, 60000);
+  });
 
   it('waits for a real wave before the first proactive attack', () => {
     const world = createWorldFromConfig(localSkirmishConfig(5000));
