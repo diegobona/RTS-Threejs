@@ -53,6 +53,101 @@ const REAL_GAIN: Partial<Record<Sfx, number>> = {
   select: 0.5,
 };
 
+type SyntheticWeaponSfx = 'fire' | 'cannon';
+
+interface SyntheticWeaponSfxProfile {
+  usesTonalBlip: boolean;
+  noiseLayers: number;
+  crackMs: number;
+  crackHz: number;
+  crackQ: number;
+  crackGain: number;
+  lowPunchHz: number;
+  lowPunchEndHz: number;
+  lowPunchMs: number;
+  lowPunchGain: number;
+  tailMs: number;
+  tailDelayMs: number;
+  tailCutoffHz: number;
+  tailQ: number;
+  tailGain: number;
+  shockMs?: number;
+  shockDelayMs?: number;
+  shockCutoffHz?: number;
+  shockGain?: number;
+}
+
+interface SyntheticBombSfxProfile {
+  dropCueGain: number;
+  dropCueHz: number;
+  dropCueMs: number;
+  whistleMs: number;
+  whistleStartHz: number;
+  whistleEndHz: number;
+  whistleGain: number;
+  airRushMs: number;
+  airRushCutoffHz: number;
+  airRushGain: number;
+  bodyMs: number;
+  bodyGain: number;
+}
+
+export const SYNTHETIC_WEAPON_SFX: Record<SyntheticWeaponSfx, SyntheticWeaponSfxProfile> = {
+  fire: {
+    usesTonalBlip: false,
+    noiseLayers: 2,
+    crackMs: 42,
+    crackHz: 2800,
+    crackQ: 0.9,
+    crackGain: 0.26,
+    lowPunchHz: 130,
+    lowPunchEndHz: 62,
+    lowPunchMs: 58,
+    lowPunchGain: 0.1,
+    tailMs: 65,
+    tailDelayMs: 8,
+    tailCutoffHz: 760,
+    tailQ: 0.7,
+    tailGain: 0.08,
+  },
+  cannon: {
+    usesTonalBlip: false,
+    noiseLayers: 3,
+    crackMs: 80,
+    crackHz: 1050,
+    crackQ: 0.55,
+    crackGain: 0.25,
+    lowPunchHz: 92,
+    lowPunchEndHz: 28,
+    lowPunchMs: 260,
+    lowPunchGain: 0.34,
+    tailMs: 310,
+    tailDelayMs: 18,
+    tailCutoffHz: 420,
+    tailQ: 0.65,
+    tailGain: 0.26,
+    shockMs: 150,
+    shockDelayMs: 28,
+    shockCutoffHz: 180,
+    shockGain: 0.16,
+  },
+};
+
+export const SYNTHETIC_BOMB_SFX: SyntheticBombSfxProfile = {
+  dropCueGain: 0.1,
+  dropCueHz: 112,
+  dropCueMs: 58,
+  whistleMs: 0,
+  whistleStartHz: 0,
+  whistleEndHz: 0,
+  whistleGain: 0,
+  airRushMs: 180,
+  airRushCutoffHz: 420,
+  airRushGain: 0.06,
+  bodyMs: 160,
+  bodyGain: 0.15,
+};
+
 export class AudioBus {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -181,22 +276,19 @@ export class AudioBus {
     this.lastPlayed.set(sfx, now);
     this.curOut = this.makeOut(opts.pan ?? 0, opts.gain ?? 1);
     try {
-      if (this.realPcm.has(sfx)) {
+      if (this.realPcm.has(sfx) && sfx !== 'fire' && sfx !== 'cannon') {
         this.playSample(sfx);
         return;
       }
       switch (sfx) {
         case 'fire':
-          this.blip(720, 0.05, 'square', 0.18);
-          this.noise(0.04, 1400, 0.12);
+          this.playWeaponShot('fire');
           break;
         case 'cannon':
-          this.blip(180, 0.12, 'sawtooth', 0.25);
-          this.noise(0.1, 800, 0.2);
+          this.playWeaponShot('cannon');
           break;
         case 'bomb':
-          this.blip(95, 0.18, 'sawtooth', 0.16);
-          this.noise(0.13, 520, 0.15);
+          this.playBombDrop();
           break;
         case 'hit':
           this.noise(0.06, 2500, 0.12);
@@ -407,6 +499,55 @@ export class AudioBus {
     osc.connect(g).connect(this.dest());
     osc.start();
     this.track(osc, dur + 0.02);
+  }
+
+  private playWeaponShot(kind: SyntheticWeaponSfx): void {
+    const profile = SYNTHETIC_WEAPON_SFX[kind];
+    this.filteredNoise(profile.crackMs / 1000, 'bandpass', profile.crackHz, profile.crackQ, profile.crackGain);
+    this.pitchDrop(profile.lowPunchHz, profile.lowPunchEndHz, profile.lowPunchMs / 1000, 'triangle', profile.lowPunchGain);
+    this.filteredNoise(profile.tailMs / 1000, 'lowpass', profile.tailCutoffHz, profile.tailQ, profile.tailGain, profile.tailDelayMs / 1000);
+    if (profile.shockMs && profile.shockCutoffHz && profile.shockGain) {
+      this.filteredNoise(profile.shockMs / 1000, 'lowpass', profile.shockCutoffHz, 0.5, profile.shockGain, (profile.shockDelayMs ?? 0) / 1000);
+    }
+  }
+
+  private playBombDrop(): void {
+    const profile = SYNTHETIC_BOMB_SFX;
+    this.pitchDrop(profile.dropCueHz, 72, profile.dropCueMs / 1000, 'triangle', profile.dropCueGain);
+    this.filteredNoise(profile.airRushMs / 1000, 'lowpass', profile.airRushCutoffHz, 0.55, profile.airRushGain, 0.02);
+    this.pitchDrop(76, 42, profile.bodyMs / 1000, 'sine', profile.bodyGain, 0.04);
+  }
+
+  private pitchDrop(startFreq: number, endFreq: number, dur: number, type: OscillatorType, gain: number, delay = 0): void {
+    const ctx = this.ctx!;
+    const start = this.t() + delay;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(startFreq, start);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), start + dur);
+    g.gain.setValueAtTime(gain, start);
+    g.gain.exponentialRampToValueAtTime(0.001, start + dur);
+    osc.connect(g).connect(this.dest());
+    osc.start(start);
+    this.track(osc, delay + dur + 0.02);
+  }
+
+  private filteredNoise(dur: number, filterType: BiquadFilterType, frequency: number, q: number, gain: number, delay = 0): void {
+    const ctx = this.ctx!;
+    const start = this.t() + delay;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = filterType;
+    filter.frequency.value = frequency;
+    filter.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gain, start);
+    g.gain.exponentialRampToValueAtTime(0.001, start + dur);
+    src.connect(filter).connect(g).connect(this.dest());
+    src.start(start);
+    this.track(src, delay + dur + 0.02);
   }
 
   private noise(dur: number, cutoff: number, gain: number): void {

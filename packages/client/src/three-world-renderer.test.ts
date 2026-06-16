@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
 import {
   combatEffectProfile3D,
+  aircraftIdleOrbitOffset3D,
+  aircraftIdleOrbitYaw3D,
   entityRootAltitude3D,
   entitySelectionRingAltitude3D,
   entityYawForFacing3D,
@@ -97,6 +99,58 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(proceduralModelYawOffset3D({ domain: 'infantry' }, false)).toBeCloseTo(-Math.PI / 2);
     expect(proceduralModelYawOffset3D({ domain: 'aircraft' }, false)).toBe(0);
     expect(proceduralModelYawOffset3D({ domain: 'vehicle' }, true)).toBe(0);
+  });
+
+  it('sends idle aircraft into a large orbit over the home base instead of circling in place', () => {
+    const aircraftPos = new Vector3(10, 0, 10);
+    const baseCenter = new Vector3(40, 0, 42);
+    const idleA = aircraftIdleOrbitOffset3D({ domain: 'aircraft' }, { targetId: null, pathLength: 0 }, aircraftPos, baseCenter, 0, 11);
+    const idleB = aircraftIdleOrbitOffset3D({ domain: 'aircraft' }, { targetId: null, pathLength: 0 }, aircraftPos, baseCenter, 1.25, 11);
+    const moving = aircraftIdleOrbitOffset3D({ domain: 'aircraft' }, { targetId: null, pathLength: 1 }, aircraftPos, baseCenter, 1.25, 11);
+    const attacking = aircraftIdleOrbitOffset3D({ domain: 'aircraft' }, { targetId: 42, pathLength: 0 }, aircraftPos, baseCenter, 1.25, 11);
+    const ground = aircraftIdleOrbitOffset3D({ domain: 'vehicle' }, { targetId: null, pathLength: 0 }, aircraftPos, baseCenter, 1.25, 11);
+    const visualA = aircraftPos.clone().add(idleA);
+    const visualB = aircraftPos.clone().add(idleB);
+
+    expect(visualA.distanceTo(baseCenter)).toBeGreaterThan(5.5);
+    expect(visualA.distanceTo(baseCenter)).toBeLessThan(9.5);
+    expect(visualA.distanceTo(aircraftPos)).toBeGreaterThan(24);
+    expect(visualB.distanceTo(visualA)).toBeGreaterThan(2.5);
+    expect(Math.hypot(moving.x, moving.z)).toBe(0);
+    expect(Math.hypot(attacking.x, attacking.z)).toBe(0);
+    expect(Math.hypot(ground.x, ground.z)).toBe(0);
+  });
+
+  it('scatters idle aircraft into mixed loiter routes instead of one orderly ring', () => {
+    const aircraftPos = new Vector3(10, 0, 10);
+    const baseCenter = new Vector3(40, 0, 42);
+    const positions = Array.from({ length: 18 }, (_, i) => {
+      const id = i + 1;
+      const offset = aircraftIdleOrbitOffset3D({ domain: 'aircraft' }, { targetId: null, pathLength: 0 }, aircraftPos, baseCenter, 4, id);
+      return aircraftPos.clone().add(offset);
+    });
+    const distances = positions.map((p) => p.distanceTo(baseCenter));
+    const ringWidth = Math.max(...distances) - Math.min(...distances);
+    const turnSigns = positions.map((p, i) => {
+      const id = i + 1;
+      const nextOffset = aircraftIdleOrbitOffset3D({ domain: 'aircraft' }, { targetId: null, pathLength: 0 }, aircraftPos, baseCenter, 4.3, id);
+      const next = aircraftPos.clone().add(nextOffset);
+      const radial = p.clone().sub(baseCenter);
+      const step = next.clone().sub(p);
+      return Math.sign(radial.x * step.z - radial.z * step.x);
+    });
+
+    expect(ringWidth).toBeGreaterThan(4);
+    expect(new Set(turnSigns).size).toBeGreaterThanOrEqual(2);
+  });
+
+  it('turns idle aircraft along the tangent of the orbit', () => {
+    const yawA = aircraftIdleOrbitYaw3D(0, 5);
+    const yawB = aircraftIdleOrbitYaw3D(1, 5);
+
+    expect(yawB).not.toBeCloseTo(yawA);
+    expect(Number.isFinite(yawA)).toBe(true);
+    expect(Number.isFinite(yawB)).toBe(true);
   });
 
   it('maps combat events to distinct visible spark and blast effects', () => {

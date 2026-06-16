@@ -4,8 +4,9 @@
  * 浏览器禁自动播放：须用户首次手势后 play()。无该文件则标记不可用（隐藏开关）。
  */
 export const BGM_SOURCE = '/bgm.wav';
-export const BGM_MENU_VOLUME = 0.46;
-export const BGM_MATCH_VOLUME = 0.34;
+export const BGM_EPIC_PROFILE = 'heavy-war-anthem-v2';
+export const BGM_MENU_VOLUME = 0.62;
+export const BGM_MATCH_VOLUME = 0.46;
 
 class Bgm {
   private el: HTMLAudioElement | null = null;

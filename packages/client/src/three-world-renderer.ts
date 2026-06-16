@@ -66,6 +66,16 @@ export interface ProjectileVisualProfile3D {
 
 const PLAYER_COLORS = [0xf8d020, 0x3a7fe0, 0x30c040, 0xe04030, 0xd060d0, 0xe08020, 0x40c0c0, 0xc0c0c0];
 const AIRCRAFT_ALTITUDE = 8;
+const AIRCRAFT_IDLE_ORBIT_RADIUS = 7.2;
+const AIRCRAFT_IDLE_ORBIT_SPEED = 0.48;
+
+interface AircraftActivity3D {
+  targetId?: number | null;
+  pathLength?: number;
+  goal?: unknown | null;
+  waypoint?: unknown | null;
+  attackMove?: boolean;
+}
 
 export const LOWPOLY_FIGHTER_MODEL_SCALE = 1.45;
 
@@ -119,6 +129,83 @@ export function proceduralModelYawOffset3D(type: Pick<UnitType, 'domain'>, hasEx
 
 export function isPickableEntityPart3D(userData: { pickable?: boolean }): boolean {
   return userData.pickable !== false;
+}
+
+export function aircraftIdleOrbitOffset3D(
+  type: Pick<UnitType, 'domain'>,
+  activity: AircraftActivity3D,
+  aircraftPosition: { x: number; z: number },
+  homeBaseCenter: { x: number; z: number } | null | undefined,
+  timeSeconds: number,
+  entityId: number,
+): Vector3 {
+  if (type.domain !== 'aircraft') return new Vector3();
+  if (activity.targetId !== null && activity.targetId !== undefined) return new Vector3();
+  if ((activity.pathLength ?? 0) > 0 || activity.goal || activity.waypoint || activity.attackMove) return new Vector3();
+  const center = homeBaseCenter ?? aircraftPosition;
+  const loiter = aircraftIdleLoiterPoint3D(timeSeconds, entityId, center);
+  return new Vector3(loiter.x - aircraftPosition.x, 0, loiter.z - aircraftPosition.z);
+}
+
+export function aircraftIdleOrbitYaw3D(timeSeconds: number, entityId: number): number {
+  const center = new Vector3();
+  const current = aircraftIdleLoiterPoint3D(timeSeconds, entityId, center);
+  const next = aircraftIdleLoiterPoint3D(timeSeconds + 0.24, entityId, center);
+  const vx = next.x - current.x;
+  const vz = next.z - current.z;
+  return Math.atan2(-vz, vx);
+}
+
+function aircraftIdleLoiterPoint3D(timeSeconds: number, entityId: number, center: { x: number; z: number }): Vector3 {
+  const profile = aircraftIdleLoiterProfile3D(entityId);
+  const phase = timeSeconds * profile.speed * profile.direction + profile.phase;
+  const weave = timeSeconds * profile.weaveSpeed * -profile.direction + profile.weavePhase;
+  return new Vector3(
+    center.x + profile.centerX + Math.cos(phase) * profile.radiusX + Math.sin(weave) * profile.weaveX,
+    0,
+    center.z + profile.centerZ + Math.sin(phase) * profile.radiusZ + Math.cos(weave) * profile.weaveZ,
+  );
+}
+
+function aircraftIdleLoiterProfile3D(entityId: number): {
+  centerX: number;
+  centerZ: number;
+  direction: 1 | -1;
+  phase: number;
+  radiusX: number;
+  radiusZ: number;
+  speed: number;
+  weavePhase: number;
+  weaveSpeed: number;
+  weaveX: number;
+  weaveZ: number;
+} {
+  const r1 = aircraftIdleHash3D(entityId, 1);
+  const r2 = aircraftIdleHash3D(entityId, 2);
+  const r3 = aircraftIdleHash3D(entityId, 3);
+  const r4 = aircraftIdleHash3D(entityId, 4);
+  const r5 = aircraftIdleHash3D(entityId, 5);
+  const r6 = aircraftIdleHash3D(entityId, 6);
+  const r7 = aircraftIdleHash3D(entityId, 7);
+  const radiusScale = 0.62 + r1 * 0.98;
+  return {
+    centerX: (r2 - 0.5) * 8.5,
+    centerZ: (r3 - 0.5) * 6.5,
+    direction: r4 < 0.5 ? -1 : 1,
+    phase: r5 * Math.PI * 2,
+    radiusX: AIRCRAFT_IDLE_ORBIT_RADIUS * radiusScale,
+    radiusZ: AIRCRAFT_IDLE_ORBIT_RADIUS * (0.48 + r6 * 0.74),
+    speed: AIRCRAFT_IDLE_ORBIT_SPEED * (0.9 + r7 * 0.8),
+    weavePhase: aircraftIdleHash3D(entityId, 8) * Math.PI * 2,
+    weaveSpeed: AIRCRAFT_IDLE_ORBIT_SPEED * (0.9 + aircraftIdleHash3D(entityId, 9) * 0.9),
+    weaveX: 0.8 + aircraftIdleHash3D(entityId, 10) * 1.55,
+    weaveZ: 0.55 + aircraftIdleHash3D(entityId, 11) * 1.35,
+  };
+}
+
+function aircraftIdleHash3D(entityId: number, salt: number): number {
+  const value = Math.sin(entityId * 127.1 + salt * 311.7) * 43758.5453123;
+  return value - Math.floor(value);
 }
 
 export function projectileVisualPoint3D(
@@ -568,6 +655,8 @@ export class ThreeWorldRenderer {
 
   private syncEntities(alpha: number, selected: ReadonlySet<number>): void {
     const seen = new Set<number>();
+    const nowSeconds = performance.now() / 1000;
+    const airOrbitCenters = this.aircraftOrbitCenters();
     for (const e of this.world.entities.values()) {
       seen.add(e.id);
       const type = this.world.rules.units.get(e.typeId);
@@ -587,8 +676,17 @@ export class ThreeWorldRenderer {
         const lx = last?.x ?? e.x;
         const ly = last?.y ?? e.y;
         const pos = leptonToWorld3D(lx + (e.x - lx) * alpha, ly + (e.y - ly) * alpha);
-        view.root.position.set(pos.x, entityRootAltitude3D(type), pos.z);
-        view.root.rotation.y = entityYawForFacing3D(e.facing);
+        const orbit = aircraftIdleOrbitOffset3D(
+          type,
+          { targetId: e.targetId, pathLength: e.path.length, goal: e.goal, waypoint: e.waypoint, attackMove: e.attackMove },
+          { x: pos.x, z: pos.z },
+          airOrbitCenters.get(e.owner),
+          nowSeconds,
+          e.id,
+        );
+        const orbiting = type.domain === 'aircraft' && (Math.abs(orbit.x) > 0.001 || Math.abs(orbit.z) > 0.001);
+        view.root.position.set(pos.x + orbit.x, entityRootAltitude3D(type) + orbit.y, pos.z + orbit.z);
+        view.root.rotation.y = orbiting ? aircraftIdleOrbitYaw3D(nowSeconds, e.id) : entityYawForFacing3D(e.facing);
         view.root.userData.last = { x: e.x, y: e.y };
       }
       view.visualRoot.scale.setScalar(selected.has(e.id) ? 1.12 : 1);
@@ -1552,6 +1650,35 @@ export class ThreeWorldRenderer {
         this.projectileLayer.add(this.createTracerMesh(pos, end, this.projectileTracerMat));
       }
     }
+  }
+
+  private aircraftOrbitCenters(): Map<number, Vector3> {
+    const conyards = new Map<number, { x: number; z: number; count: number }>();
+    const buildings = new Map<number, { x: number; z: number; count: number }>();
+    const add = (map: Map<number, { x: number; z: number; count: number }>, owner: number, pos: { x: number; z: number }): void => {
+      const prev = map.get(owner) ?? { x: 0, z: 0, count: 0 };
+      prev.x += pos.x;
+      prev.z += pos.z;
+      prev.count++;
+      map.set(owner, prev);
+    };
+
+    for (const e of this.world.entities.values()) {
+      const type = this.world.rules.units.get(e.typeId);
+      if (!type?.building) continue;
+      const pos = cellToWorld3D(e.cellX + (type.building.footprintW - 1) / 2, e.cellY + (type.building.footprintH - 1) / 2);
+      add(buildings, e.owner, pos);
+      if (e.typeId === 'conyard') add(conyards, e.owner, pos);
+    }
+
+    const centers = new Map<number, Vector3>();
+    const owners = new Set([...buildings.keys(), ...conyards.keys()]);
+    for (const owner of owners) {
+      const source = conyards.get(owner) ?? buildings.get(owner);
+      if (!source || source.count === 0) continue;
+      centers.set(owner, new Vector3(source.x / source.count, 0, source.z / source.count));
+    }
+    return centers;
   }
 
   private createTracerMesh(start: Vector3, end: Vector3, material: Material): Mesh {
