@@ -31,6 +31,8 @@ export interface ThreeAudioEvent {
   kind: Extract<Sfx, 'fire' | 'cannon' | 'bomb' | 'hit' | 'explosion' | 'bigExplosion'>;
   x: number;
   z: number;
+  targetX?: number;
+  targetZ?: number;
 }
 
 export class ThreeAudioEventTracker {
@@ -39,6 +41,7 @@ export class ThreeAudioEventTracker {
 
   update(snapshot: ThreeAudioSnapshot): ThreeAudioEvent[] {
     const events: ThreeAudioEvent[] = [];
+    const byId = new Map(snapshot.entities.map((entity) => [entity.id, entity]));
     const seenEntities = new Set<number>();
     for (const entity of snapshot.entities) {
       seenEntities.add(entity.id);
@@ -46,7 +49,14 @@ export class ThreeAudioEventTracker {
       if (prev) {
         if (entity.hp < prev.hp) events.push({ kind: 'hit', x: entity.x, z: entity.z });
         if (entity.targetId !== null && entity.cooldown > prev.cooldown + 1) {
-          events.push({ kind: this.fireKind(entity), x: entity.x, z: entity.z });
+          const target = byId.get(entity.targetId);
+          events.push({
+            kind: this.fireKind(entity),
+            x: entity.x,
+            z: entity.z,
+            targetX: target?.x,
+            targetZ: target?.z,
+          });
         }
       }
       this.entities.set(entity.id, entity);

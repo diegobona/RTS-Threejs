@@ -32,8 +32,11 @@ describe('ThreeAudioEventTracker', () => {
       snapshot({
         entities: [
           entity({ id: 1, targetId: 2, projectileSpeed: 0 }),
+          entity({ id: 2, x: 14, z: 15 }),
           entity({ id: 3, x: 20, z: 24, targetId: 4, domain: 'vehicle', projectileSpeed: 80 }),
+          entity({ id: 4, x: 25, z: 26 }),
           entity({ id: 5, x: 30, z: 34, targetId: 6, domain: 'aircraft', projectileSpeed: 100 }),
+          entity({ id: 6, x: 32, z: 38 }),
         ],
       }),
     );
@@ -42,13 +45,18 @@ describe('ThreeAudioEventTracker', () => {
       snapshot({
         entities: [
           entity({ id: 1, cooldown: 8, targetId: 2, projectileSpeed: 0 }),
+          entity({ id: 2, x: 14, z: 15 }),
           entity({ id: 3, x: 20, z: 24, cooldown: 30, targetId: 4, domain: 'vehicle', projectileSpeed: 80 }),
+          entity({ id: 4, x: 25, z: 26 }),
           entity({ id: 5, x: 30, z: 34, cooldown: 36, targetId: 6, domain: 'aircraft', projectileSpeed: 100 }),
+          entity({ id: 6, x: 32, z: 38 }),
         ],
       }),
     );
 
     expect(events.map((e) => e.kind)).toEqual(['fire', 'cannon', 'bomb']);
+    expect(events[0]).toMatchObject({ targetX: 14, targetZ: 15 });
+    expect(events[1]).toMatchObject({ targetX: 25, targetZ: 26 });
   });
 
   it('emits hit and explosion events from damage, projectile impact, and entity removal', () => {

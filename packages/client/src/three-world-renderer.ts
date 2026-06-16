@@ -59,6 +59,11 @@ export interface CombatEffectProfile3D {
   grow: number;
 }
 
+export interface ProjectileVisualProfile3D {
+  kind: 'tracer' | 'bomb';
+  color: number;
+}
+
 const PLAYER_COLORS = [0xf8d020, 0x3a7fe0, 0x30c040, 0xe04030, 0xd060d0, 0xe08020, 0x40c0c0, 0xc0c0c0];
 const AIRCRAFT_ALTITUDE = 8;
 
@@ -132,6 +137,18 @@ export function projectileVisualPoint3D(
   return new Vector3(shooterPos.x, 0.35 + AIRCRAFT_ALTITUDE * remaining, shooterPos.z);
 }
 
+export function projectileVisualProfile3D(shooterType: Pick<UnitType, 'domain'> | null | undefined): ProjectileVisualProfile3D {
+  if (shooterType?.domain === 'aircraft') return { kind: 'bomb', color: 0x111111 };
+  return { kind: 'tracer', color: 0xfff0b0 };
+}
+
+export function projectileTracerEnd3D(start: Vector3, target: Vector3, maxLength: number): Vector3 {
+  const delta = target.clone().sub(start);
+  const length = delta.length();
+  if (length <= 0.001) return start.clone();
+  return start.clone().add(delta.multiplyScalar(Math.min(maxLength, length) / length));
+}
+
 export function combatEffectProfile3D(kind: ThreeAudioEvent['kind']): CombatEffectProfile3D {
   switch (kind) {
     case 'fire':
@@ -165,6 +182,7 @@ export class ThreeWorldRenderer {
   private readonly tileGeo = new PlaneGeometry(THREE_CELL_SIZE, THREE_CELL_SIZE);
   private readonly oreGeo = new OctahedronGeometry(0.18, 0);
   private readonly projectileGeo = new SphereGeometry(0.12, 8, 8);
+  private readonly projectileTracerGeo = new BoxGeometry(0.045, 0.045, 1);
   private readonly effectFlashGeo = new SphereGeometry(1, 10, 8);
   private readonly effectSparkGeo = new BoxGeometry(0.055, 0.055, 0.38);
   private readonly effectRingGeo = new RingGeometry(0.65, 0.86, 24);
@@ -194,7 +212,8 @@ export class ThreeWorldRenderer {
   private readonly selectionRingMat = new MeshLambertMaterial({ color: 0x68f07a });
   private readonly hpBackMat = new MeshBasicLike(0x101010);
   private readonly hpGoodMat = new MeshBasicLike(0x42d66d);
-  private readonly projectileMat = new MeshLambertMaterial({ color: 0xffe060 });
+  private readonly projectileMat = new MeshLambertMaterial({ color: 0x111111 });
+  private readonly projectileTracerMat = new MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.92, depthWrite: false });
   private readonly raycaster = new Raycaster();
   private readonly pointer = new Vector2();
 
@@ -1509,17 +1528,58 @@ export class ThreeWorldRenderer {
       const shooterType = shooter && this.world.rules.units.get(shooter.typeId);
       const target = this.world.entities.get(p.targetId);
       const pos = projectileVisualPoint3D(shooterType, p, shooter, target);
-      const sp = new Mesh(this.projectileGeo, this.projectileMat);
-      sp.position.set(pos.x, pos.y, pos.z);
-      this.projectileLayer.add(sp);
+      const profile = projectileVisualProfile3D(shooterType);
+      if (profile.kind === 'bomb') {
+        const bomb = new Mesh(this.projectileGeo, this.projectileMat);
+        bomb.position.set(pos.x, pos.y, pos.z);
+        bomb.scale.set(0.75, 1.45, 0.75);
+        this.projectileLayer.add(bomb);
+      } else {
+        const targetPos = target ? leptonToWorld3D(target.x, target.y) : null;
+        const end = targetPos ? projectileTracerEnd3D(pos, new Vector3(targetPos.x, pos.y, targetPos.z), 1.85) : new Vector3(pos.x, pos.y, pos.z - 0.8);
+        this.projectileLayer.add(this.createTracerMesh(pos, end, this.projectileTracerMat));
+      }
     }
+  }
+
+  private createTracerMesh(start: Vector3, end: Vector3, material: Material): Mesh {
+    const delta = end.clone().sub(start);
+    const rawLength = delta.length();
+    const length = Math.max(0.01, rawLength);
+    const direction = rawLength > 0.001 ? delta.normalize() : new Vector3(0, 0, 1);
+    const tracer = new Mesh(this.projectileTracerGeo, material);
+    tracer.position.copy(start).add(end).multiplyScalar(0.5);
+    tracer.scale.z = length;
+    tracer.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), direction);
+    return tracer;
   }
 
   private processCombatEvents(): void {
     for (const event of this.audioEvents.update(this.audioSnapshot())) {
+      if (event.kind === 'fire' || event.kind === 'cannon') this.spawnTracerEffect(event);
       this.spawnCombatEffect(event.kind, event.x, event.z);
       this.onEvent?.(event.kind, event.x, event.z);
     }
+  }
+
+  private spawnTracerEffect(event: ThreeAudioEvent): void {
+    if (event.targetX === undefined || event.targetZ === undefined) return;
+    const profile = combatEffectProfile3D(event.kind);
+    const start = new Vector3(event.x, profile.height, event.z);
+    const end = new Vector3(event.targetX, profile.height, event.targetZ);
+    const tracerMat = new MeshBasicMaterial({
+      color: event.kind === 'cannon' ? 0xffd18a : projectileVisualProfile3D({ domain: 'infantry' }).color,
+      transparent: true,
+      opacity: event.kind === 'cannon' ? 0.82 : 0.72,
+      depthWrite: false,
+    });
+    tracerMat.userData.baseOpacity = tracerMat.opacity;
+
+    const root = new Group();
+    root.add(this.createTracerMesh(start, end, tracerMat));
+    this.effectLayer.add(root);
+    const life = event.kind === 'cannon' ? 7 : 5;
+    this.combatEffects.push({ root, life, maxLife: life, grow: 0.08 });
   }
 
   private spawnCombatEffect(kind: ThreeAudioEvent['kind'], x: number, z: number): void {

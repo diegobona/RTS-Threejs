@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Vector3 } from 'three';
 import {
   combatEffectProfile3D,
   entityRootAltitude3D,
@@ -9,6 +10,8 @@ import {
   LOWPOLY_FIGHTER_PART_IDS,
   LOWPOLY_FIGHTER_MODEL_SCALE,
   proceduralModelYawOffset3D,
+  projectileTracerEnd3D,
+  projectileVisualProfile3D,
   projectileVisualPoint3D,
 } from './three-world-renderer';
 
@@ -41,6 +44,26 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(point.z).toBe(20);
     expect(point.y).toBeGreaterThan(0.55);
     expect(point.y).toBeLessThan(entityVisualAltitude3D({ domain: 'aircraft' }) + 1);
+  });
+
+  it('renders ground projectiles as fast tracers and aircraft projectiles as black bombs', () => {
+    const infantry = projectileVisualProfile3D({ domain: 'infantry' });
+    const vehicle = projectileVisualProfile3D({ domain: 'vehicle' });
+    const aircraft = projectileVisualProfile3D({ domain: 'aircraft' });
+
+    expect(infantry.kind).toBe('tracer');
+    expect(vehicle.kind).toBe('tracer');
+    expect(vehicle.color).not.toBe(0xffe060);
+    expect(aircraft.kind).toBe('bomb');
+    expect(aircraft.color).toBe(0x111111);
+  });
+
+  it('extends tracer lines from the muzzle toward the target direction', () => {
+    const end = projectileTracerEnd3D(new Vector3(2, 1, 3), new Vector3(12, 1, 3), 2.5);
+
+    expect(end.x).toBeCloseTo(4.5);
+    expect(end.y).toBeCloseTo(1);
+    expect(end.z).toBeCloseTo(3);
   });
 
   it('builds the procedural fighter from detailed low-poly parts', () => {
