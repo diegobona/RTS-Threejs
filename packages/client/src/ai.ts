@@ -1,6 +1,13 @@
 import type { Command, Entity, Player, World } from '@ra2web/game';
 
 const BUILD_ORDER = ['refinery', 'barracks', 'warfactory', 'airbase'];
+const SIM_TICKS_PER_SECOND = 5;
+const AI_ATTACK_COOLDOWN_TICKS = 5 * 60 * SIM_TICKS_PER_SECOND;
+const FORMATION_TIMEOUT_TICKS = 18 * SIM_TICKS_PER_SECOND;
+const FORMATION_REISSUE_TICKS = 6 * SIM_TICKS_PER_SECOND;
+const FORMATION_STAGING_DISTANCE = 8;
+const FORMATION_GROUP_SPACING = 5;
+const AI_MAX_ATTACK_WAVE = 120;
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 
@@ -31,11 +38,31 @@ const DIFF: Record<Difficulty, DiffParams> = {
   hard: { waveBias: -3 },
 };
 
+interface FormationGroup {
+  typeId: string;
+  ids: number[];
+  anchor: { x: number; y: number };
+}
+
+interface FormationPlan {
+  targetId: number;
+  startedTick: number;
+  lastMoveTick: number;
+  groups: FormationGroup[];
+}
+
+interface ActiveAssault {
+  targetId: number;
+  ids: number[];
+}
+
 export class SimpleAI {
   private readonly mode: Mode;
   private readonly m: ModeParams;
   private readonly waveSize: number;
   private engaged = false;
+  private formation: FormationPlan | null = null;
+  private activeAssault: ActiveAssault | null = null;
 
   constructor(
     private readonly playerId: number,
@@ -103,6 +130,12 @@ export class SimpleAI {
     const home = this.baseCentroid(world);
     const threat = this.nearestThreatToBase(world, enemies);
     if (threat !== null) {
+      this.formation = null;
+      this.activeAssault = null;
+      if (world.tick < AI_ATTACK_COOLDOWN_TICKS) {
+        cmds.push({ kind: 'attack', entityIds: ids, targetId: threat });
+        return;
+      }
       if (this.engaged && home && army.length >= 6) {
         const sorted = this.byDistToHome(army, home);
         const defenders = Math.max(1, Math.floor(sorted.length / 3));
@@ -115,11 +148,156 @@ export class SimpleAI {
       return;
     }
 
-    if (!this.engaged || army.length <= this.m.homeReserve) return;
+    if (world.tick < AI_ATTACK_COOLDOWN_TICKS) {
+      this.formation = null;
+      this.activeAssault = null;
+      return;
+    }
+
+    if (!this.engaged || army.length <= this.m.homeReserve) {
+      this.formation = null;
+      this.activeAssault = null;
+      return;
+    }
     const target = this.pickTarget(world, enemies, this.centroid(army));
     if (target === null) return;
-    const attackers = home ? this.byDistToHome(army, home).slice(this.m.homeReserve).map((e) => e.id) : ids;
-    if (attackers.length > 0) cmds.push({ kind: 'attack', entityIds: attackers, targetId: target });
+    const attackers = (home ? this.byDistToHome(army, home).slice(this.m.homeReserve) : army).slice(0, AI_MAX_ATTACK_WAVE);
+    if (attackers.length > 0) this.stageAttack(world, attackers, target, home, cmds);
+  }
+
+  private stageAttack(
+    world: World,
+    attackers: Entity[],
+    targetId: number,
+    home: { x: number; y: number } | null,
+    cmds: Command[],
+  ): void {
+    if (this.activeAssault) {
+      if (world.entities.has(this.activeAssault.targetId)) {
+        const ids = this.activeAssault.ids.filter((id) => world.entities.get(id)?.owner === this.playerId);
+        if (ids.length > 0) {
+          cmds.push({ kind: 'attack', entityIds: ids, targetId: this.activeAssault.targetId });
+          return;
+        }
+      }
+      this.activeAssault = null;
+    }
+
+    if (!this.formationMatches(world, attackers, targetId)) {
+      this.formation = this.createFormation(world, attackers, targetId, home);
+      cmds.push(...this.formationMoveCommands(world, this.formation));
+      return;
+    }
+
+    const formation = this.formation!;
+    if (this.formationReady(world, formation) || world.tick - formation.startedTick >= FORMATION_TIMEOUT_TICKS) {
+      const ids = this.formationIds(world, formation);
+      this.formation = null;
+      this.activeAssault = { targetId, ids };
+      if (ids.length > 0) cmds.push({ kind: 'attack', entityIds: ids, targetId });
+      return;
+    }
+
+    if (world.tick - formation.lastMoveTick >= FORMATION_REISSUE_TICKS) {
+      formation.lastMoveTick = world.tick;
+      cmds.push(...this.formationMoveCommands(world, formation));
+    }
+  }
+
+  private formationMatches(world: World, attackers: Entity[], targetId: number): boolean {
+    if (!this.formation || this.formation.targetId !== targetId || !world.entities.has(targetId)) return false;
+    const currentIds = new Set(attackers.map((e) => e.id));
+    const plannedIds = this.formationIds(world, this.formation);
+    if (plannedIds.length === 0) return false;
+    let overlap = 0;
+    for (const id of plannedIds) if (currentIds.has(id)) overlap++;
+    return overlap >= Math.max(1, Math.floor(Math.min(currentIds.size, plannedIds.length) * 0.6));
+  }
+
+  private createFormation(
+    world: World,
+    attackers: Entity[],
+    targetId: number,
+    home: { x: number; y: number } | null,
+  ): FormationPlan {
+    const origin = home ?? this.centroid(attackers);
+    const target = world.entities.get(targetId);
+    const dx = (target?.cellX ?? origin.x + 1) - origin.x;
+    const dy = (target?.cellY ?? origin.y + 1) - origin.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    const px = -uy;
+    const py = ux;
+    const center = {
+      x: origin.x + ux * FORMATION_STAGING_DISTANCE,
+      y: origin.y + uy * FORMATION_STAGING_DISTANCE,
+    };
+    const groups = this.groupAttackers(attackers);
+    const mid = (groups.length - 1) / 2;
+
+    return {
+      targetId,
+      startedTick: world.tick,
+      lastMoveTick: world.tick,
+      groups: groups.map((group, index) => {
+        const desired = {
+          x: Math.round(center.x + px * (index - mid) * FORMATION_GROUP_SPACING),
+          y: Math.round(center.y + py * (index - mid) * FORMATION_GROUP_SPACING),
+        };
+        const anchor = world.passableNear(desired.x, desired.y, 8) ?? desired;
+        return { ...group, anchor };
+      }),
+    };
+  }
+
+  private groupAttackers(attackers: Entity[]): FormationGroup[] {
+    const byType = new Map<string, number[]>();
+    for (const e of attackers) {
+      const ids = byType.get(e.typeId) ?? [];
+      ids.push(e.id);
+      byType.set(e.typeId, ids);
+    }
+    return [...byType.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([typeId, ids]) => ({ typeId, ids: ids.sort((a, b) => a - b), anchor: { x: 0, y: 0 } }));
+  }
+
+  private formationMoveCommands(world: World, formation: FormationPlan): Command[] {
+    const cmds: Command[] = [];
+    for (const group of formation.groups) {
+      const ids = group.ids.filter((id) => world.entities.get(id)?.owner === this.playerId);
+      if (ids.length > 0) cmds.push({ kind: 'move', entityIds: ids, cellX: group.anchor.x, cellY: group.anchor.y });
+    }
+    return cmds;
+  }
+
+  private formationReady(world: World, formation: FormationPlan): boolean {
+    let livingGroups = 0;
+    for (const group of formation.groups) {
+      const living = group.ids.map((id) => world.entities.get(id)).filter((e): e is Entity => !!e && e.owner === this.playerId);
+      if (living.length === 0) continue;
+      livingGroups++;
+      const radius = Math.max(3, Math.ceil(Math.sqrt(living.length)) + 1);
+      const radiusSq = radius * radius;
+      for (const e of living) {
+        const dx = e.cellX - group.anchor.x;
+        const dy = e.cellY - group.anchor.y;
+        if (dx * dx + dy * dy > radiusSq) return false;
+      }
+    }
+    return livingGroups > 0;
+  }
+
+  private formationIds(world: World, formation: FormationPlan): number[] {
+    const ids: number[] = [];
+    for (const group of formation.groups) {
+      for (const id of group.ids) {
+        const e = world.entities.get(id);
+        if (e?.owner === this.playerId) ids.push(id);
+      }
+    }
+    return ids;
   }
 
   private nearestThreatToBase(world: World, enemies: Entity[]): number | null {
