@@ -26,6 +26,26 @@ function entity(overrides: Partial<ThreeAudioSnapshot['entities'][number]> = {})
 }
 
 describe('ThreeAudioEventTracker', () => {
+  it('does not emit audio when a newly produced aircraft first appears without attacking', () => {
+    const tracker = new ThreeAudioEventTracker();
+    tracker.update(
+      snapshot({
+        entities: [entity({ id: 1, targetId: null, domain: 'aircraft', projectileSpeed: 100 })],
+      }),
+    );
+
+    const events = tracker.update(
+      snapshot({
+        entities: [
+          entity({ id: 1, targetId: null, domain: 'aircraft', projectileSpeed: 100 }),
+          entity({ id: 2, x: 30, z: 34, targetId: null, domain: 'aircraft', projectileSpeed: 100 }),
+        ],
+      }),
+    );
+
+    expect(events).toEqual([]);
+  });
+
   it('emits fire, cannon, and bomb events when unit cooldown jumps after attacking', () => {
     const tracker = new ThreeAudioEventTracker();
     tracker.update(

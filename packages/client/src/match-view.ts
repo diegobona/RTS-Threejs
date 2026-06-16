@@ -190,7 +190,6 @@ export class MatchView {
   /** 最近被攻击建筑的位置（小地图红点闪烁定位）。 */
   private attackPing: { x: number; y: number; at: number } | null = null;
   /** 己方单位老兵等级跟踪（升级时响一声）。 */
-  private prevKills = new Map<number, number>();
   /** 本局最大兵力（结算展示）。 */
   private peakArmy = 0;
   /** 战损统计：存活单位 id→owner，每周期对比统计阵亡。 */
@@ -1531,16 +1530,6 @@ export class MatchView {
         this.bldHp.set(e.id, e.hp);
       }
       if (attacked) this.eva('attack', '⚠ 基地受袭！', 'alert', 6000);
-      // 老兵升级提示音：己方作战单位跨过 2/5 杀阈值（rank 提升）响一声
-      const rankOf = (k: number): number => (k >= 5 ? 2 : k >= 2 ? 1 : 0);
-      let promoted = false;
-      for (const e of this.world.entities.values()) {
-        if (e.owner !== this.localPlayerId || e.kills === 0) continue;
-        const pk = this.prevKills.get(e.id) ?? 0;
-        if (rankOf(e.kills) > rankOf(pk)) promoted = true;
-        this.prevKills.set(e.id, e.kills);
-      }
-      if (promoted) audioBus.play('ready');
       // 一次扫描：最大兵力 + 战损（对比上周期存活单位集，消失即阵亡）
       const cur = new Map<number, number>();
       let army = 0;
@@ -1567,7 +1556,6 @@ export class MatchView {
       const ready = !!q?.readyToPlace;
       if (ready && !this.prevReady[cat]) {
         if (cat === 'building') this.eva('buildComplete', '🔧 建造完成', 'good', 1200);
-        else audioBus.play('ready'); // 兵种就绪很频繁：仅轻提示音，不弹横幅
       }
       this.prevReady[cat] = ready;
     }

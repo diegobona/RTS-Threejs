@@ -9,8 +9,30 @@ import { loadGameMix } from './game-files';
 
 export type Sfx = 'fire' | 'cannon' | 'bomb' | 'hit' | 'explosion' | 'bigExplosion' | 'build' | 'ready' | 'place' | 'select' | 'move' | 'deny';
 
+const ALLOWED_SFX = new Set<Sfx>(['fire', 'cannon', 'bomb', 'build']);
+
+export function shouldPlaySfx(sfx: Sfx): boolean {
+  return ALLOWED_SFX.has(sfx);
+}
+
 /** EVA 播报事件（程序合成提示音；文字横幅在 match-view 负责）。 */
 export type Eva = 'attack' | 'lowPower' | 'noFunds' | 'unitLost' | 'buildComplete';
+
+export function shouldPlayEva(kind: Eva): boolean {
+  return kind === 'buildComplete';
+}
+
+export function shouldPlayVoice(): boolean {
+  return false;
+}
+
+export function shouldPlayAlarm(): boolean {
+  return false;
+}
+
+export function shouldPlayUiKey(): boolean {
+  return false;
+}
 
 /** 事件 → 泰伯利亚之日 Sounds.mix 真实音效文件（名取自 Sound01.ini）。 */
 const REAL_SFX: Partial<Record<Sfx, string>> = {
@@ -78,6 +100,7 @@ interface SyntheticWeaponSfxProfile {
 }
 
 interface SyntheticBombSfxProfile {
+  tonalLayers: number;
   dropCueGain: number;
   dropCueHz: number;
   dropCueMs: number;
@@ -134,18 +157,19 @@ export const SYNTHETIC_WEAPON_SFX: Record<SyntheticWeaponSfx, SyntheticWeaponSfx
 };
 
 export const SYNTHETIC_BOMB_SFX: SyntheticBombSfxProfile = {
-  dropCueGain: 0.1,
-  dropCueHz: 112,
-  dropCueMs: 58,
+  tonalLayers: 0,
+  dropCueGain: 0,
+  dropCueHz: 0,
+  dropCueMs: 0,
   whistleMs: 0,
   whistleStartHz: 0,
   whistleEndHz: 0,
   whistleGain: 0,
-  airRushMs: 180,
-  airRushCutoffHz: 420,
-  airRushGain: 0.06,
-  bodyMs: 160,
-  bodyGain: 0.15,
+  airRushMs: 190,
+  airRushCutoffHz: 360,
+  airRushGain: 0.08,
+  bodyMs: 180,
+  bodyGain: 0.16,
 };
 
 export class AudioBus {
@@ -255,8 +279,8 @@ export class AudioBus {
   }
 
   startBattleAmbience(): void {
-    this.battleAmbienceWanted = true;
-    this.ensureBattleAmbience();
+    this.battleAmbienceWanted = false;
+    this.stopBattleAmbienceNodes();
   }
 
   stopBattleAmbience(): void {
@@ -267,6 +291,7 @@ export class AudioBus {
   /** 播放音效。opts.pan(-1..1) 声像、opts.gain(0..1) 距离增益——由 match-view
    *  按事件屏幕位置算好传入；UI 类音效不传则居中满增益。 */
   play(sfx: Sfx, opts: { pan?: number; gain?: number } = {}): void {
+    if (!shouldPlaySfx(sfx)) return;
     if (!this.ctx || !this.master || this.muted) return;
     const now = performance.now();
     const gap = AudioBus.MIN_GAP[sfx];
@@ -301,9 +326,6 @@ export class AudioBus {
           break;
         case 'build':
           this.chime([440, 660], 0.16);
-          break;
-        case 'ready':
-          this.chime([520, 780, 1040], 0.12);
           break;
         case 'place':
           this.blip(120, 0.12, 'sine', 0.3);
@@ -348,6 +370,7 @@ export class AudioBus {
 
   /** EVA 事件提示音（居中、互相节流，避免与战斗音叠太密）。文字横幅由 match-view 显示。 */
   playEva(kind: Eva): void {
+    if (!shouldPlayEva(kind)) return;
     if (!this.ctx || !this.master || this.muted) return;
     const now = performance.now();
     if (now - this.lastEvaAt < 900) return;
@@ -379,6 +402,7 @@ export class AudioBus {
   /** 选中/下令时播放单位语音应答。无真实语音能力返回 false（调用方回退合成
    *  提示音）；有能力但静音/节流则视为已处理返回 true。语音不叠音。 */
   playVoice(name: string): boolean {
+    if (!shouldPlayVoice()) return true;
     if (this.voices.size === 0) return false;
     if (!this.ctx || !this.master || this.muted) return true;
     const pcm = this.voices.get(name);
@@ -393,6 +417,7 @@ export class AudioBus {
   /** 「红色警戒」警报警笛（程序合成，开场红场转场用）。须音频已解锁(用户手势后)。
    *  更高亢：主音在 660↔1180Hz 拉鸣 + 一条高八度叠音，明亮刺耳。 */
   alarm(): void {
+    if (!shouldPlayAlarm()) return;
     if (!this.ctx || !this.master || this.muted) return;
     const ctx = this.ctx;
     const t0 = ctx.currentTime;
@@ -428,6 +453,7 @@ export class AudioBus {
 
   /** 终端打字机的按键嗒声（开场打字逐字调用）。短促、清脆；音频已解锁才出声。 */
   key(): void {
+    if (!shouldPlayUiKey()) return;
     if (!this.ctx || !this.master || this.muted) return;
     const ctx = this.ctx;
     const t0 = ctx.currentTime;
@@ -513,9 +539,8 @@ export class AudioBus {
 
   private playBombDrop(): void {
     const profile = SYNTHETIC_BOMB_SFX;
-    this.pitchDrop(profile.dropCueHz, 72, profile.dropCueMs / 1000, 'triangle', profile.dropCueGain);
     this.filteredNoise(profile.airRushMs / 1000, 'lowpass', profile.airRushCutoffHz, 0.55, profile.airRushGain, 0.02);
-    this.pitchDrop(76, 42, profile.bodyMs / 1000, 'sine', profile.bodyGain, 0.04);
+    this.filteredNoise(profile.bodyMs / 1000, 'lowpass', 130, 0.5, profile.bodyGain, 0.055);
   }
 
   private pitchDrop(startFreq: number, endFreq: number, dur: number, type: OscillatorType, gain: number, delay = 0): void {

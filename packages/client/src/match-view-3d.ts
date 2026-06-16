@@ -503,7 +503,6 @@ export class MatchView3D {
       const ready = !!this.world.queueFor(this.localPlayerId, category)?.readyToPlace;
       if (ready && !this.prevReady[category]) {
         if (category === 'building') audioBus.playEva('buildComplete');
-        else audioBus.play('ready');
       }
       this.prevReady[category] = ready;
     }
