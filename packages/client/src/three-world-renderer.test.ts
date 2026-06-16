@@ -10,6 +10,7 @@ import {
   LOWPOLY_FIGHTER_PART_IDS,
   LOWPOLY_FIGHTER_MODEL_SCALE,
   proceduralModelYawOffset3D,
+  combatMuzzlePoint3D,
   projectileTracerEnd3D,
   projectileVisualProfile3D,
   projectileVisualPoint3D,
@@ -64,6 +65,18 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(end.x).toBeCloseTo(4.5);
     expect(end.y).toBeCloseTo(1);
     expect(end.z).toBeCloseTo(3);
+  });
+
+  it('places fire and cannon flashes forward at the weapon muzzle instead of the unit center', () => {
+    const center = { x: 10, z: 20 };
+    const target = { x: 18, z: 20 };
+    const rifle = combatMuzzlePoint3D('fire', center, target);
+    const cannon = combatMuzzlePoint3D('cannon', center, target);
+
+    expect(rifle.x).toBeCloseTo(center.x + 0.84);
+    expect(rifle.z).toBeCloseTo(center.z);
+    expect(cannon.x).toBeCloseTo(center.x + 1.9);
+    expect(cannon.z).toBeCloseTo(center.z);
   });
 
   it('builds the procedural fighter from detailed low-poly parts', () => {

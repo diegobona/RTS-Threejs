@@ -166,6 +166,18 @@ export function combatEffectProfile3D(kind: ThreeAudioEvent['kind']): CombatEffe
   }
 }
 
+export function combatMuzzlePoint3D(
+  kind: ThreeAudioEvent['kind'],
+  origin: { x: number; z: number },
+  target: { x: number; z: number } | null | undefined,
+): Vector3 {
+  const profile = combatEffectProfile3D(kind);
+  const start = new Vector3(origin.x, profile.height, origin.z);
+  if ((kind !== 'fire' && kind !== 'cannon') || !target) return start;
+  const muzzleOffset = kind === 'cannon' ? 1.9 : 0.84;
+  return projectileTracerEnd3D(start, new Vector3(target.x, profile.height, target.z), muzzleOffset);
+}
+
 export class ThreeWorldRenderer {
   readonly renderer: WebGLRenderer;
   readonly scene = new Scene();
@@ -1556,16 +1568,17 @@ export class ThreeWorldRenderer {
 
   private processCombatEvents(): void {
     for (const event of this.audioEvents.update(this.audioSnapshot())) {
-      if (event.kind === 'fire' || event.kind === 'cannon') this.spawnTracerEffect(event);
-      this.spawnCombatEffect(event.kind, event.x, event.z);
-      this.onEvent?.(event.kind, event.x, event.z);
+      const target = event.targetX !== undefined && event.targetZ !== undefined ? { x: event.targetX, z: event.targetZ } : null;
+      const effectPoint = combatMuzzlePoint3D(event.kind, event, target);
+      if (event.kind === 'fire' || event.kind === 'cannon') this.spawnTracerEffect(event, effectPoint);
+      this.spawnCombatEffect(event.kind, effectPoint.x, effectPoint.z);
+      this.onEvent?.(event.kind, effectPoint.x, effectPoint.z);
     }
   }
 
-  private spawnTracerEffect(event: ThreeAudioEvent): void {
+  private spawnTracerEffect(event: ThreeAudioEvent, start: Vector3): void {
     if (event.targetX === undefined || event.targetZ === undefined) return;
     const profile = combatEffectProfile3D(event.kind);
-    const start = new Vector3(event.x, profile.height, event.z);
     const end = new Vector3(event.targetX, profile.height, event.targetZ);
     const tracerMat = new MeshBasicMaterial({
       color: event.kind === 'cannon' ? 0xffd18a : projectileVisualProfile3D({ domain: 'infantry' }).color,

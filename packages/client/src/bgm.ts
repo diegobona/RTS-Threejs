@@ -1,8 +1,12 @@
 /**
- * 全局背景音乐（用户自备 /bgm.mp3）。挂在 document.body 上、跨页面存活，
+ * 全局背景音乐（内置 /bgm.wav）。挂在 document.body 上、跨页面存活，
  * 从首页一路放到遭遇战设置/大厅，并续播进正式对战（压低音量，见 enterMatch）。
  * 浏览器禁自动播放：须用户首次手势后 play()。无该文件则标记不可用（隐藏开关）。
  */
+export const BGM_SOURCE = '/bgm.wav';
+export const BGM_MENU_VOLUME = 0.46;
+export const BGM_MATCH_VOLUME = 0.34;
+
 class Bgm {
   private el: HTMLAudioElement | null = null;
   private unavailable = false;
@@ -12,9 +16,9 @@ class Bgm {
   private ensure(): HTMLAudioElement {
     if (this.el) return this.el;
     const a = document.createElement('audio');
-    a.src = '/bgm.mp3';
+    a.src = BGM_SOURCE;
     a.loop = true;
-    a.volume = 0.5;
+    a.volume = BGM_MENU_VOLUME;
     a.addEventListener('error', () => {
       this.unavailable = true;
       this.cbs.forEach((c) => c());
@@ -28,7 +32,7 @@ class Bgm {
     return this.wanted;
   }
 
-  /** 注册「无 bgm.mp3」回调（已知或将来 error 时触发），用于隐藏开关。 */
+  /** 注册「无 BGM 文件」回调（已知或将来 error 时触发），用于隐藏开关。 */
   onUnavailable(cb: () => void): void {
     if (this.unavailable) cb();
     else this.cbs.push(cb);
@@ -51,9 +55,9 @@ class Bgm {
   }
 
   /** 进入正式对战：不再静音战场——压低音量（让音效/EVA 盖在上面）后续播，
-   *  使战斗全程也有配乐（红警的灵魂）。无 bgm.mp3 或已关闭则保持无声。 */
+   *  使战斗全程也有配乐（红警的灵魂）。无 BGM 文件或已关闭则保持无声。 */
   enterMatch(): void {
-    if (this.wanted) this.ensure().volume = 0.42; // 战斗内压低；菜单维持 0.5
+    if (this.wanted) this.ensure().volume = BGM_MATCH_VOLUME; // 战斗内压低；菜单维持菜单音量
     this.play();
   }
 
