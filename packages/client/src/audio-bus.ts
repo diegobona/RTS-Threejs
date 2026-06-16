@@ -7,7 +7,7 @@
 import { BufferSource, MixFile, parseAud } from '@ra2web/data';
 import { loadGameMix } from './game-files';
 
-export type Sfx = 'fire' | 'cannon' | 'hit' | 'explosion' | 'bigExplosion' | 'build' | 'ready' | 'place' | 'select';
+export type Sfx = 'fire' | 'cannon' | 'hit' | 'explosion' | 'bigExplosion' | 'build' | 'ready' | 'place' | 'select' | 'move' | 'deny';
 
 /** EVA 播报事件（程序合成提示音；文字横幅在 match-view 负责）。 */
 export type Eva = 'attack' | 'lowPower' | 'noFunds' | 'unitLost' | 'buildComplete';
@@ -66,6 +66,8 @@ export class AudioBus {
   private realLoaded = false;
   private lastVoiceAt = -1e9;
   private lastEvaAt = -1e9;
+  private battleAmbienceWanted = false;
+  private battleAmbience: { gain: GainNode; sources: AudioScheduledSourceNode[] } | null = null;
   /** 本次 play() 的输出节点（含声像/距离增益）；合成与采样都接到这里。null=直连 master。 */
   private curOut: AudioNode | null = null;
 
@@ -114,6 +116,8 @@ export class AudioBus {
     ready: 0,
     place: 0,
     select: 30,
+    move: 120,
+    deny: 120,
   };
 
   /** 须在用户手势中调用以解锁音频（浏览器自动播放策略）。 */
@@ -136,6 +140,7 @@ export class AudioBus {
       this.noiseBuffer = buf;
     }
     void this.ctx.resume();
+    this.ensureBattleAmbience();
   }
 
   get isMuted(): boolean {
@@ -144,7 +149,22 @@ export class AudioBus {
   toggleMute(): boolean {
     this.muted = !this.muted;
     if (this.master) this.master.gain.value = this.muted ? 0 : 0.35;
+    if (!this.muted) this.ensureBattleAmbience();
     return this.muted;
+  }
+
+  get isBattleAmbienceWanted(): boolean {
+    return this.battleAmbienceWanted;
+  }
+
+  startBattleAmbience(): void {
+    this.battleAmbienceWanted = true;
+    this.ensureBattleAmbience();
+  }
+
+  stopBattleAmbience(): void {
+    this.battleAmbienceWanted = false;
+    this.stopBattleAmbienceNodes();
   }
 
   /** 播放音效。opts.pan(-1..1) 声像、opts.gain(0..1) 距离增益——由 match-view
@@ -192,6 +212,13 @@ export class AudioBus {
           break;
         case 'select':
           this.blip(900, 0.03, 'triangle', 0.1);
+          break;
+        case 'move':
+          this.radioTick();
+          break;
+        case 'deny':
+          this.blip(160, 0.11, 'square', 0.18);
+          this.blip(120, 0.12, 'sawtooth', 0.1);
           break;
       }
     } finally {
@@ -407,6 +434,58 @@ export class AudioBus {
     this.track(src, dur + 0.02);
   }
 
+  private ensureBattleAmbience(): void {
+    if (!this.battleAmbienceWanted || !this.ctx || !this.master || !this.noiseBuffer || this.battleAmbience) return;
+    const ctx = this.ctx;
+    const bed = ctx.createGain();
+    bed.gain.value = 0.075;
+    bed.connect(this.master);
+
+    const wind = ctx.createBufferSource();
+    wind.buffer = this.noiseBuffer;
+    wind.loop = true;
+    const windFilter = ctx.createBiquadFilter();
+    windFilter.type = 'lowpass';
+    windFilter.frequency.value = 430;
+    const windGain = ctx.createGain();
+    windGain.gain.value = 0.18;
+    wind.connect(windFilter).connect(windGain).connect(bed);
+    wind.start();
+
+    const lowDrone = ctx.createOscillator();
+    lowDrone.type = 'sine';
+    lowDrone.frequency.value = 72;
+    const lowGain = ctx.createGain();
+    lowGain.gain.value = 0.09;
+    lowDrone.connect(lowGain).connect(bed);
+    lowDrone.start();
+
+    const highDrone = ctx.createOscillator();
+    highDrone.type = 'triangle';
+    highDrone.frequency.value = 138;
+    const highGain = ctx.createGain();
+    highGain.gain.value = 0.025;
+    highDrone.connect(highGain).connect(bed);
+    highDrone.start();
+
+    this.battleAmbience = { gain: bed, sources: [wind, lowDrone, highDrone] };
+  }
+
+  private stopBattleAmbienceNodes(): void {
+    const ambience = this.battleAmbience;
+    if (!ambience) return;
+    for (const source of ambience.sources) {
+      try {
+        source.stop();
+      } catch {
+        /* already stopped */
+      }
+      source.disconnect();
+    }
+    ambience.gain.disconnect();
+    this.battleAmbience = null;
+  }
+
   private chime(freqs: number[], step: number): void {
     const ctx = this.ctx!;
     freqs.forEach((f, i) => {
@@ -426,6 +505,28 @@ export class AudioBus {
       };
       osc.stop(start + step + 0.06);
     });
+  }
+
+  private radioTick(): void {
+    const ctx = this.ctx!;
+    const t0 = this.t();
+    for (let i = 0; i < 2; i++) {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      const start = t0 + i * 0.045;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(i === 0 ? 620 : 880, start);
+      g.gain.setValueAtTime(0.0001, start);
+      g.gain.exponentialRampToValueAtTime(0.09, start + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, start + 0.07);
+      osc.connect(g).connect(this.dest());
+      osc.start(start);
+      this.activeVoices++;
+      osc.onended = () => {
+        this.activeVoices--;
+      };
+      osc.stop(start + 0.08);
+    }
   }
 }
 

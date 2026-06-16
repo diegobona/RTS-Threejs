@@ -1,5 +1,6 @@
 import { SIM_TICKS_PER_SECOND } from '@ra2web/game';
 import { SimpleAI, type Difficulty } from '../ai';
+import { audioBus } from '../audio-bus';
 import { createMatchWorld, localSkirmishConfig, type MapSize } from '../match-setup';
 import { MATCH_3D_STYLE, MatchView3D } from '../match-view-3d';
 
@@ -86,6 +87,7 @@ export async function renderPlay3D(root: HTMLElement): Promise<void> {
       }
     });
     root.querySelector('#p3-start')!.addEventListener('click', () => {
+      audioBus.resume();
       localStorage.setItem('ra2.diff', difficulty);
       localStorage.setItem('ra2.cash', String(credits));
       localStorage.setItem('ra2.map', mapSize);

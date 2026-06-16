@@ -6,7 +6,7 @@
 class Bgm {
   private el: HTMLAudioElement | null = null;
   private unavailable = false;
-  private wanted = localStorage.getItem('ra2.bgm') !== 'off';
+  private wanted = typeof localStorage === 'undefined' ? true : localStorage.getItem('ra2.bgm') !== 'off';
   private readonly cbs: (() => void)[] = [];
 
   private ensure(): HTMLAudioElement {
@@ -45,7 +45,7 @@ class Bgm {
   /** 开关；记忆到 localStorage。 */
   setOn(on: boolean): void {
     this.wanted = on;
-    localStorage.setItem('ra2.bgm', on ? 'on' : 'off');
+    if (typeof localStorage !== 'undefined') localStorage.setItem('ra2.bgm', on ? 'on' : 'off');
     if (on) this.play();
     else this.el?.pause();
   }

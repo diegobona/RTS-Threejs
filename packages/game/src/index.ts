@@ -17,6 +17,7 @@ export {
   type Player,
   type Projectile,
   type ProdCategory,
+  type ProducerState,
   type ProductionQueue,
   type TerrainInfo,
 } from './world';

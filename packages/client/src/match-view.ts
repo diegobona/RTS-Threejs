@@ -185,7 +185,6 @@ export class MatchView {
   private prevReady: Record<string, boolean> = {};
   /** 「基地受攻击」告警：记录己方建筑血量，掉血即报警（节流）。 */
   private bldHp = new Map<number, number>();
-  private prevPowerNeg = false; // 电力净值上帧是否为负（低电边沿检测）
   private evaWrap: HTMLElement | null = null; // EVA 文字横幅容器（懒建）
   private readonly evaAt = new Map<Eva, number>(); // 各 EVA 事件上次播报时刻（节流）
   /** 最近被攻击建筑的位置（小地图红点闪烁定位）。 */
@@ -213,7 +212,6 @@ export class MatchView {
 
   // DOM 引用
   private creditsEl!: HTMLElement;
-  private powerEl!: HTMLElement;
   private netEl!: HTMLElement;
   private selEl!: HTMLElement;
   private tabsEl!: HTMLElement;
@@ -321,7 +319,6 @@ export class MatchView {
       'beforeend',
       `<div class="mv-top">
          <span>资金 <b id="mv-credits">0</b></span>
-         <span>电力 <b id="mv-power" class="pwr-ok">0</b></span>
          <span id="mv-sel" style="color:#8fd0a0"></span>
          <span class="mv-net" id="mv-net"></span>
          <span style="flex:1"></span>
@@ -357,7 +354,6 @@ export class MatchView {
        <div id="mv-selbox"></div>`,
     );
     this.creditsEl = this.root.querySelector('#mv-credits')!;
-    this.powerEl = this.root.querySelector('#mv-power')!;
     this.selEl = this.root.querySelector('#mv-sel')!;
     this.netEl = this.root.querySelector('#mv-net')!;
     this.tabsEl = this.root.querySelector('#mv-tabs')!;
@@ -455,7 +451,7 @@ export class MatchView {
     this.app.canvas.addEventListener('pointerdown', unlock, { once: true });
     window.addEventListener('keydown', unlock, { once: true });
 
-    for (const cat of ['building', 'infantry', 'vehicle', 'aircraft'] as ProdCategory[]) {
+    for (const cat of ['building'] as ProdCategory[]) {
       const btn = document.createElement('button');
       btn.textContent = CATEGORY_LABEL[cat];
       btn.className = cat === this.activeTab ? 'on' : '';
@@ -474,7 +470,7 @@ export class MatchView {
     this.cameos = [];
     const localSide = this.world.players.get(this.localPlayerId)?.side;
     const all = [...this.world.rules.units.values()].filter(
-      (u) => categoryOf(u) === this.activeTab && (!localSide || u.side === localSide || u.id === 'harvester'),
+      (u) => categoryOf(u) === this.activeTab && (!localSide || u.side === localSide || u.id === 'harvester') && u.builtBy !== '',
     );
     for (const type of all) {
       const cell = document.createElement('div');
@@ -1515,12 +1511,6 @@ export class MatchView {
   private onAfterStep(): void {
     const p = this.world.players.get(this.localPlayerId)!;
     this.creditsEl.textContent = String(p.credits);
-    const net = p.powerProduced - p.powerDrained;
-    this.powerEl.textContent = `${p.powerProduced}/${p.powerDrained}`;
-    this.powerEl.className = net >= 0 ? 'pwr-ok' : 'pwr-low';
-    const neg = net < 0;
-    if (neg && !this.prevPowerNeg) this.eva('lowPower', '⚡ 电力不足', 'warn', 8000); // 转入低电瞬间报一次
-    this.prevPowerNeg = neg;
     if (this.world.tick % 4 === 0) {
       this.refreshSidebar();
       this.drawMinimap();
@@ -1572,7 +1562,7 @@ export class MatchView {
       if (lostMine) this.eva('unitLost', '✖ 单位损失', 'alert', 4000);
     }
     // 建筑建造完成（队列首项变为就绪）→ 提示音
-    for (const cat of ['building', 'infantry', 'vehicle', 'aircraft'] as const) {
+    for (const cat of ['building'] as const) {
       const q = this.world.queueFor(this.localPlayerId, cat);
       const ready = !!q?.readyToPlace;
       if (ready && !this.prevReady[cat]) {

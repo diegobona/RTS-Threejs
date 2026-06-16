@@ -18,7 +18,7 @@ describe('WWI air force content', () => {
       id: 'airbase',
       domain: 'building',
       builtBy: 'conyard',
-      prerequisites: ['warfactory'],
+      prerequisites: ['conyard'],
       building: { footprintW: 3, footprintH: 2, provides: 'airbase' },
     });
     expect(DEFAULT_RULES.units.get('fighter')).toMatchObject({

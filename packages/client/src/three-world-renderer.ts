@@ -30,6 +30,7 @@ import {
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { World, UnitType } from '@ra2web/game';
+import { ThreeAudioEventTracker, type ThreeAudioEvent, type ThreeAudioSnapshot } from './three-audio-events';
 import { cellToWorld3D, leptonToWorld3D, THREE_CELL_SIZE } from './three-coords';
 import { WW1_MODEL_SPECS, type Ww1ModelSpec } from './ww1-model-manifest';
 
@@ -116,12 +117,14 @@ export function projectileVisualPoint3D(
 export class ThreeWorldRenderer {
   readonly renderer: WebGLRenderer;
   readonly scene = new Scene();
+  onEvent: ((kind: ThreeAudioEvent['kind'], x: number, z: number) => void) | null = null;
   private readonly entityLayer = new Group();
   private readonly projectileLayer = new Group();
   private readonly previewLayer = new Group();
   private readonly views = new Map<number, EntityView>();
   private readonly modelTemplates = new Map<string, Object3D>();
   private readonly gltfLoader = new GLTFLoader();
+  private readonly audioEvents = new ThreeAudioEventTracker();
   private readonly tileGeo = new PlaneGeometry(THREE_CELL_SIZE, THREE_CELL_SIZE);
   private readonly oreGeo = new OctahedronGeometry(0.18, 0);
   private readonly projectileGeo = new SphereGeometry(0.12, 8, 8);
@@ -205,6 +208,7 @@ export class ThreeWorldRenderer {
   render(camera: Camera, alpha: number, selected: ReadonlySet<number>): void {
     this.syncEntities(alpha, selected);
     this.syncProjectiles();
+    this.emitAudioEvents();
     this.renderer.render(this.scene, camera);
   }
 
@@ -217,7 +221,7 @@ export class ThreeWorldRenderer {
       if (id === null) continue;
       const e = this.world.entities.get(id);
       const type = e && this.world.rules.units.get(e.typeId);
-      if (e?.owner === this.localPlayerId && type && type.domain !== 'building') return id;
+      if (e?.owner === this.localPlayerId && type) return id;
     }
     return null;
   }
@@ -1468,6 +1472,47 @@ export class ThreeWorldRenderer {
       sp.position.set(pos.x, pos.y, pos.z);
       this.projectileLayer.add(sp);
     }
+  }
+
+  private emitAudioEvents(): void {
+    if (!this.onEvent) {
+      this.audioEvents.update(this.audioSnapshot());
+      return;
+    }
+    for (const event of this.audioEvents.update(this.audioSnapshot())) {
+      this.onEvent(event.kind, event.x, event.z);
+    }
+  }
+
+  private audioSnapshot(): ThreeAudioSnapshot {
+    const entities: ThreeAudioSnapshot['entities'] = [];
+    for (const e of this.world.entities.values()) {
+      const type = this.world.rules.units.get(e.typeId);
+      if (!type) continue;
+      const pos = type.building
+        ? cellToWorld3D(e.cellX + (type.building.footprintW - 1) / 2, e.cellY + (type.building.footprintH - 1) / 2)
+        : leptonToWorld3D(e.x, e.y);
+      entities.push({
+        id: e.id,
+        x: pos.x,
+        z: pos.z,
+        hp: e.hp,
+        cooldown: e.cooldown,
+        targetId: e.targetId,
+        building: !!type.building,
+        engineer: type.engineer === true,
+        projectileSpeed: type.weapon?.projectileSpeed ?? 0,
+      });
+    }
+    const projectiles: ThreeAudioSnapshot['projectiles'] = [];
+    for (const p of this.world.projectiles) {
+      const shooter = this.world.entities.get(p.shooterId);
+      const shooterType = shooter && this.world.rules.units.get(shooter.typeId);
+      const target = this.world.entities.get(p.targetId);
+      const pos = projectileVisualPoint3D(shooterType, p, shooter, target);
+      projectiles.push({ id: p.id, x: pos.x, z: pos.z });
+    }
+    return { entities, projectiles };
   }
 
   private clearPreview(): void {

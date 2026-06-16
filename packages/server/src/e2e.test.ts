@@ -99,11 +99,11 @@ describe('端到端联机同步', () => {
     // 各自的操作脚本（盟军 A=玩家1，苏军 B=玩家2；建造场坐标见 server start）
     const aOps: Record<number, Command[]> = {
       6: [{ kind: 'produce', owner: 1, typeId: 'barracks' }],
-      8: [{ kind: 'produce', owner: 1, typeId: 'powerplant' }],
+      8: [{ kind: 'produce', owner: 1, typeId: 'refinery' }],
     };
     const bOps: Record<number, Command[]> = {
       6: [{ kind: 'produce', owner: 2, typeId: 'barracks' }],
-      10: [{ kind: 'produce', owner: 2, typeId: 'powerplant' }],
+      10: [{ kind: 'produce', owner: 2, typeId: 'refinery' }],
     };
 
     // 异步泵：反复处理消息直到双方都到约 80 tick

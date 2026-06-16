@@ -1,4 +1,7 @@
 import { World, categoryOf, type Command, type ProdCategory, type UnitType } from '@ra2web/game';
+import { Vector3 } from 'three';
+import { audioBus } from './audio-bus';
+import { bgm } from './bgm';
 import { ThreeCameraController } from './three-camera';
 import { cellToWorld3D, worldToCell3D } from './three-coords';
 import { productionButtonState } from './three-build-ui';
@@ -11,7 +14,7 @@ export function initialCameraFocus3D(mapW: number, mapH: number): { x: number; z
   return { x: center.x, z: center.z };
 }
 
-export const PRODUCTION_CATEGORIES_3D = ['building', 'infantry', 'vehicle', 'aircraft'] as const satisfies readonly ProdCategory[];
+export const PRODUCTION_CATEGORIES_3D = ['building'] as const satisfies readonly ProdCategory[];
 
 export const MATCH_3D_STYLE = `
 .mv3-root { position: fixed; inset: 0; overflow: hidden; background: #070b0d;
@@ -23,7 +26,7 @@ export const MATCH_3D_STYLE = `
 .mv3-top a { color: #6db3e8; text-decoration: none; }
 .mv3-build { position: fixed; right: 12px; top: 12px; z-index: 10; width: 196px; display: grid; gap: 6px;
   padding: 8px; background: rgba(8,12,16,.86); border: 1px solid rgba(120,150,170,.2); border-radius: 8px; }
-.mv3-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.mv3-tabs { display: grid; grid-template-columns: 1fr; gap: 4px; }
 .mv3-tabs button { height: 30px; padding: 0; border: 1px solid rgba(125,150,165,.2); border-radius: 5px;
   background: #0d151c; color: #8ea0aa; cursor: pointer; font-size: 12px; }
 .mv3-tabs button.on { color: #fff; border-color: #58a7d8; background: #173046; }
@@ -36,6 +39,13 @@ export const MATCH_3D_STYLE = `
 .mv3-prod-list button.placing { border-color: #e0c74c; color: #fff2a8; }
 .mv3-build .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mv3-build .state { color: #f0d040; font-variant-numeric: tabular-nums; font-size: 12px; }
+.mv3-producer { display: none; gap: 6px; padding-top: 6px; border-top: 1px solid rgba(125,150,165,.16); }
+.mv3-producer.on { display: grid; }
+.mv3-producer-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; color: #b8c5cc; }
+.mv3-producer button, .mv3-producer select { height: 30px; border-radius: 5px; border: 1px solid rgba(125,150,165,.25);
+  background: #0d151c; color: #dce6ed; }
+.mv3-producer button { cursor: pointer; padding: 0 9px; }
+.mv3-producer select { min-width: 118px; }
 .mv3-chip { position: fixed; left: 12px; bottom: 12px; z-index: 10; padding: 7px 12px;
   background: rgba(8,12,16,.82); border: 1px solid rgba(120,150,170,.18); border-radius: 8px; color: #aeb9c2; }
 .mv3-selbox { position: fixed; z-index: 9; display: none; pointer-events: none;
@@ -46,16 +56,18 @@ export class MatchView3D {
   private renderer!: ThreeWorldRenderer;
   private camera!: ThreeCameraController;
   private creditsEl!: HTMLElement;
-  private powerEl!: HTMLElement;
   private selBox!: HTMLElement;
   private tabsEl!: HTMLElement;
   private buildEl!: HTMLElement;
+  private producerEl!: HTMLElement;
   private lastStepAt = 0;
   private activeCategory: ProdCategory = 'building';
   private placingType: UnitType | null = null;
   private readonly selected = new Set<number>();
   private readonly localCommands: Command[] = [];
   private readonly buildButtons: { button: HTMLButtonElement; state: HTMLElement; type: UnitType }[] = [];
+  private readonly prevReady: Record<ProdCategory, boolean> = { building: false, infantry: false, vehicle: false, aircraft: false };
+  private producerPanelKey = '';
 
   constructor(
     private readonly root: HTMLElement,
@@ -66,10 +78,17 @@ export class MatchView3D {
   ) {}
 
   async init(): Promise<void> {
+    bgm.enterMatch();
+    audioBus.startBattleAmbience();
+    void audioBus.loadRealSounds();
     this.root.innerHTML = '';
     this.root.className = 'mv3-root';
     this.renderer = new ThreeWorldRenderer(this.root, this.world, this.localPlayerId);
     await this.renderer.loadModels();
+    this.renderer.onEvent = (kind, x, z) => {
+      const { pan, gain } = this.spatialOfWorld(x, z);
+      if (gain > 0.025) audioBus.play(kind, { pan, gain });
+    };
     this.camera = new ThreeCameraController(this.renderer.renderer, this.mapW, this.mapH);
     const focus = initialCameraFocus3D(this.mapW, this.mapH);
     this.camera.focus(focus.x, focus.z);
@@ -102,6 +121,7 @@ export class MatchView3D {
   }
 
   dispose(): void {
+    audioBus.stopBattleAmbience();
     this.renderer.dispose();
   }
 
@@ -111,33 +131,41 @@ export class MatchView3D {
       `<div class="mv3-top">
         <span>3D RTS Preview</span>
         <span>Credits <b id="mv3-credits">0</b></span>
-        <span>Power <b id="mv3-power">0</b></span>
         <span id="mv3-selected"></span>
+        <button id="mv3-mute" type="button" style="background:none;border:none;color:#9aa7b0;cursor:pointer;font-size:15px">Sound</button>
         <a href="#">Exit</a>
       </div>
       <div class="mv3-build">
         <div class="mv3-tabs" id="mv3-tabs"></div>
         <div class="mv3-prod-list" id="mv3-prod-list"></div>
+        <div class="mv3-producer" id="mv3-producer"></div>
       </div>
       <div class="mv3-selbox" id="mv3-selbox"></div>
-      <div class="mv3-chip">Produce: choose tab, click item | Buildings need Ready then placement</div>`,
+      <div class="mv3-chip">Build, rally, command the swarm</div>`,
     );
     this.creditsEl = this.root.querySelector('#mv3-credits')!;
-    this.powerEl = this.root.querySelector('#mv3-power')!;
     this.selBox = this.root.querySelector('#mv3-selbox')!;
     this.tabsEl = this.root.querySelector('#mv3-tabs')!;
     this.buildEl = this.root.querySelector('#mv3-prod-list')!;
+    this.producerEl = this.root.querySelector('#mv3-producer')!;
     this.buildProductionTabs();
     this.rebuildProductionPanel();
+    this.root.querySelector('#mv3-mute')?.addEventListener('click', () => {
+      const muted = audioBus.toggleMute();
+      bgm.setMatchMuted(muted);
+      const button = this.root.querySelector('#mv3-mute');
+      if (button) button.textContent = muted ? 'Muted' : 'Sound';
+    });
   }
 
   private updateHud(): void {
     const p = this.world.players.get(this.localPlayerId);
     this.creditsEl.textContent = String(p?.credits ?? 0);
-    this.powerEl.textContent = `${p?.powerProduced ?? 0}/${p?.powerDrained ?? 0}`;
     const sel = this.root.querySelector('#mv3-selected');
     if (sel) sel.textContent = this.selected.size > 0 ? `Selected ${this.selected.size}` : '';
     this.refreshBuildPanel();
+    this.refreshProducerPanel();
+    this.updateProductionAudio();
   }
 
   private buildProductionTabs(): void {
@@ -149,6 +177,7 @@ export class MatchView3D {
       button.addEventListener('click', () => {
         this.activeCategory = category;
         this.cancelPlacement();
+        audioBus.play('select');
         this.rebuildProductionPanel();
       });
       this.tabsEl.appendChild(button);
@@ -215,13 +244,18 @@ export class MatchView3D {
     if (type.domain === 'building' && q?.readyToPlace && q.items[0] === type.id) {
       this.placingType = type;
       this.selected.clear();
+      audioBus.play('select');
       return;
     }
     this.localCommands.push({ kind: 'produce', owner: this.localPlayerId, typeId: type.id });
+    audioBus.play(type.domain === 'building' ? 'build' : 'select');
   }
 
   private bindCameraInput(): void {
     const canvas = this.renderer.renderer.domElement;
+    const unlock = (): void => audioBus.resume();
+    canvas.addEventListener('pointerdown', unlock, { once: true });
+    window.addEventListener('keydown', unlock, { once: true });
     let panDrag: { x: number; y: number } | null = null;
     let selectDrag: { x: number; y: number } | null = null;
     canvas.addEventListener('contextmenu', (e: MouseEvent) => e.preventDefault());
@@ -285,6 +319,7 @@ export class MatchView3D {
         this.renderer.pickOwnUnit(this.camera.camera, endX, endY) ??
         nearestIdWithinRadius({ x: endX, y: endY }, this.renderer.ownUnitScreenPoints(this.camera.camera), 54);
       if (id !== null) this.selected.add(id);
+      if (this.selected.size > 0) audioBus.play('select');
       return;
     }
     const ids = idsInScreenRect(
@@ -292,6 +327,7 @@ export class MatchView3D {
       this.renderer.ownUnitScreenPoints(this.camera.camera),
     );
     for (const id of ids) this.selected.add(id);
+    if (this.selected.size > 0) audioBus.play('select');
   }
 
   private selectedCombatIds(): number[] {
@@ -304,6 +340,24 @@ export class MatchView3D {
     return out.sort((a, b) => a - b);
   }
 
+  private selectedMovableIds(): number[] {
+    const out: number[] = [];
+    for (const id of this.selected) {
+      const e = this.world.entities.get(id);
+      const type = e && this.world.rules.units.get(e.typeId);
+      if (type && type.domain !== 'building') out.push(id);
+    }
+    return out.sort((a, b) => a - b);
+  }
+
+  private selectedProducerBuilding(): { id: number; entity: NonNullable<ReturnType<World['entities']['get']>> } | null {
+    if (this.selected.size !== 1) return null;
+    const id = [...this.selected][0]!;
+    const entity = this.world.entities.get(id);
+    if (!entity || entity.owner !== this.localPlayerId || !entity.producer) return null;
+    return { id, entity };
+  }
+
   private issueRightClickOrder(clientX: number, clientY: number): void {
     const hit = this.camera.groundAt(clientX, clientY);
     const rawCell = hit ? worldToCell3D(hit.x, hit.z) : null;
@@ -311,14 +365,25 @@ export class MatchView3D {
       rawCell && rawCell.x >= 0 && rawCell.y >= 0 && rawCell.x < this.mapW && rawCell.y < this.mapH ? rawCell : null;
     const targetId = this.renderer.pickEntity(this.camera.camera, clientX, clientY);
     const target = targetId === null ? null : this.world.entities.get(targetId);
+    const producer = this.selectedProducerBuilding();
+    if (producer && cell && (!target || target.owner === this.localPlayerId)) {
+      this.localCommands.push({ kind: 'setRally', owner: this.localPlayerId, buildingId: producer.id, cellX: cell.x, cellY: cell.y });
+      audioBus.play('move');
+      return;
+    }
     const cmd = rightClickCommand({
-      selectedIds: [...this.selected],
+      selectedIds: this.selectedMovableIds(),
       combatIds: this.selectedCombatIds(),
       target: target ? { id: target.id, owner: target.owner } : null,
       localPlayerId: this.localPlayerId,
       cell,
     });
-    if (cmd) this.localCommands.push(cmd);
+    if (cmd) {
+      this.localCommands.push(cmd);
+      audioBus.play('move');
+    } else {
+      audioBus.play('deny');
+    }
   }
 
   private tryPlaceBuilding(clientX: number, clientY: number): void {
@@ -328,9 +393,11 @@ export class MatchView3D {
     const cell = worldToCell3D(hit.x, hit.z);
     if (!this.world.canPlace(this.localPlayerId, this.placingType, cell.x, cell.y)) {
       this.updateBuildPreview(clientX, clientY);
+      audioBus.play('deny');
       return;
     }
     this.localCommands.push({ kind: 'place', owner: this.localPlayerId, typeId: this.placingType.id, cellX: cell.x, cellY: cell.y });
+    audioBus.play('place');
     this.cancelPlacement();
   }
 
@@ -356,6 +423,98 @@ export class MatchView3D {
   private cancelPlacement(): void {
     this.placingType = null;
     this.renderer.setBuildPreview(null, null, false);
+  }
+
+  private refreshProducerPanel(): void {
+    const selected = this.selectedProducerBuilding();
+    const producer = selected?.entity.producer ?? null;
+    if (!selected || !producer) {
+      this.producerPanelKey = '';
+      this.producerEl.innerHTML = '';
+      this.producerEl.classList.remove('on');
+      return;
+    }
+
+    const options = this.producerOptionsFor(selected.entity);
+    const activeType = this.world.rules.units.get(producer.paidTypeId ?? producer.typeId);
+    const pct = activeType && producer.paidTypeId ? Math.floor((producer.progress / activeType.buildTime) * 100) : 0;
+    const key = [
+      selected.id,
+      producer.enabled ? 1 : 0,
+      producer.typeId,
+      producer.paidTypeId ?? '',
+      producer.progress,
+      options.map((o) => o.id).join(','),
+    ].join('|');
+    if (key === this.producerPanelKey) return;
+    this.producerPanelKey = key;
+    this.producerEl.innerHTML = '';
+    this.producerEl.classList.add('on');
+
+    const title = document.createElement('div');
+    title.className = 'mv3-producer-row';
+    const titleText = document.createElement('span');
+    titleText.textContent = this.buildLabel(this.world.rules.units.get(selected.entity.typeId)!);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.textContent = producer.enabled ? 'Auto' : 'Off';
+    toggle.addEventListener('click', () => {
+      this.localCommands.push({ kind: 'setAutoProduction', owner: this.localPlayerId, buildingId: selected.id, enabled: !producer.enabled });
+      audioBus.play('select');
+    });
+    title.append(titleText, toggle);
+
+    const row = document.createElement('div');
+    row.className = 'mv3-producer-row';
+    const progress = document.createElement('span');
+    progress.textContent = producer.paidTypeId ? `${Math.max(0, Math.min(100, pct))}%` : 'Idle';
+    const select = document.createElement('select');
+    for (const option of options) {
+      const item = document.createElement('option');
+      item.value = option.id;
+      item.textContent = this.buildLabel(option);
+      select.appendChild(item);
+    }
+    select.value = producer.typeId;
+    select.addEventListener('change', () => {
+      this.localCommands.push({ kind: 'setProducerType', owner: this.localPlayerId, buildingId: selected.id, typeId: select.value });
+      audioBus.play('select');
+    });
+    row.append(progress, select);
+    this.producerEl.append(title, row);
+  }
+
+  private producerOptionsFor(building: NonNullable<ReturnType<World['entities']['get']>>): UnitType[] {
+    const localSide = this.world.players.get(this.localPlayerId)?.side;
+    const options = [...this.world.rules.units.values()].filter(
+      (type) =>
+        type.builtBy === building.typeId &&
+        type.domain !== 'building' &&
+        (!localSide || type.side === localSide || type.id === 'harvester') &&
+        this.world.canBuild(this.localPlayerId, type),
+    );
+    const current = building.producer ? this.world.rules.units.get(building.producer.typeId) : undefined;
+    if (current && !options.some((type) => type.id === current.id)) options.unshift(current);
+    return options;
+  }
+
+  private updateProductionAudio(): void {
+    for (const category of PRODUCTION_CATEGORIES_3D) {
+      const ready = !!this.world.queueFor(this.localPlayerId, category)?.readyToPlace;
+      if (ready && !this.prevReady[category]) {
+        if (category === 'building') audioBus.playEva('buildComplete');
+        else audioBus.play('ready');
+      }
+      this.prevReady[category] = ready;
+    }
+  }
+
+  private spatialOfWorld(x: number, z: number): { pan: number; gain: number } {
+    const projected = new Vector3(x, 0.5, z).project(this.camera.camera);
+    const pan = Math.max(-1, Math.min(1, projected.x));
+    const distance = Math.hypot(projected.x, projected.y);
+    const gain = Math.max(0, Math.min(1, 1.05 - distance * 0.42));
+    return { pan, gain };
   }
 
   private buildLabel(type: UnitType): string {

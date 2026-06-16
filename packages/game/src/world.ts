@@ -50,6 +50,13 @@ export interface ProductionQueue {
   readyToPlace: boolean;
 }
 
+export interface ProducerState {
+  enabled: boolean;
+  typeId: string;
+  progress: number;
+  paidTypeId: string | null;
+}
+
 export interface HarvesterState {
   mode: 'seek' | 'toOre' | 'harvest' | 'toRefinery' | 'unload';
   /** 已装载矿石价值。 */
@@ -98,6 +105,8 @@ export interface Entity {
   rallyX: number;
   rallyY: number;
   repairing: boolean;
+  producer: ProducerState | null;
+  producerExit: { x: number; y: number } | null;
 }
 
 export interface Projectile {
@@ -125,6 +134,8 @@ export type Command =
   | { kind: 'engineerEnter'; entityIds: number[]; targetId: number }
   | { kind: 'harvest'; entityIds: number[]; cellX: number; cellY: number }
   | { kind: 'setRally'; owner: number; buildingId: number; cellX: number; cellY: number }
+  | { kind: 'setAutoProduction'; owner: number; buildingId: number; enabled: boolean }
+  | { kind: 'setProducerType'; owner: number; buildingId: number; typeId: string }
   | { kind: 'sell'; owner: number; entityId: number }
   | { kind: 'repair'; owner: number; entityId: number }
   | { kind: 'stance'; entityIds: number[]; stance: Stance }
@@ -140,6 +151,11 @@ const CATEGORY_PRODUCER: Record<ProdCategory, string> = {
 const HARVEST_RATE = 30;
 const HARVEST_CAPACITY = 700;
 const HARVEST_TICKS = 2;
+const SIM_TICKS_PER_SECOND = 5;
+const CONYARD_INCOME_PER_SECOND = 150;
+const REFINERY_INCOME_PER_SECOND = 600;
+const AUTO_PRODUCTION_STEP = 2;
+const MAX_NON_BUILDING_UNITS_PER_PLAYER = 600;
 /** 建造半径（格）：新建筑须距己方某建筑足迹不超过此距离。 */
 const BUILD_RADIUS = 6;
 /** 单位「警戒」半径（lepton）：空闲单位会主动迎击此范围内的敌人（即便超出武器射程也会上前）。 */
@@ -151,6 +167,25 @@ const REPAIR_COST_RATIO = 0.5;
 
 export function categoryOf(u: UnitType): ProdCategory {
   return u.domain === 'building' ? 'building' : u.domain;
+}
+
+function producerDomain(buildingId: string): Exclude<ProdCategory, 'building'> | null {
+  if (buildingId === 'barracks') return 'infantry';
+  if (buildingId === 'warfactory') return 'vehicle';
+  if (buildingId === 'airbase') return 'aircraft';
+  return null;
+}
+
+function defaultProducerUnit(buildingId: string, side: Side): string | null {
+  if (buildingId === 'barracks') return side === 'soviet' ? 'conscript' : 'gi';
+  if (buildingId === 'warfactory') return side === 'soviet' ? 'rhino' : 'grizzly';
+  if (buildingId === 'airbase') return 'fighter';
+  return null;
+}
+
+function addHashString(h: StateHash, value: string): void {
+  h.addInt(value.length);
+  for (let i = 0; i < value.length; i++) h.addInt(value.charCodeAt(i));
 }
 
 export class World {
@@ -166,6 +201,7 @@ export class World {
   private nextProjectileId = 1;
   /** 建筑占用的格 → entityId，用于放置校验与寻路阻挡。 */
   private readonly occupied = new Map<number, number>();
+  private readonly reservedProducerExits = new Map<number, number>();
 
   constructor(
     readonly terrain: TerrainInfo,
@@ -318,6 +354,12 @@ export class World {
           }
           break;
         }
+        case 'setAutoProduction':
+          this.setAutoProduction(cmd.owner, cmd.buildingId, cmd.enabled);
+          break;
+        case 'setProducerType':
+          this.setProducerType(cmd.owner, cmd.buildingId, cmd.typeId);
+          break;
         case 'sell':
           this.sellBuilding(cmd.owner, cmd.entityId);
           break;
@@ -394,6 +436,8 @@ export class World {
       rallyY: -1,
       repairing: false,
       harvester: type.id === 'harvester' ? { mode: 'seek', load: 0, timer: 0 } : null,
+      producer: null,
+      producerExit: null,
     };
     this.entities.set(id, e);
     return e;
@@ -431,6 +475,7 @@ export class World {
 
   queueProduction(owner: number, typeId: string): boolean {
     const type = this.rules.units.get(typeId);
+    if (type?.domain !== 'building') return false;
     if (!type || !this.canBuild(owner, type)) return false;
     this.getQueue(owner, categoryOf(type)).items.push(typeId);
     return true;
@@ -462,8 +507,8 @@ export class World {
 
   /** 该单位当前能否建造（生产建筑存在 + 前置满足）。 */
   canBuild(owner: number, type: UnitType): boolean {
-    const producer = CATEGORY_PRODUCER[categoryOf(type)];
-    if (!this.hasBuilding(owner, producer)) return false;
+    if (type.builtBy === '') return false;
+    if (!this.hasBuilding(owner, type.builtBy)) return false;
     for (const pre of type.prerequisites) {
       if (!this.hasBuilding(owner, pre)) return false;
     }
@@ -482,9 +527,7 @@ export class World {
   private stepProduction(): void {
     for (const player of this.players.values()) {
       if (player.defeated) continue;
-      // 低电时建造减速：电力不足 → 半速
-      const powerOk = player.powerProduced >= player.powerDrained;
-      for (const category of ['building', 'infantry', 'vehicle', 'aircraft'] as ProdCategory[]) {
+      for (const category of ['building'] as ProdCategory[]) {
         const q = this.queueFor(player.id, category);
         if (!q || q.items.length === 0 || q.readyToPlace) continue;
         const type = this.rules.units.get(q.items[0]!);
@@ -495,7 +538,7 @@ export class World {
         // 生产建筑被摧毁 → 暂停
         if (!this.hasBuilding(player.id, CATEGORY_PRODUCER[category])) continue;
 
-        const step = powerOk ? 2 : 1; // 半速即每 2 tick 进 1
+        const step = AUTO_PRODUCTION_STEP;
         const costPerTick = type.cost / type.buildTime;
         const wouldSpend = Math.ceil(costPerTick * step);
         if (player.credits < wouldSpend) continue; // 钱不够则停滞
@@ -538,6 +581,118 @@ export class World {
   }
 
   /** 修理：开启修理的建筑每隔若干 tick 扣钱回血。 */
+  private setAutoProduction(owner: number, buildingId: number, enabled: boolean): void {
+    const building = this.entities.get(buildingId);
+    if (!building || building.owner !== owner || !building.producer) return;
+    building.producer.enabled = enabled;
+  }
+
+  private setProducerType(owner: number, buildingId: number, typeId: string): void {
+    const building = this.entities.get(buildingId);
+    if (!building || building.owner !== owner || !building.producer) return;
+    if (!this.isValidProducerChoice(owner, building, typeId)) return;
+    if (building.producer.typeId === typeId) return;
+    this.refundProducerProgress(owner, building.producer);
+    building.producer.typeId = typeId;
+    building.producer.progress = 0;
+    building.producer.paidTypeId = null;
+  }
+
+  private refundProducerProgress(owner: number, producer: ProducerState): void {
+    if (!producer.paidTypeId) return;
+    const type = this.rules.units.get(producer.paidTypeId);
+    const player = this.players.get(owner);
+    if (type && player) player.credits += type.cost;
+  }
+
+  private isValidProducerChoice(owner: number, building: Entity, typeId: string): boolean {
+    const domain = producerDomain(building.typeId);
+    const type = this.rules.units.get(typeId);
+    if (!domain || !type || type.domain !== domain) return false;
+    if (type.builtBy !== building.typeId) return false;
+    for (const pre of type.prerequisites) {
+      if (!this.hasBuilding(owner, pre)) return false;
+    }
+    return true;
+  }
+
+  private stepCombatIncome(): void {
+    if ((this.tick + 1) % SIM_TICKS_PER_SECOND !== 0) return;
+    for (const e of this.entities.values()) {
+      const player = this.players.get(e.owner);
+      if (!player || player.defeated) continue;
+      if (e.typeId === 'conyard') player.credits += CONYARD_INCOME_PER_SECOND;
+      else if (e.typeId === 'refinery') player.credits += REFINERY_INCOME_PER_SECOND;
+    }
+  }
+
+  private stepAutoProduction(): void {
+    const producers = [...this.entities.values()]
+      .filter((e) => e.producer && this.rules.units.get(e.typeId)?.domain === 'building')
+      .sort((a, b) => a.id - b.id);
+    for (const building of producers) this.stepProducer(building);
+  }
+
+  private stepProducer(building: Entity): void {
+    const producer = building.producer;
+    const player = this.players.get(building.owner);
+    if (!producer || !producer.enabled || !player || player.defeated) return;
+    if (this.nonBuildingUnitCount(building.owner) >= MAX_NON_BUILDING_UNITS_PER_PLAYER) return;
+
+    const activeTypeId = producer.paidTypeId ?? producer.typeId;
+    let type = this.rules.units.get(activeTypeId);
+    if (!type || !this.isValidProducerChoice(building.owner, building, activeTypeId)) {
+      const fallback = defaultProducerUnit(building.typeId, player.side);
+      if (!fallback || !this.isValidProducerChoice(building.owner, building, fallback)) return;
+      producer.typeId = fallback;
+      producer.progress = 0;
+      producer.paidTypeId = null;
+      type = this.rules.units.get(fallback)!;
+    }
+
+    if (!producer.paidTypeId) {
+      if (player.credits < type.cost) return;
+      player.credits -= type.cost;
+      producer.paidTypeId = type.id;
+      producer.progress = 0;
+    }
+
+    producer.progress += AUTO_PRODUCTION_STEP;
+    if (producer.progress < type.buildTime) return;
+    if (!this.spawnFromProducer(building, type)) {
+      producer.progress = type.buildTime;
+      return;
+    }
+    producer.progress = 0;
+    producer.paidTypeId = null;
+  }
+
+  private nonBuildingUnitCount(owner: number): number {
+    let count = 0;
+    for (const e of this.entities.values()) {
+      const type = this.rules.units.get(e.typeId);
+      if (e.owner === owner && type && type.domain !== 'building') count++;
+    }
+    return count;
+  }
+
+  private spawnFromProducer(building: Entity, type: UnitType): boolean {
+    let unit: Entity;
+    if (type.domain === 'aircraft') {
+      unit = this.makeEntity(building.owner, type, building.x, building.y);
+    } else {
+      const exit = building.producerExit;
+      if (!exit) return false;
+      unit = this.makeEntity(building.owner, type, cellToLepton(exit.x), cellToLepton(exit.y));
+    }
+    const rally = building.rallyX >= 0 && building.rallyY >= 0 ? { x: building.rallyX, y: building.rallyY } : null;
+    const exit = building.producerExit;
+    const disperse = exit ? this.passableNear(exit.x, exit.y + 1, 6) : null;
+    const dest = rally ?? disperse;
+    if (dest && (dest.x !== unit.cellX || dest.y !== unit.cellY)) this.orderMove(unit, dest.x, dest.y);
+    return true;
+  }
+
   private stepRepair(): void {
     if (this.tick % REPAIR_INTERVAL !== 0) return;
     for (const e of this.entities.values()) {
@@ -575,13 +730,42 @@ export class World {
         if (cx < 0 || cy < 0 || cx >= this.terrain.width || cy >= this.terrain.height) return false;
         if (!this.terrain.passable(cx, cy)) return false;
         if (this.occupied.has(cy * this.terrain.width + cx)) return false;
+        if (this.reservedProducerExits.has(cy * this.terrain.width + cx)) return false;
       }
     }
+    if (this.needsGroundProducerExit(type) && !this.findProducerExit(type, cellX, cellY)) return false;
     // 建造半径：须毗邻己方已有建筑（首座除外，避免开局无处可放）
     if (this.ownsAnyBuilding(owner) && !this.withinBuildRadius(owner, cellX, cellY, b.footprintW, b.footprintH)) {
       return false;
     }
     return true;
+  }
+
+  private needsGroundProducerExit(type: UnitType): boolean {
+    const domain = producerDomain(type.id);
+    return domain === 'infantry' || domain === 'vehicle';
+  }
+
+  private findProducerExit(type: UnitType, cellX: number, cellY: number): { x: number; y: number } | null {
+    const b = type.building;
+    if (!b || !this.needsGroundProducerExit(type)) return null;
+    const candidates: { x: number; y: number }[] = [];
+    const centerX = cellX + Math.floor(b.footprintW / 2);
+    candidates.push({ x: centerX, y: cellY + b.footprintH });
+    for (let dx = 0; dx < b.footprintW; dx++) candidates.push({ x: cellX + dx, y: cellY + b.footprintH });
+    for (let dy = 0; dy < b.footprintH; dy++) candidates.push({ x: cellX + b.footprintW, y: cellY + dy });
+    for (let dy = 0; dy < b.footprintH; dy++) candidates.push({ x: cellX - 1, y: cellY + dy });
+    for (let dx = 0; dx < b.footprintW; dx++) candidates.push({ x: cellX + dx, y: cellY - 1 });
+    for (const c of candidates) {
+      if (this.canReserveProducerExit(c.x, c.y)) return c;
+    }
+    return null;
+  }
+
+  private canReserveProducerExit(x: number, y: number): boolean {
+    if (x < 0 || y < 0 || x >= this.terrain.width || y >= this.terrain.height) return false;
+    const key = y * this.terrain.width + x;
+    return this.terrain.passable(x, y) && !this.occupied.has(key) && !this.reservedProducerExits.has(key);
   }
 
   private ownsAnyBuilding(owner: number): boolean {
@@ -634,12 +818,27 @@ export class World {
         this.occupied.set((cellY + dy) * this.terrain.width + (cellX + dx), e.id);
       }
     }
+    this.initProducer(e, type);
     // 精炼厂送一辆免费矿车
     if (b.freeHarvester) {
       const hx = Math.min(cellX + b.footprintW, this.terrain.width - 1);
       this.makeEntity(owner, this.rules.units.get('harvester')!, cellToLepton(hx), cellToLepton(cellY + 1));
     }
     return e;
+  }
+
+  private initProducer(e: Entity, type: UnitType): void {
+    const player = this.players.get(e.owner);
+    const defaultType = player ? defaultProducerUnit(type.id, player.side) : null;
+    if (!defaultType) return;
+    e.producer = { enabled: true, typeId: defaultType, progress: 0, paidTypeId: null };
+    if (this.needsGroundProducerExit(type)) {
+      const exit = this.findProducerExit(type, e.cellX, e.cellY);
+      if (exit) {
+        e.producerExit = exit;
+        this.reservedProducerExits.set(exit.y * this.terrain.width + exit.x, e.id);
+      }
+    }
   }
 
   private removeBuildingOccupancy(e: Entity): void {
@@ -651,26 +850,10 @@ export class World {
         if (this.occupied.get(key) === e.id) this.occupied.delete(key);
       }
     }
-  }
-
-  // ───────────────────────── 电力结算 ─────────────────────────
-
-  private stepPower(): void {
-    for (const p of this.players.values()) {
-      p.powerProduced = 0;
-      p.powerDrained = 0;
-    }
-    for (const e of this.entities.values()) {
-      const b = this.rules.units.get(e.typeId)?.building;
-      if (!b) continue;
-      const p = this.players.get(e.owner);
-      if (!p) continue;
-      // 受损建筑按血量比例发电（红警2 风格）
-      if (b.power > 0) {
-        p.powerProduced += Math.floor((b.power * e.hp) / e.maxHp);
-      } else {
-        p.powerDrained += -b.power;
-      }
+    if (e.producerExit) {
+      const key = e.producerExit.y * this.terrain.width + e.producerExit.x;
+      if (this.reservedProducerExits.get(key) === e.id) this.reservedProducerExits.delete(key);
+      e.producerExit = null;
     }
   }
 
@@ -1132,17 +1315,17 @@ export class World {
   // ───────────────────────── tick ─────────────────────────
 
   step(): void {
-    this.stepPower();
+    this.stepCombatIncome();
     this.stepProduction();
     this.stepRepair();
     for (const e of this.entities.values()) {
       const type = this.rules.units.get(e.typeId);
       if (!type) continue;
-      if (e.harvester) this.stepHarvester(e, type);
       if (e.enterTarget !== null && this.stepEngineer(e)) continue; // 工程师进入建筑→已消耗，跳过本帧余下
       const engaging = this.stepCombat(e, type);
       if (!engaging) this.stepMovement(e, type);
     }
+    this.stepAutoProduction();
     this.stepProjectiles();
     this.reapDead();
     this.tick++;
@@ -1162,6 +1345,13 @@ export class World {
       h.addInt(e.id).addInt(e.owner).addInt(e.x).addInt(e.y).addInt(e.facing).addInt(e.hp);
       h.addInt(e.harvester ? e.harvester.load : -1);
       h.addInt(e.repairing ? 1 : 0).addInt(e.rallyX).addInt(e.rallyY).addInt(e.enterTarget ?? -1);
+      h.addInt(e.producer ? 1 : 0)
+        .addInt(e.producer?.enabled ? 1 : 0)
+        .addInt(e.producer?.progress ?? -1);
+      addHashString(h, e.producer?.typeId ?? '');
+      addHashString(h, e.producer?.paidTypeId ?? '');
+      h.addInt(e.producerExit?.x ?? -1)
+        .addInt(e.producerExit?.y ?? -1);
     }
     h.addInt(this.projectiles.length);
     for (const p of this.projectiles) h.addInt(p.id).addInt(p.x).addInt(p.y);

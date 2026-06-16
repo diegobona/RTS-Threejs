@@ -8,7 +8,7 @@ describe('MatchView3D camera defaults', () => {
 });
 
 describe('MatchView3D production tabs', () => {
-  it('exposes an aircraft tab for airbase-built fighters', () => {
-    expect(PRODUCTION_CATEGORIES_3D).toEqual(['building', 'infantry', 'vehicle', 'aircraft']);
+  it('only exposes manual building production; units are produced automatically by buildings', () => {
+    expect(PRODUCTION_CATEGORIES_3D).toEqual(['building']);
   });
 });

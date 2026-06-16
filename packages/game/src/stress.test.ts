@@ -15,7 +15,7 @@ function buildBattle(): ScriptedCommand[] {
     [2, 44, 44],
   ] as const) {
     script.push({ tick: 0, command: { kind: 'spawn', owner, typeId: 'conyard', cellX: ox, cellY: oy } });
-    script.push({ tick: 0, command: { kind: 'spawn', owner, typeId: 'powerplant', cellX: ox + 4, cellY: oy } });
+    script.push({ tick: 0, command: { kind: 'spawn', owner, typeId: 'battlelab', cellX: ox + 4, cellY: oy } });
     script.push({ tick: 0, command: { kind: 'spawn', owner, typeId: 'refinery', cellX: ox, cellY: oy + 4 } });
     let id = 1;
     for (let i = 0; i < 24; i++) {
