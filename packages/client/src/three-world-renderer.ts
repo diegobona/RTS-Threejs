@@ -75,6 +75,7 @@ interface AircraftActivity3D {
   goal?: unknown | null;
   waypoint?: unknown | null;
   attackMove?: boolean;
+  loiterCenter?: { x: number; z: number } | null;
 }
 
 export const LOWPOLY_FIGHTER_MODEL_SCALE = 1.45;
@@ -142,7 +143,7 @@ export function aircraftIdleOrbitOffset3D(
   if (type.domain !== 'aircraft') return new Vector3();
   if (activity.targetId !== null && activity.targetId !== undefined) return new Vector3();
   if ((activity.pathLength ?? 0) > 0 || activity.goal || activity.waypoint || activity.attackMove) return new Vector3();
-  const center = homeBaseCenter ?? aircraftPosition;
+  const center = activity.loiterCenter ?? homeBaseCenter ?? aircraftPosition;
   const loiter = aircraftIdleLoiterPoint3D(timeSeconds, entityId, center);
   return new Vector3(loiter.x - aircraftPosition.x, 0, loiter.z - aircraftPosition.z);
 }
@@ -154,6 +155,13 @@ export function aircraftIdleOrbitYaw3D(timeSeconds: number, entityId: number): n
   const vx = next.x - current.x;
   const vz = next.z - current.z;
   return Math.atan2(-vz, vx);
+}
+
+export function aircraftVisualStep3D(current: Vector3, desired: Vector3, maxStep: number): Vector3 {
+  const delta = desired.clone().sub(current);
+  const distance = delta.length();
+  if (distance <= 0.001 || distance <= maxStep) return desired.clone();
+  return current.clone().add(delta.multiplyScalar(maxStep / distance));
 }
 
 function aircraftIdleLoiterPoint3D(timeSeconds: number, entityId: number, center: { x: number; z: number }): Vector3 {
@@ -676,16 +684,31 @@ export class ThreeWorldRenderer {
         const lx = last?.x ?? e.x;
         const ly = last?.y ?? e.y;
         const pos = leptonToWorld3D(lx + (e.x - lx) * alpha, ly + (e.y - ly) * alpha);
+        const loiterCenter =
+          type.domain === 'aircraft' && e.airLoiterX >= 0 && e.airLoiterY >= 0
+            ? cellToWorld3D(e.airLoiterX, e.airLoiterY)
+            : null;
         const orbit = aircraftIdleOrbitOffset3D(
           type,
-          { targetId: e.targetId, pathLength: e.path.length, goal: e.goal, waypoint: e.waypoint, attackMove: e.attackMove },
+          { targetId: e.targetId, pathLength: e.path.length, goal: e.goal, waypoint: e.waypoint, attackMove: e.attackMove, loiterCenter },
           { x: pos.x, z: pos.z },
           airOrbitCenters.get(e.owner),
           nowSeconds,
           e.id,
         );
         const orbiting = type.domain === 'aircraft' && (Math.abs(orbit.x) > 0.001 || Math.abs(orbit.z) > 0.001);
-        view.root.position.set(pos.x + orbit.x, entityRootAltitude3D(type) + orbit.y, pos.z + orbit.z);
+        const desired = new Vector3(pos.x + orbit.x, entityRootAltitude3D(type) + orbit.y, pos.z + orbit.z);
+        if (type.domain === 'aircraft') {
+          const lastVisual = view.root.userData.visualPosition as Vector3 | undefined;
+          const lastVisualTime = view.root.userData.visualTime as number | undefined;
+          const dt = Math.max(1 / 120, Math.min(0.12, lastVisualTime === undefined ? 1 / 60 : nowSeconds - lastVisualTime));
+          const visual = lastVisual ? aircraftVisualStep3D(lastVisual, desired, 26 * dt) : desired;
+          view.root.position.copy(visual);
+          view.root.userData.visualPosition = visual.clone();
+          view.root.userData.visualTime = nowSeconds;
+        } else {
+          view.root.position.copy(desired);
+        }
         view.root.rotation.y = orbiting ? aircraftIdleOrbitYaw3D(nowSeconds, e.id) : entityYawForFacing3D(e.facing);
         view.root.userData.last = { x: e.x, y: e.y };
       }

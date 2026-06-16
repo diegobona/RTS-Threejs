@@ -4,6 +4,7 @@ import {
   combatEffectProfile3D,
   aircraftIdleOrbitOffset3D,
   aircraftIdleOrbitYaw3D,
+  aircraftVisualStep3D,
   entityRootAltitude3D,
   entitySelectionRingAltitude3D,
   entityYawForFacing3D,
@@ -144,6 +145,24 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(new Set(turnSigns).size).toBeGreaterThanOrEqual(2);
   });
 
+  it('orbits idle aircraft around their ordered airspace before falling back to home base', () => {
+    const aircraftPos = new Vector3(26, 0, 26);
+    const homeBase = new Vector3(5, 0, 5);
+    const orderedAirspace = new Vector3(28, 0, 28);
+    const offset = aircraftIdleOrbitOffset3D(
+      { domain: 'aircraft' },
+      { targetId: null, pathLength: 0, loiterCenter: orderedAirspace },
+      aircraftPos,
+      homeBase,
+      2,
+      9,
+    );
+    const visual = aircraftPos.clone().add(offset);
+
+    expect(visual.distanceTo(orderedAirspace)).toBeLessThan(12);
+    expect(visual.distanceTo(homeBase)).toBeGreaterThan(20);
+  });
+
   it('turns idle aircraft along the tangent of the orbit', () => {
     const yawA = aircraftIdleOrbitYaw3D(0, 5);
     const yawB = aircraftIdleOrbitYaw3D(1, 5);
@@ -151,6 +170,16 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(yawB).not.toBeCloseTo(yawA);
     expect(Number.isFinite(yawA)).toBe(true);
     expect(Number.isFinite(yawB)).toBe(true);
+  });
+
+  it('caps abrupt aircraft visual jumps when leaving idle loiter', () => {
+    const current = new Vector3(0, 0, 0);
+    const farDesired = new Vector3(30, 0, 0);
+    const stepped = aircraftVisualStep3D(current, farDesired, 2);
+
+    expect(stepped.distanceTo(current)).toBeCloseTo(2);
+    expect(stepped.distanceTo(farDesired)).toBeGreaterThan(20);
+    expect(aircraftVisualStep3D(current, new Vector3(1, 0, 0), 2).x).toBeCloseTo(1);
   });
 
   it('maps combat events to distinct visible spark and blast effects', () => {

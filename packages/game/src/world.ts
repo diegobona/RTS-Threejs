@@ -104,6 +104,8 @@ export interface Entity {
   // 建筑：集结点（格，-1=无）+ 是否在修理
   rallyX: number;
   rallyY: number;
+  airLoiterX: number;
+  airLoiterY: number;
   repairing: boolean;
   producer: ProducerState | null;
   producerExit: { x: number; y: number } | null;
@@ -256,11 +258,13 @@ export class World {
         case 'move': {
           // 多个单位：散开到目标周围不同格（队形展开），避免挤成一坨/互相挡路
           const ids = [...cmd.entityIds].sort((a, b) => a - b);
-          const slots = ids.length > 1 ? this.spreadDestinations(cmd.cellX, cmd.cellY, ids.length) : [{ x: cmd.cellX, y: cmd.cellY }];
+          const airFormation = this.allAircraft(ids);
+          const slots = ids.length > 1 ? this.spreadDestinations(cmd.cellX, cmd.cellY, ids.length, airFormation ? 3 : 1, airFormation) : [{ x: cmd.cellX, y: cmd.cellY }];
           ids.forEach((eid, i) => {
             const e = this.entities.get(eid);
             if (!e) return;
             const s = slots[i] ?? slots[0]!;
+            this.setAircraftLoiter(e, s.x, s.y);
             this.orderMove(e, s.x, s.y);
             e.targetId = null;
             e.attackMove = false;
@@ -273,11 +277,13 @@ export class World {
         }
         case 'attackMove': {
           const ids = [...cmd.entityIds].sort((a, b) => a - b);
-          const slots = ids.length > 1 ? this.spreadDestinations(cmd.cellX, cmd.cellY, ids.length) : [{ x: cmd.cellX, y: cmd.cellY }];
+          const airFormation = this.allAircraft(ids);
+          const slots = ids.length > 1 ? this.spreadDestinations(cmd.cellX, cmd.cellY, ids.length, airFormation ? 3 : 1, airFormation) : [{ x: cmd.cellX, y: cmd.cellY }];
           ids.forEach((eid, i) => {
             const e = this.entities.get(eid);
             if (!e) return;
             const s = slots[i] ?? slots[0]!;
+            this.setAircraftLoiter(e, s.x, s.y);
             this.orderMove(e, s.x, s.y);
             e.targetId = null;
             e.attackMove = true;
@@ -434,6 +440,8 @@ export class World {
       stance: 'guard',
       rallyX: -1,
       rallyY: -1,
+      airLoiterX: -1,
+      airLoiterY: -1,
       repairing: false,
       harvester: type.id === 'harvester' ? { mode: 'seek', load: 0, timer: 0 } : null,
       producer: null,
@@ -579,7 +587,10 @@ export class World {
     const unit = this.makeEntity(owner, type, cellToLepton(spawn.x), cellToLepton(spawn.y));
     // 有集结点则前往
     const dest = rally ? this.findFreeUnitSlotNear(rally.x, rally.y, type.domain, 12, unit.id) ?? rally : null;
-    if (dest) this.orderMove(unit, dest.x, dest.y);
+    if (dest) {
+      this.setAircraftLoiter(unit, dest.x, dest.y);
+      this.orderMove(unit, dest.x, dest.y);
+    }
   }
 
   /** 修理：开启修理的建筑每隔若干 tick 扣钱回血。 */
@@ -692,6 +703,7 @@ export class World {
     const rally = building.rallyX >= 0 && building.rallyY >= 0 ? { x: building.rallyX, y: building.rallyY } : null;
     const disperse = exit ? this.findFreeUnitSlotNear(exit.x, exit.y + 1, type.domain, 8, unit.id) : null;
     const dest = rally ? this.findFreeUnitSlotNear(rally.x, rally.y, type.domain, 12, unit.id) ?? rally : disperse;
+    if (type.domain === 'aircraft' && dest) this.setAircraftLoiter(unit, dest.x, dest.y);
     if (dest && (dest.x !== unit.cellX || dest.y !== unit.cellY)) this.orderMove(unit, dest.x, dest.y);
     return true;
   }
@@ -941,21 +953,21 @@ export class World {
 
   /** 为 n 个单位在 (cx,cy) 周围取 n 个互不相同的可通行格（队形展开，避免挤成一坨、
    *  互相挡路）。中心优先、按环形从内向外扩展；空间不足时用中心兜底。确定性遍历。 */
-  private spreadDestinations(cx: number, cy: number, n: number): { x: number; y: number }[] {
+  private spreadDestinations(cx: number, cy: number, n: number, spacing = 1, ignoreGroundBlockers = false): { x: number; y: number }[] {
     const out: { x: number; y: number }[] = [];
     const seen = new Set<number>();
     const tryAdd = (x: number, y: number): void => {
       if (x < 0 || y < 0 || x >= this.terrain.width || y >= this.terrain.height) return;
-      if (this.isCellBlocked(x, y)) return;
+      if (ignoreGroundBlockers ? !this.terrain.passable(x, y) : this.isCellBlocked(x, y)) return;
       const key = y * this.terrain.width + x;
       if (seen.has(key)) return;
       seen.add(key);
       out.push({ x, y });
     };
     tryAdd(cx, cy);
-    for (let r = 1; out.length < n && r <= 12; r++) {
-      for (let dy = -r; dy <= r && out.length < n; dy++) {
-        for (let dx = -r; dx <= r && out.length < n; dx++) {
+    for (let r = spacing; out.length < n && r <= 12 * spacing; r += spacing) {
+      for (let dy = -r; dy <= r && out.length < n; dy += spacing) {
+        for (let dx = -r; dx <= r && out.length < n; dx += spacing) {
           if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
           tryAdd(cx + dx, cy + dy);
         }
@@ -966,11 +978,30 @@ export class World {
     return out;
   }
 
+  private allAircraft(ids: number[]): boolean {
+    if (ids.length === 0) return false;
+    for (const id of ids) {
+      const e = this.entities.get(id);
+      const type = e && this.rules.units.get(e.typeId);
+      if (type?.domain !== 'aircraft') return false;
+    }
+    return true;
+  }
+
+  private setAircraftLoiter(e: Entity, cellX: number, cellY: number): void {
+    const type = this.rules.units.get(e.typeId);
+    if (type?.domain !== 'aircraft') return;
+    e.airLoiterX = cellX;
+    e.airLoiterY = cellY;
+  }
+
   private orderMove(e: Entity, cellX: number, cellY: number): void {
+    const type = this.rules.units.get(e.typeId);
+    const canFly = type?.domain === 'aircraft';
     const grid: PathGrid = {
       width: this.terrain.width,
       height: this.terrain.height,
-      passable: (x, y) => !this.isCellBlocked(x, y),
+      passable: (x, y) => (canFly ? this.terrain.passable(x, y) : !this.isCellBlocked(x, y)),
     };
     const path = findPath(grid, leptonToCell(e.x), leptonToCell(e.y), cellX, cellY);
     e.goal = { x: cellX, y: cellY };
@@ -1401,7 +1432,7 @@ export class World {
     for (const e of this.entities.values()) {
       h.addInt(e.id).addInt(e.owner).addInt(e.x).addInt(e.y).addInt(e.facing).addInt(e.hp);
       h.addInt(e.harvester ? e.harvester.load : -1);
-      h.addInt(e.repairing ? 1 : 0).addInt(e.rallyX).addInt(e.rallyY).addInt(e.enterTarget ?? -1);
+      h.addInt(e.repairing ? 1 : 0).addInt(e.rallyX).addInt(e.rallyY).addInt(e.airLoiterX).addInt(e.airLoiterY).addInt(e.enterTarget ?? -1);
       h.addInt(e.producer ? 1 : 0)
         .addInt(e.producer?.enabled ? 1 : 0)
         .addInt(e.producer?.progress ?? -1);

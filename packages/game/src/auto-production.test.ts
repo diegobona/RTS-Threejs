@@ -30,6 +30,10 @@ function goalKey(e: { goal: { x: number; y: number } | null }): string {
   return e.goal ? `${e.goal.x},${e.goal.y}` : 'none';
 }
 
+function airLoiterOf(e: unknown): { airLoiterX?: number; airLoiterY?: number } {
+  return e as { airLoiterX?: number; airLoiterY?: number };
+}
+
 describe('automatic production buildings', () => {
   it('produces infantry from every barracks in parallel', () => {
     const w = baseWorld(10000);
@@ -108,6 +112,39 @@ describe('automatic production buildings', () => {
     const fighters = unitsOfType(w, 'fighter');
     expect(fighters.length).toBeGreaterThanOrEqual(3);
     expect(new Set(fighters.map(cellKey)).size).toBe(fighters.length);
+  });
+
+  it('moves aircraft groups into a loose air formation instead of adjacent stacked cells', () => {
+    const w = baseWorld(50000);
+    w.addPlayer(2, 'soviet', 0);
+    w.spawnUnit(2, 'conyard', 28, 28);
+    const ids: number[] = [];
+    for (let i = 0; i < 12; i++) ids.push(w.spawnUnit(1, 'fighter', 4 + (i % 4), 4 + Math.floor(i / 4))!.id);
+
+    w.applyCommands([{ kind: 'move', entityIds: ids, cellX: 28, cellY: 28 }]);
+
+    const goals = ids.map((id) => w.entities.get(id)!.goal!);
+    expect(goals[0]).toEqual({ x: 28, y: 28 });
+    expect(new Set(goals.map((g) => `${g.x},${g.y}`)).size).toBe(ids.length);
+    let minDistance = Infinity;
+    for (let i = 0; i < goals.length; i++) {
+      for (let j = i + 1; j < goals.length; j++) {
+        minDistance = Math.min(minDistance, Math.hypot(goals[i]!.x - goals[j]!.x, goals[i]!.y - goals[j]!.y));
+      }
+    }
+    expect(minDistance).toBeGreaterThanOrEqual(3);
+  });
+
+  it('keeps aircraft loiter anchored to the ordered airspace after a ground move', () => {
+    const w = baseWorld(50000);
+    const fighter = w.spawnUnit(1, 'fighter', 4, 4)!;
+
+    w.applyCommands([{ kind: 'move', entityIds: [fighter.id], cellX: 25, cellY: 25 }]);
+
+    expect(airLoiterOf(fighter)).toMatchObject({ airLoiterX: 25, airLoiterY: 25 });
+    for (let i = 0; i < 500 && fighter.goal; i++) w.step();
+    expect(fighter.goal).toBeNull();
+    expect(airLoiterOf(fighter)).toMatchObject({ airLoiterX: 25, airLoiterY: 25 });
   });
 });
 
