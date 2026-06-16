@@ -7,7 +7,7 @@
 import { BufferSource, MixFile, parseAud } from '@ra2web/data';
 import { loadGameMix } from './game-files';
 
-export type Sfx = 'fire' | 'cannon' | 'hit' | 'explosion' | 'bigExplosion' | 'build' | 'ready' | 'place' | 'select' | 'move' | 'deny';
+export type Sfx = 'fire' | 'cannon' | 'bomb' | 'hit' | 'explosion' | 'bigExplosion' | 'build' | 'ready' | 'place' | 'select' | 'move' | 'deny';
 
 /** EVA 播报事件（程序合成提示音；文字横幅在 match-view 负责）。 */
 export type Eva = 'attack' | 'lowPower' | 'noFunds' | 'unitLost' | 'buildComplete';
@@ -43,6 +43,7 @@ export const VOICE_FILES = [
 const REAL_GAIN: Partial<Record<Sfx, number>> = {
   fire: 0.5,
   cannon: 0.7,
+  bomb: 0.65,
   hit: 0.5,
   explosion: 0.9,
   bigExplosion: 1,
@@ -109,6 +110,7 @@ export class AudioBus {
   private static readonly MIN_GAP: Record<Sfx, number> = {
     fire: 45,
     cannon: 70,
+    bomb: 120,
     hit: 60,
     explosion: 80,
     bigExplosion: 150,
@@ -191,6 +193,10 @@ export class AudioBus {
         case 'cannon':
           this.blip(180, 0.12, 'sawtooth', 0.25);
           this.noise(0.1, 800, 0.2);
+          break;
+        case 'bomb':
+          this.blip(95, 0.18, 'sawtooth', 0.16);
+          this.noise(0.13, 520, 0.15);
           break;
         case 'hit':
           this.noise(0.06, 2500, 0.12);

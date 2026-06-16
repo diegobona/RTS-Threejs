@@ -13,6 +13,7 @@ import {
   Group,
   HemisphereLight,
   Mesh,
+  MeshBasicMaterial,
   MeshLambertMaterial,
   MeshStandardMaterial,
   Object3D,
@@ -39,6 +40,23 @@ interface EntityView {
   visualRoot: Group;
   hpBar: Group;
   selectionRing: Mesh;
+}
+
+interface CombatEffect {
+  root: Group;
+  life: number;
+  maxLife: number;
+  grow: number;
+}
+
+export interface CombatEffectProfile3D {
+  visual: 'muzzleFlash' | 'impactSpark' | 'blast';
+  color: number;
+  radius: number;
+  height: number;
+  life: number;
+  sparkCount: number;
+  grow: number;
 }
 
 const PLAYER_COLORS = [0xf8d020, 0x3a7fe0, 0x30c040, 0xe04030, 0xd060d0, 0xe08020, 0x40c0c0, 0xc0c0c0];
@@ -114,20 +132,42 @@ export function projectileVisualPoint3D(
   return new Vector3(shooterPos.x, 0.35 + AIRCRAFT_ALTITUDE * remaining, shooterPos.z);
 }
 
+export function combatEffectProfile3D(kind: ThreeAudioEvent['kind']): CombatEffectProfile3D {
+  switch (kind) {
+    case 'fire':
+      return { visual: 'muzzleFlash', color: 0xfff1a0, radius: 0.22, height: 1.05, life: 10, sparkCount: 5, grow: 1.45 };
+    case 'cannon':
+      return { visual: 'muzzleFlash', color: 0xff9f32, radius: 0.42, height: 0.9, life: 14, sparkCount: 8, grow: 1.8 };
+    case 'bomb':
+      return { visual: 'muzzleFlash', color: 0xffd05a, radius: 0.26, height: AIRCRAFT_ALTITUDE - 0.35, life: 16, sparkCount: 4, grow: 1.35 };
+    case 'hit':
+      return { visual: 'impactSpark', color: 0xfff6c0, radius: 0.24, height: 0.38, life: 12, sparkCount: 7, grow: 1.55 };
+    case 'explosion':
+      return { visual: 'blast', color: 0xffa640, radius: 0.72, height: 0.5, life: 22, sparkCount: 13, grow: 2.2 };
+    case 'bigExplosion':
+      return { visual: 'blast', color: 0xff7a2a, radius: 1.18, height: 0.75, life: 32, sparkCount: 20, grow: 2.6 };
+  }
+}
+
 export class ThreeWorldRenderer {
   readonly renderer: WebGLRenderer;
   readonly scene = new Scene();
   onEvent: ((kind: ThreeAudioEvent['kind'], x: number, z: number) => void) | null = null;
   private readonly entityLayer = new Group();
   private readonly projectileLayer = new Group();
+  private readonly effectLayer = new Group();
   private readonly previewLayer = new Group();
   private readonly views = new Map<number, EntityView>();
+  private readonly combatEffects: CombatEffect[] = [];
   private readonly modelTemplates = new Map<string, Object3D>();
   private readonly gltfLoader = new GLTFLoader();
   private readonly audioEvents = new ThreeAudioEventTracker();
   private readonly tileGeo = new PlaneGeometry(THREE_CELL_SIZE, THREE_CELL_SIZE);
   private readonly oreGeo = new OctahedronGeometry(0.18, 0);
   private readonly projectileGeo = new SphereGeometry(0.12, 8, 8);
+  private readonly effectFlashGeo = new SphereGeometry(1, 10, 8);
+  private readonly effectSparkGeo = new BoxGeometry(0.055, 0.055, 0.38);
+  private readonly effectRingGeo = new RingGeometry(0.65, 0.86, 24);
   private readonly soldierGeo = new CapsuleGeometry(0.22, 0.7, 4, 8);
   private readonly vehicleGeo = new BoxGeometry(0.9, 0.35, 1.25);
   private readonly barrelGeo = new BoxGeometry(0.16, 0.12, 0.8);
@@ -175,7 +215,7 @@ export class ThreeWorldRenderer {
     this.scene.add(new AmbientLight(0xd8edf2, 1.55));
     const sun = new DirectionalLight(0xfff4d7, 3.1);
     sun.position.set(-20, 42, 28);
-    this.scene.add(sun, this.entityLayer, this.projectileLayer, this.previewLayer);
+    this.scene.add(sun, this.entityLayer, this.projectileLayer, this.effectLayer, this.previewLayer);
 
     this.drawTerrain();
     this.drawOre();
@@ -208,7 +248,8 @@ export class ThreeWorldRenderer {
   render(camera: Camera, alpha: number, selected: ReadonlySet<number>): void {
     this.syncEntities(alpha, selected);
     this.syncProjectiles();
-    this.emitAudioEvents();
+    this.processCombatEvents();
+    this.stepCombatEffects();
     this.renderer.render(this.scene, camera);
   }
 
@@ -1474,14 +1515,88 @@ export class ThreeWorldRenderer {
     }
   }
 
-  private emitAudioEvents(): void {
-    if (!this.onEvent) {
-      this.audioEvents.update(this.audioSnapshot());
-      return;
-    }
+  private processCombatEvents(): void {
     for (const event of this.audioEvents.update(this.audioSnapshot())) {
-      this.onEvent(event.kind, event.x, event.z);
+      this.spawnCombatEffect(event.kind, event.x, event.z);
+      this.onEvent?.(event.kind, event.x, event.z);
     }
+  }
+
+  private spawnCombatEffect(kind: ThreeAudioEvent['kind'], x: number, z: number): void {
+    const profile = combatEffectProfile3D(kind);
+    const root = new Group();
+    root.position.set(x, profile.height, z);
+    root.rotation.y = this.randEffectAngle(x, z, this.combatEffects.length);
+
+    const flashMat = new MeshBasicMaterial({
+      color: profile.color,
+      transparent: true,
+      opacity: profile.visual === 'blast' ? 0.88 : 0.92,
+      depthWrite: false,
+    });
+    flashMat.userData.baseOpacity = flashMat.opacity;
+    const flash = new Mesh(this.effectFlashGeo, flashMat);
+    flash.scale.set(profile.radius, profile.radius * (profile.visual === 'blast' ? 0.62 : 0.5), profile.radius);
+    root.add(flash);
+
+    if (profile.visual === 'blast') {
+      const ringMat = new MeshBasicMaterial({ color: 0xffe0a0, transparent: true, opacity: 0.45, depthWrite: false });
+      ringMat.userData.baseOpacity = ringMat.opacity;
+      const ring = new Mesh(this.effectRingGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = -profile.height + 0.08;
+      ring.scale.setScalar(profile.radius * 1.15);
+      root.add(ring);
+    }
+
+    for (let i = 0; i < profile.sparkCount; i++) {
+      const sparkMat = new MeshBasicMaterial({ color: i % 3 === 0 ? 0xffffff : profile.color, transparent: true, opacity: 0.8, depthWrite: false });
+      sparkMat.userData.baseOpacity = sparkMat.opacity;
+      const spark = new Mesh(this.effectSparkGeo, sparkMat);
+      const angle = (i / Math.max(1, profile.sparkCount)) * Math.PI * 2 + this.randEffectAngle(x, z, i);
+      const dist = profile.radius * (0.45 + (i % 4) * 0.18);
+      spark.position.set(Math.cos(angle) * dist, (i % 5) * 0.045, Math.sin(angle) * dist);
+      spark.rotation.set(this.randEffectAngle(z, x, i + 9), angle, this.randEffectAngle(x, z, i + 17));
+      spark.scale.set(1, 1, 0.65 + (i % 4) * 0.22);
+      root.add(spark);
+    }
+
+    this.effectLayer.add(root);
+    this.combatEffects.push({ root, life: profile.life, maxLife: profile.life, grow: profile.grow });
+  }
+
+  private stepCombatEffects(): void {
+    for (let i = this.combatEffects.length - 1; i >= 0; i--) {
+      const effect = this.combatEffects[i]!;
+      effect.life--;
+      const t = Math.max(0, effect.life / effect.maxLife);
+      const grow = 1 + (1 - t) * effect.grow;
+      effect.root.scale.setScalar(grow);
+      effect.root.traverse((child) => {
+        const mesh = child as Mesh;
+        const mat = mesh.material as MeshBasicMaterial | undefined;
+        if (!mat || typeof mat.opacity !== 'number') return;
+        const base = typeof mat.userData.baseOpacity === 'number' ? mat.userData.baseOpacity : 1;
+        mat.opacity = base * t;
+      });
+      if (effect.life > 0) continue;
+      this.disposeEffect(effect.root);
+      this.combatEffects.splice(i, 1);
+    }
+  }
+
+  private randEffectAngle(x: number, z: number, salt: number): number {
+    return this.randCell(Math.round(x * 10), Math.round(z * 10), salt) * Math.PI * 2;
+  }
+
+  private disposeEffect(root: Object3D): void {
+    root.traverse((child) => {
+      const mesh = child as Mesh;
+      const mat = mesh.material as Material | Material[] | undefined;
+      if (Array.isArray(mat)) for (const m of mat) m.dispose();
+      else mat?.dispose();
+    });
+    root.removeFromParent();
   }
 
   private audioSnapshot(): ThreeAudioSnapshot {
@@ -1501,6 +1616,7 @@ export class ThreeWorldRenderer {
         targetId: e.targetId,
         building: !!type.building,
         engineer: type.engineer === true,
+        domain: type.domain,
         projectileSpeed: type.weapon?.projectileSpeed ?? 0,
       });
     }
@@ -1510,7 +1626,8 @@ export class ThreeWorldRenderer {
       const shooterType = shooter && this.world.rules.units.get(shooter.typeId);
       const target = this.world.entities.get(p.targetId);
       const pos = projectileVisualPoint3D(shooterType, p, shooter, target);
-      projectiles.push({ id: p.id, x: pos.x, z: pos.z });
+      const impactKind = p.splash > 0 || shooterType?.domain === 'aircraft' || shooterType?.domain === 'vehicle' ? 'explosion' : 'hit';
+      projectiles.push({ id: p.id, x: pos.x, z: pos.z, impactKind });
     }
     return { entities, projectiles };
   }

@@ -1,5 +1,7 @@
 import type { Sfx } from './audio-bus';
 
+type EntityDomain = 'building' | 'infantry' | 'vehicle' | 'aircraft';
+
 export interface ThreeEntityAudioState {
   id: number;
   x: number;
@@ -9,6 +11,7 @@ export interface ThreeEntityAudioState {
   targetId: number | null;
   building: boolean;
   engineer: boolean;
+  domain?: EntityDomain;
   projectileSpeed: number;
 }
 
@@ -16,6 +19,7 @@ export interface ThreeProjectileAudioState {
   id: number;
   x: number;
   z: number;
+  impactKind?: Extract<Sfx, 'hit' | 'explosion'>;
 }
 
 export interface ThreeAudioSnapshot {
@@ -24,7 +28,7 @@ export interface ThreeAudioSnapshot {
 }
 
 export interface ThreeAudioEvent {
-  kind: Extract<Sfx, 'fire' | 'cannon' | 'hit' | 'explosion' | 'bigExplosion'>;
+  kind: Extract<Sfx, 'fire' | 'cannon' | 'bomb' | 'hit' | 'explosion' | 'bigExplosion'>;
   x: number;
   z: number;
 }
@@ -42,7 +46,7 @@ export class ThreeAudioEventTracker {
       if (prev) {
         if (entity.hp < prev.hp) events.push({ kind: 'hit', x: entity.x, z: entity.z });
         if (entity.targetId !== null && entity.cooldown > prev.cooldown + 1) {
-          events.push({ kind: entity.projectileSpeed > 0 ? 'cannon' : 'fire', x: entity.x, z: entity.z });
+          events.push({ kind: this.fireKind(entity), x: entity.x, z: entity.z });
         }
       }
       this.entities.set(entity.id, entity);
@@ -61,10 +65,15 @@ export class ThreeAudioEventTracker {
     }
     for (const [id, prev] of this.projectiles) {
       if (seenProjectiles.has(id)) continue;
-      events.push({ kind: 'hit', x: prev.x, z: prev.z });
+      events.push({ kind: prev.impactKind ?? 'hit', x: prev.x, z: prev.z });
       this.projectiles.delete(id);
     }
 
     return events;
+  }
+
+  private fireKind(entity: ThreeEntityAudioState): ThreeAudioEvent['kind'] {
+    if (entity.projectileSpeed <= 0) return 'fire';
+    return entity.domain === 'aircraft' ? 'bomb' : 'cannon';
   }
 }

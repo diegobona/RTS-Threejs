@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  combatEffectProfile3D,
   entityRootAltitude3D,
   entitySelectionRingAltitude3D,
   entityYawForFacing3D,
@@ -60,5 +61,19 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(proceduralModelYawOffset3D({ domain: 'infantry' }, false)).toBeCloseTo(-Math.PI / 2);
     expect(proceduralModelYawOffset3D({ domain: 'aircraft' }, false)).toBe(0);
     expect(proceduralModelYawOffset3D({ domain: 'vehicle' }, true)).toBe(0);
+  });
+
+  it('maps combat events to distinct visible spark and blast effects', () => {
+    const fire = combatEffectProfile3D('fire');
+    const cannon = combatEffectProfile3D('cannon');
+    const bomb = combatEffectProfile3D('bomb');
+    const explosion = combatEffectProfile3D('explosion');
+
+    expect(fire.visual).toBe('muzzleFlash');
+    expect(fire.sparkCount).toBeGreaterThan(0);
+    expect(cannon.radius).toBeGreaterThan(fire.radius);
+    expect(bomb.height).toBeGreaterThan(fire.height);
+    expect(explosion.visual).toBe('blast');
+    expect(explosion.sparkCount).toBeGreaterThan(cannon.sparkCount);
   });
 });

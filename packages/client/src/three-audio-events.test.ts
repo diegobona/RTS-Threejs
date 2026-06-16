@@ -9,14 +9,31 @@ function snapshot(overrides: Partial<ThreeAudioSnapshot> = {}): ThreeAudioSnapsh
   };
 }
 
+function entity(overrides: Partial<ThreeAudioSnapshot['entities'][number]> = {}): ThreeAudioSnapshot['entities'][number] {
+  return {
+    id: 1,
+    x: 10,
+    z: 12,
+    hp: 100,
+    cooldown: 0,
+    targetId: null,
+    building: false,
+    engineer: false,
+    domain: 'infantry',
+    projectileSpeed: 0,
+    ...overrides,
+  };
+}
+
 describe('ThreeAudioEventTracker', () => {
-  it('emits fire and cannon events when unit cooldown jumps after attacking', () => {
+  it('emits fire, cannon, and bomb events when unit cooldown jumps after attacking', () => {
     const tracker = new ThreeAudioEventTracker();
     tracker.update(
       snapshot({
         entities: [
-          { id: 1, x: 10, z: 12, hp: 100, cooldown: 0, targetId: 2, building: false, engineer: false, projectileSpeed: 0 },
-          { id: 3, x: 20, z: 24, hp: 100, cooldown: 0, targetId: 4, building: false, engineer: false, projectileSpeed: 80 },
+          entity({ id: 1, targetId: 2, projectileSpeed: 0 }),
+          entity({ id: 3, x: 20, z: 24, targetId: 4, domain: 'vehicle', projectileSpeed: 80 }),
+          entity({ id: 5, x: 30, z: 34, targetId: 6, domain: 'aircraft', projectileSpeed: 100 }),
         ],
       }),
     );
@@ -24,13 +41,14 @@ describe('ThreeAudioEventTracker', () => {
     const events = tracker.update(
       snapshot({
         entities: [
-          { id: 1, x: 10, z: 12, hp: 100, cooldown: 8, targetId: 2, building: false, engineer: false, projectileSpeed: 0 },
-          { id: 3, x: 20, z: 24, hp: 100, cooldown: 30, targetId: 4, building: false, engineer: false, projectileSpeed: 80 },
+          entity({ id: 1, cooldown: 8, targetId: 2, projectileSpeed: 0 }),
+          entity({ id: 3, x: 20, z: 24, cooldown: 30, targetId: 4, domain: 'vehicle', projectileSpeed: 80 }),
+          entity({ id: 5, x: 30, z: 34, cooldown: 36, targetId: 6, domain: 'aircraft', projectileSpeed: 100 }),
         ],
       }),
     );
 
-    expect(events.map((e) => e.kind)).toEqual(['fire', 'cannon']);
+    expect(events.map((e) => e.kind)).toEqual(['fire', 'cannon', 'bomb']);
   });
 
   it('emits hit and explosion events from damage, projectile impact, and entity removal', () => {
@@ -38,20 +56,20 @@ describe('ThreeAudioEventTracker', () => {
     tracker.update(
       snapshot({
         entities: [
-          { id: 1, x: 10, z: 12, hp: 100, cooldown: 0, targetId: null, building: false, engineer: false, projectileSpeed: 0 },
-          { id: 2, x: 16, z: 18, hp: 500, cooldown: 0, targetId: null, building: true, engineer: false, projectileSpeed: 0 },
+          entity({ id: 1 }),
+          entity({ id: 2, x: 16, z: 18, hp: 500, building: true, domain: 'building' }),
         ],
-        projectiles: [{ id: 7, x: 11, z: 13 }],
+        projectiles: [{ id: 7, x: 11, z: 13, impactKind: 'explosion' }],
       }),
     );
 
     const events = tracker.update(
       snapshot({
-        entities: [{ id: 1, x: 10, z: 12, hp: 70, cooldown: 0, targetId: null, building: false, engineer: false, projectileSpeed: 0 }],
+        entities: [entity({ id: 1, hp: 70 })],
         projectiles: [],
       }),
     );
 
-    expect(events.map((e) => e.kind)).toEqual(['hit', 'bigExplosion', 'hit']);
+    expect(events.map((e) => e.kind)).toEqual(['hit', 'bigExplosion', 'explosion']);
   });
 });
