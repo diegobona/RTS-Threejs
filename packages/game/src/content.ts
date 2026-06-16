@@ -21,6 +21,7 @@ export interface ArmorVerses {
 }
 
 export type ArmorType = keyof ArmorVerses;
+export type WeaponRole = 'gun' | 'cannon' | 'bomb' | 'missile';
 
 export interface WeaponSpec {
   name: string;
@@ -34,6 +35,8 @@ export interface WeaponSpec {
   warhead: Partial<ArmorVerses>;
   /** 溅射半径（lepton），0=单体。 */
   splash: number;
+  role?: WeaponRole;
+  targetDomains?: Domain[];
 }
 
 export interface UnitType {
@@ -55,6 +58,7 @@ export interface UnitType {
   /** 视野（格）。 */
   sight: number;
   weapon?: WeaponSpec;
+  antiAirWeapon?: WeaponSpec;
   /** 建筑专属。 */
   building?: BuildingTraits;
   /** 工程师：进入己方建筑满血修复、进入敌方建筑占领（进入后被消耗）。 */
@@ -511,7 +515,8 @@ const UNIT_LIST: UnitType[] = [
     speed: 70,
     rot: 24,
     sight: 8,
-    weapon: { name: '航弹', damage: 65, range: 2 * 256, cooldown: 36, projectileSpeed: 100, warhead: { none: 80, flak: 80, plate: 90, light: 100, heavy: 70, concrete: 95 }, splash: 48 },
+    weapon: { name: '航弹', damage: 65, range: 2 * 256, cooldown: 36, projectileSpeed: 100, warhead: { none: 80, flak: 80, plate: 90, light: 100, heavy: 70, concrete: 95 }, splash: 48, role: 'bomb', targetDomains: ['infantry', 'vehicle', 'building'] },
+    antiAirWeapon: { name: '空空导弹', damage: 55, range: 6 * 256, cooldown: 28, projectileSpeed: 150, warhead: { none: 40, flak: 85, plate: 75, light: 115, heavy: 45, concrete: 10 }, splash: 0, role: 'missile', targetDomains: ['aircraft'] },
   },
 ];
 

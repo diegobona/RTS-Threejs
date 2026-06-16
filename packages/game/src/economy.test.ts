@@ -34,6 +34,44 @@ describe('电力结算', () => {
   });
 });
 
+describe('fighter dual-role combat', () => {
+  it('fires missile projectiles at aircraft outside bomb range', () => {
+    const w = new World(gridTerrain(40, 40), 121);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const fighter = w.spawnUnit(1, 'fighter', 5, 5)!;
+    const enemyAir = w.spawnUnit(2, 'fighter', 10, 5)!;
+    w.applyCommands([{ kind: 'stance', entityIds: [enemyAir.id], stance: 'holdfire' }]);
+    w.applyCommands([{ kind: 'attack', entityIds: [fighter.id], targetId: enemyAir.id }]);
+
+    for (let i = 0; i < 40 && w.projectiles.length === 0; i++) w.step();
+
+    expect(w.projectiles[0]).toMatchObject({
+      shooterId: fighter.id,
+      targetId: enemyAir.id,
+      weaponRole: 'missile',
+    });
+  });
+
+  it('keeps ground attacks as bomb projectiles', () => {
+    const w = new World(gridTerrain(40, 40), 123);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const fighter = w.spawnUnit(1, 'fighter', 5, 5)!;
+    const tank = w.spawnUnit(2, 'grizzly', 6, 5)!;
+    w.applyCommands([{ kind: 'stance', entityIds: [tank.id], stance: 'holdfire' }]);
+    w.applyCommands([{ kind: 'attack', entityIds: [fighter.id], targetId: tank.id }]);
+
+    for (let i = 0; i < 20 && w.projectiles.length === 0; i++) w.step();
+
+    expect(w.projectiles[0]).toMatchObject({
+      shooterId: fighter.id,
+      targetId: tank.id,
+      weaponRole: 'bomb',
+    });
+  });
+});
+
 describe('airbase and fighter production', () => {
   it('airbase unlocks fighter production and fighters spawn from the airbase queue', () => {
     const w = baseWorld();

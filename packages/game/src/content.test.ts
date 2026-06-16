@@ -29,10 +29,17 @@ describe('WWI air force content', () => {
     });
   });
 
-  it('makes fighters use a short-range bomb so visual drops align with the target area', () => {
-    expect(DEFAULT_RULES.units.get('fighter')?.weapon).toMatchObject({
+  it('makes fighters bomb ground targets and fire missiles at aircraft', () => {
+    const fighter = DEFAULT_RULES.units.get('fighter');
+    expect(fighter?.weapon).toMatchObject({
       name: '航弹',
       range: 2 * 256,
+      role: 'bomb',
+      targetDomains: ['infantry', 'vehicle', 'building'],
+    });
+    expect(fighter?.antiAirWeapon).toMatchObject({
+      role: 'missile',
+      targetDomains: ['aircraft'],
     });
   });
 });

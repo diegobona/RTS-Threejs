@@ -10,9 +10,12 @@ import {
   DEFAULT_RULES,
   producibleBy,
   type ArmorType,
+  type Domain,
   type RulesData,
   type Side,
   type UnitType,
+  type WeaponRole,
+  type WeaponSpec,
 } from './content';
 import { cellToLepton, leptonToCell } from './coords';
 import { dirToBangle, dist, turnToward, velocity } from './fixed';
@@ -122,6 +125,7 @@ export interface Projectile {
   splash: number;
   owner: number;
   shooterId: number;
+  weaponRole: WeaponRole;
 }
 
 export type Command =
@@ -297,7 +301,8 @@ export class World {
             const e = this.entities.get(eid);
             // 巡逻：以当前格为一端、目标格为另一端往返；途中按攻击移动逻辑自动交战。
             // 无武器单位（如矿车）不巡逻。
-            if (!e || !this.rules.units.get(e.typeId)?.weapon) continue;
+            const type = e && this.rules.units.get(e.typeId);
+            if (!e || !type || !this.hasWeapon(type)) continue;
             e.patrol = { x: e.cellX, y: e.cellY };
             this.orderMove(e, cmd.cellX, cmd.cellY);
             e.targetId = null;
@@ -1179,15 +1184,38 @@ export class World {
    *  再近者，再 id 小（确定性）。非建筑单位用警戒半径主动迎击（超射程也上前，
    *  靠追击带进射程）；敌"建筑"仅在非攻击移动时受武器射程约束——空闲单位不会
    *  自发跑去拆远处建筑，攻击移动/巡逻则一并清理。 */
+  private hasWeapon(type: UnitType): boolean {
+    return !!(type.weapon || type.antiAirWeapon);
+  }
+
+  private weaponCanTarget(weapon: WeaponSpec, domain: Domain): boolean {
+    return !weapon.targetDomains || weapon.targetDomains.includes(domain);
+  }
+
+  private weaponForTarget(type: UnitType, targetType: UnitType): WeaponSpec | null {
+    const weapons = [type.antiAirWeapon, type.weapon].filter((weapon): weapon is WeaponSpec => !!weapon);
+    return weapons.find((weapon) => this.weaponCanTarget(weapon, targetType.domain)) ?? null;
+  }
+
+  private weaponRoleFor(type: UnitType, weapon: WeaponSpec): WeaponRole {
+    if (weapon.role) return weapon.role;
+    if (weapon.projectileSpeed <= 0) return 'gun';
+    return type.domain === 'aircraft' ? 'bomb' : 'cannon';
+  }
+
+  private acquireRangeForWeapon(type: UnitType, e: Entity, weapon: WeaponSpec, targetIsBuilding: boolean, onMission: boolean): number {
+    if (targetIsBuilding && !onMission) return weapon.range;
+    if (type.domain === 'building') return weapon.range;
+    if (!onMission && e.stance === 'holdground') return weapon.range;
+    if (!onMission && e.stance === 'aggressive') return Math.max(weapon.range, 2 * GUARD_RANGE);
+    return Math.max(weapon.range, GUARD_RANGE);
+  }
+
   private acquireEnemy(e: Entity, type: UnitType): Entity | null {
     const onMission = e.attackMove; // 攻击移动/巡逻：无视姿态，强制按警戒半径交战
     if (!onMission && e.stance === 'holdfire') return null; // 不还火：不自动索敌
     // 姿态决定索敌半径：坚守=仅武器射程；进攻=更大半径主动出击；其余=警戒半径
-    let acquireRange: number;
-    if (type.domain === 'building') acquireRange = type.weapon!.range;
-    else if (!onMission && e.stance === 'holdground') acquireRange = type.weapon!.range;
-    else if (!onMission && e.stance === 'aggressive') acquireRange = Math.max(type.weapon!.range, 2 * GUARD_RANGE);
-    else acquireRange = Math.max(type.weapon!.range, GUARD_RANGE);
+    if (!this.hasWeapon(type)) return null;
     let best: Entity | null = null;
     let bestRank = 0;
     let bestHp = 0;
@@ -1197,10 +1225,12 @@ export class World {
       const ot = this.rules.units.get(o.typeId);
       if (!ot) continue;
       const isBuilding = ot.domain === 'building';
-      const range = isBuilding && !onMission ? type.weapon!.range : acquireRange;
+      const weapon = this.weaponForTarget(type, ot);
+      if (!weapon) continue;
+      const range = this.acquireRangeForWeapon(type, e, weapon, isBuilding, onMission);
       const d = dist(o.x - e.x, o.y - e.y);
       if (d > range) continue;
-      const rank = isBuilding ? 1 : ot.weapon ? 3 : 2; // 武装单位 > 无武装单位 > 建筑
+      const rank = isBuilding ? 1 : this.hasWeapon(ot) ? 3 : 2; // 武装单位 > 无武装单位 > 建筑
       // 同档：残血优先（集火），再近，再 id 小
       const better =
         best === null ||
@@ -1217,7 +1247,7 @@ export class World {
   }
 
   private stepCombat(e: Entity, type: UnitType): boolean {
-    if (!type.weapon) return false;
+    if (!this.hasWeapon(type)) return false;
     if (e.cooldown > 0) e.cooldown--;
 
     let target: Entity | undefined;
@@ -1240,10 +1270,18 @@ export class World {
       return false;
     }
 
+    const targetType = this.rules.units.get(target.typeId);
+    const weapon = targetType ? this.weaponForTarget(type, targetType) : null;
+    if (!weapon) {
+      e.targetId = null;
+      if (e.attackMove && e.attackDest) this.stepAggressiveMarch(e);
+      return false;
+    }
+
     const dx = target.x - e.x;
     const dy = target.y - e.y;
     const d = dist(dx, dy);
-    if (d > type.weapon.range) {
+    if (d > weapon.range) {
       // 坚守：绝不移动追击，够不着就放下目标原地待机
       if (!e.attackMove && e.stance === 'holdground') {
         e.targetId = null;
@@ -1267,8 +1305,8 @@ export class World {
       if ((((aim - e.facing + 128) & 0xff) - 128) > 8) return true;
     }
     if (e.cooldown <= 0) {
-      this.fire(e, target, type.weapon);
-      e.cooldown = type.weapon.cooldown;
+      this.fire(e, target, type, weapon);
+      e.cooldown = weapon.cooldown;
     }
     return true;
   }
@@ -1297,7 +1335,7 @@ export class World {
     return e.kills >= 5 ? 150 : e.kills >= 2 ? 125 : 100;
   }
 
-  private fire(shooter: Entity, target: Entity, weapon: NonNullable<UnitType['weapon']>): void {
+  private fire(shooter: Entity, target: Entity, shooterType: UnitType, weapon: WeaponSpec): void {
     const dmg = Math.floor((weapon.damage * this.vetMul(shooter)) / 100); // 老兵加成
     if (weapon.projectileSpeed <= 0) {
       this.applyDamage(target, dmg, weapon.warhead, weapon.splash, shooter.owner, shooter.id);
@@ -1313,6 +1351,7 @@ export class World {
         splash: weapon.splash,
         owner: shooter.owner,
         shooterId: shooter.id,
+        weaponRole: this.weaponRoleFor(shooterType, weapon),
       });
     }
   }
@@ -1324,7 +1363,7 @@ export class World {
   private applyDamage(
     target: Entity,
     damage: number,
-    warhead: NonNullable<UnitType['weapon']>['warhead'],
+    warhead: WeaponSpec['warhead'],
     splash: number,
     owner: number,
     attackerId = -1,
@@ -1345,7 +1384,9 @@ export class World {
     // 不还火姿态不还击
     if (attackerId >= 0 && target.stance !== 'holdfire' && target.targetId === null && !target.goal && !target.attackMove) {
       const tt = this.rules.units.get(target.typeId);
-      if (tt?.weapon && tt.domain !== 'building' && this.entities.has(attackerId)) target.targetId = attackerId;
+      const attacker = this.entities.get(attackerId);
+      const attackerType = attacker && this.rules.units.get(attacker.typeId);
+      if (tt && attackerType && this.weaponForTarget(tt, attackerType) && tt.domain !== 'building') target.targetId = attackerId;
     }
     if (splash > 0) {
       for (const e of this.entities.values()) {
@@ -1442,7 +1483,10 @@ export class World {
         .addInt(e.producerExit?.y ?? -1);
     }
     h.addInt(this.projectiles.length);
-    for (const p of this.projectiles) h.addInt(p.id).addInt(p.x).addInt(p.y);
+    for (const p of this.projectiles) {
+      h.addInt(p.id).addInt(p.x).addInt(p.y);
+      addHashString(h, p.weaponRole);
+    }
     return h.value;
   }
 }

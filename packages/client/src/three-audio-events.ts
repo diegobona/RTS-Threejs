@@ -1,4 +1,5 @@
 import type { Sfx } from './audio-bus';
+import type { WeaponRole } from '@ra2web/game';
 
 type EntityDomain = 'building' | 'infantry' | 'vehicle' | 'aircraft';
 
@@ -13,6 +14,7 @@ export interface ThreeEntityAudioState {
   engineer: boolean;
   domain?: EntityDomain;
   projectileSpeed: number;
+  weaponRole?: WeaponRole;
 }
 
 export interface ThreeProjectileAudioState {
@@ -83,6 +85,8 @@ export class ThreeAudioEventTracker {
   }
 
   private fireKind(entity: ThreeEntityAudioState): ThreeAudioEvent['kind'] {
+    if (entity.weaponRole === 'bomb') return 'bomb';
+    if (entity.weaponRole === 'missile' || entity.weaponRole === 'cannon') return 'cannon';
     if (entity.projectileSpeed <= 0) return 'fire';
     return entity.domain === 'aircraft' ? 'bomb' : 'cannon';
   }

@@ -79,6 +79,29 @@ describe('ThreeAudioEventTracker', () => {
     expect(events[1]).toMatchObject({ targetX: 25, targetZ: 26 });
   });
 
+  it('uses cannon-style launch audio for aircraft missiles instead of bomb audio', () => {
+    const tracker = new ThreeAudioEventTracker();
+    tracker.update(
+      snapshot({
+        entities: [
+          entity({ id: 1, targetId: 2, domain: 'aircraft', projectileSpeed: 150, weaponRole: 'missile' }),
+          entity({ id: 2, x: 18, z: 20, domain: 'aircraft' }),
+        ],
+      }),
+    );
+
+    const events = tracker.update(
+      snapshot({
+        entities: [
+          entity({ id: 1, cooldown: 28, targetId: 2, domain: 'aircraft', projectileSpeed: 150, weaponRole: 'missile' }),
+          entity({ id: 2, x: 18, z: 20, domain: 'aircraft' }),
+        ],
+      }),
+    );
+
+    expect(events.map((e) => e.kind)).toEqual(['cannon']);
+  });
+
   it('emits hit and explosion events from damage, projectile impact, and entity removal', () => {
     const tracker = new ThreeAudioEventTracker();
     tracker.update(

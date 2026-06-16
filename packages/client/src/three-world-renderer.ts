@@ -30,7 +30,7 @@ import {
   type Material,
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import type { World, UnitType } from '@ra2web/game';
+import type { WeaponRole, World, UnitType } from '@ra2web/game';
 import { ThreeAudioEventTracker, type ThreeAudioEvent, type ThreeAudioSnapshot } from './three-audio-events';
 import { cellToWorld3D, leptonToWorld3D, THREE_CELL_SIZE } from './three-coords';
 import { WW1_MODEL_SPECS, type Ww1ModelSpec } from './ww1-model-manifest';
@@ -218,11 +218,15 @@ function aircraftIdleHash3D(entityId: number, salt: number): number {
 
 export function projectileVisualPoint3D(
   shooterType: Pick<UnitType, 'domain'> | null | undefined,
-  projectile: { x: number; y: number },
+  projectile: { x: number; y: number; weaponRole?: WeaponRole },
   shooter: { x: number; y: number } | null | undefined,
   target: { x: number; y: number } | null | undefined,
 ): Vector3 {
-  if (shooterType?.domain !== 'aircraft' || !shooter || !target) {
+  if (projectile.weaponRole === 'missile') {
+    const pos = leptonToWorld3D(projectile.x, projectile.y);
+    return new Vector3(pos.x, AIRCRAFT_ALTITUDE + 0.15, pos.z);
+  }
+  if (shooterType?.domain !== 'aircraft' || projectile.weaponRole === 'cannon' || projectile.weaponRole === 'gun' || !shooter || !target) {
     const pos = leptonToWorld3D(projectile.x, projectile.y);
     return new Vector3(pos.x, 0.55, pos.z);
   }
@@ -232,9 +236,25 @@ export function projectileVisualPoint3D(
   return new Vector3(shooterPos.x, 0.35 + AIRCRAFT_ALTITUDE * remaining, shooterPos.z);
 }
 
-export function projectileVisualProfile3D(shooterType: Pick<UnitType, 'domain'> | null | undefined): ProjectileVisualProfile3D {
-  if (shooterType?.domain === 'aircraft') return { kind: 'bomb', color: 0x111111 };
+export function projectileVisualProfile3D(shooterType: Pick<UnitType, 'domain'> | null | undefined, weaponRole?: WeaponRole): ProjectileVisualProfile3D {
+  if (weaponRole === 'missile') return { kind: 'tracer', color: 0xaedfff };
+  if (weaponRole === 'bomb' || shooterType?.domain === 'aircraft') return { kind: 'bomb', color: 0x111111 };
   return { kind: 'tracer', color: 0xfff0b0 };
+}
+
+function weaponCanTarget3D(weapon: NonNullable<UnitType['weapon']>, targetType: UnitType): boolean {
+  return !weapon.targetDomains || weapon.targetDomains.includes(targetType.domain);
+}
+
+function weaponForTarget3D(shooterType: UnitType, targetType: UnitType): NonNullable<UnitType['weapon']> | null {
+  const weapons = [shooterType.antiAirWeapon, shooterType.weapon].filter((weapon): weapon is NonNullable<UnitType['weapon']> => !!weapon);
+  return weapons.find((weapon) => weaponCanTarget3D(weapon, targetType)) ?? null;
+}
+
+function weaponRoleFor3D(shooterType: UnitType, weapon: NonNullable<UnitType['weapon']>): WeaponRole {
+  if (weapon.role) return weapon.role;
+  if (weapon.projectileSpeed <= 0) return 'gun';
+  return shooterType.domain === 'aircraft' ? 'bomb' : 'cannon';
 }
 
 export function projectileTracerEnd3D(start: Vector3, target: Vector3, maxLength: number): Vector3 {
@@ -321,6 +341,7 @@ export class ThreeWorldRenderer {
   private readonly hpGoodMat = new MeshBasicLike(0x42d66d);
   private readonly projectileMat = new MeshLambertMaterial({ color: 0x111111 });
   private readonly projectileTracerMat = new MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.92, depthWrite: false });
+  private readonly projectileMissileTracerMat = new MeshBasicMaterial({ color: 0xaedfff, transparent: true, opacity: 0.9, depthWrite: false });
   private readonly raycaster = new Raycaster();
   private readonly pointer = new Vector2();
 
@@ -1661,7 +1682,7 @@ export class ThreeWorldRenderer {
       const shooterType = shooter && this.world.rules.units.get(shooter.typeId);
       const target = this.world.entities.get(p.targetId);
       const pos = projectileVisualPoint3D(shooterType, p, shooter, target);
-      const profile = projectileVisualProfile3D(shooterType);
+      const profile = projectileVisualProfile3D(shooterType, p.weaponRole);
       if (profile.kind === 'bomb') {
         const bomb = new Mesh(this.projectileGeo, this.projectileMat);
         bomb.position.set(pos.x, pos.y, pos.z);
@@ -1670,7 +1691,8 @@ export class ThreeWorldRenderer {
       } else {
         const targetPos = target ? leptonToWorld3D(target.x, target.y) : null;
         const end = targetPos ? projectileTracerEnd3D(pos, new Vector3(targetPos.x, pos.y, targetPos.z), 1.85) : new Vector3(pos.x, pos.y, pos.z - 0.8);
-        this.projectileLayer.add(this.createTracerMesh(pos, end, this.projectileTracerMat));
+        const mat = p.weaponRole === 'missile' ? this.projectileMissileTracerMat : this.projectileTracerMat;
+        this.projectileLayer.add(this.createTracerMesh(pos, end, mat));
       }
     }
   }
@@ -1830,6 +1852,9 @@ export class ThreeWorldRenderer {
       const pos = type.building
         ? cellToWorld3D(e.cellX + (type.building.footprintW - 1) / 2, e.cellY + (type.building.footprintH - 1) / 2)
         : leptonToWorld3D(e.x, e.y);
+      const target = e.targetId !== null ? this.world.entities.get(e.targetId) : null;
+      const targetType = target && this.world.rules.units.get(target.typeId);
+      const activeWeapon = targetType ? weaponForTarget3D(type, targetType) : (type.weapon ?? type.antiAirWeapon ?? null);
       entities.push({
         id: e.id,
         x: pos.x,
@@ -1840,7 +1865,8 @@ export class ThreeWorldRenderer {
         building: !!type.building,
         engineer: type.engineer === true,
         domain: type.domain,
-        projectileSpeed: type.weapon?.projectileSpeed ?? 0,
+        projectileSpeed: activeWeapon?.projectileSpeed ?? 0,
+        weaponRole: activeWeapon ? weaponRoleFor3D(type, activeWeapon) : undefined,
       });
     }
     const projectiles: ThreeAudioSnapshot['projectiles'] = [];

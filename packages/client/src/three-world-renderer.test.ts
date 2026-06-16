@@ -40,7 +40,7 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
   it('renders aircraft projectiles as bombs descending directly below the aircraft', () => {
     const point = projectileVisualPoint3D(
       { domain: 'aircraft' },
-      { x: 20 * 256, y: 10 * 256 },
+      { x: 20 * 256, y: 10 * 256, weaponRole: 'bomb' },
       { x: 10 * 256, y: 10 * 256 },
       { x: 30 * 256, y: 10 * 256 },
     );
@@ -50,16 +50,34 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(point.y).toBeLessThan(entityVisualAltitude3D({ domain: 'aircraft' }) + 1);
   });
 
+  it('renders aircraft missiles as high-air tracers instead of falling bombs', () => {
+    const point = projectileVisualPoint3D(
+      { domain: 'aircraft' },
+      { x: 20 * 256, y: 10 * 256, weaponRole: 'missile' },
+      { x: 10 * 256, y: 10 * 256 },
+      { x: 30 * 256, y: 10 * 256 },
+    );
+    const profile = projectileVisualProfile3D({ domain: 'aircraft' }, 'missile');
+
+    expect(point.x).toBeCloseTo(40);
+    expect(point.z).toBeCloseTo(20);
+    expect(point.y).toBeGreaterThan(entityVisualAltitude3D({ domain: 'aircraft' }) - 0.5);
+    expect(profile.kind).toBe('tracer');
+    expect(profile.color).not.toBe(0x111111);
+  });
+
   it('renders ground projectiles as fast tracers and aircraft projectiles as black bombs', () => {
     const infantry = projectileVisualProfile3D({ domain: 'infantry' });
     const vehicle = projectileVisualProfile3D({ domain: 'vehicle' });
     const aircraft = projectileVisualProfile3D({ domain: 'aircraft' });
+    const aircraftMissile = projectileVisualProfile3D({ domain: 'aircraft' }, 'missile');
 
     expect(infantry.kind).toBe('tracer');
     expect(vehicle.kind).toBe('tracer');
     expect(vehicle.color).not.toBe(0xffe060);
     expect(aircraft.kind).toBe('bomb');
     expect(aircraft.color).toBe(0x111111);
+    expect(aircraftMissile.kind).toBe('tracer');
   });
 
   it('extends tracer lines from the muzzle toward the target direction', () => {

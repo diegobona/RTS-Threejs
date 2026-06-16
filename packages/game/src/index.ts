@@ -31,6 +31,7 @@ export {
   type ArmorType,
   type ArmorVerses,
   type WeaponSpec,
+  type WeaponRole,
   type BuildingTraits,
 } from './content';
 export { runScript, gridTerrain, type ScriptedCommand, type ReplayResult } from './replay';
