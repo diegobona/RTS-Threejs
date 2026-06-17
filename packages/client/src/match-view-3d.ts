@@ -5,7 +5,7 @@ import { bgm } from './bgm';
 import { ThreeCameraController } from './three-camera';
 import { cellToWorld3D, worldToCell3D } from './three-coords';
 import { productionButtonState } from './three-build-ui';
-import { rightClickCommand } from './three-orders';
+import { rightClickCommand, type GroundMoveMode } from './three-orders';
 import { idsInScreenRect, nearestIdWithinRadius } from './three-selection';
 import { ThreeWorldRenderer } from './three-world-renderer';
 
@@ -24,6 +24,11 @@ export const MATCH_3D_STYLE = `
   padding: 8px 12px; background: rgba(8,12,16,.82); border: 1px solid rgba(120,150,170,.18); border-radius: 8px; }
 .mv3-top b { color: #f0d040; font-variant-numeric: tabular-nums; }
 .mv3-top a { color: #6db3e8; text-decoration: none; }
+.mv3-orders { position: fixed; left: 12px; top: 58px; z-index: 10; display: flex; gap: 6px;
+  padding: 6px; background: rgba(8,12,16,.76); border: 1px solid rgba(120,150,170,.18); border-radius: 8px; }
+.mv3-orders button { height: 30px; padding: 0 10px; border: 1px solid rgba(125,150,165,.22); border-radius: 6px;
+  background: #0d151c; color: #aeb9c2; cursor: pointer; font-size: 13px; }
+.mv3-orders button.on { color: #fff; border-color: #58a7d8; background: #173046; }
 .mv3-build { position: fixed; right: 12px; top: 12px; z-index: 10; width: 196px; display: grid; gap: 6px;
   padding: 8px; background: rgba(8,12,16,.86); border: 1px solid rgba(120,150,170,.2); border-radius: 8px; }
 .mv3-tabs { display: grid; grid-template-columns: 1fr; gap: 4px; }
@@ -68,6 +73,7 @@ export class MatchView3D {
   private readonly buildButtons: { button: HTMLButtonElement; state: HTMLElement; type: UnitType }[] = [];
   private readonly prevReady: Record<ProdCategory, boolean> = { building: false, infantry: false, vehicle: false, aircraft: false };
   private producerPanelKey = '';
+  private groundMoveMode: GroundMoveMode = 'move';
 
   constructor(
     private readonly root: HTMLElement,
@@ -135,6 +141,10 @@ export class MatchView3D {
         <button id="mv3-mute" type="button" style="background:none;border:none;color:#9aa7b0;cursor:pointer;font-size:15px">Sound</button>
         <a href="#">Exit</a>
       </div>
+      <div class="mv3-orders" id="mv3-orders">
+        <button type="button" data-ground-mode="move">途中遇敌绕行</button>
+        <button type="button" data-ground-mode="attackMove">途中遇敌攻击</button>
+      </div>
       <div class="mv3-build">
         <div class="mv3-tabs" id="mv3-tabs"></div>
         <div class="mv3-prod-list" id="mv3-prod-list"></div>
@@ -150,12 +160,29 @@ export class MatchView3D {
     this.producerEl = this.root.querySelector('#mv3-producer')!;
     this.buildProductionTabs();
     this.rebuildProductionPanel();
+    this.refreshGroundMoveModeButtons();
+    this.root.querySelector('#mv3-orders')?.addEventListener('click', (e) => {
+      const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-ground-mode]');
+      const mode = button?.dataset.groundMode;
+      if (mode === 'move' || mode === 'attackMove') this.setGroundMoveMode(mode);
+    });
     this.root.querySelector('#mv3-mute')?.addEventListener('click', () => {
       const muted = audioBus.toggleMute();
       bgm.setMatchMuted(muted);
       const button = this.root.querySelector('#mv3-mute');
       if (button) button.textContent = muted ? 'Muted' : 'Sound';
     });
+  }
+
+  private setGroundMoveMode(mode: GroundMoveMode): void {
+    this.groundMoveMode = mode;
+    this.refreshGroundMoveModeButtons();
+  }
+
+  private refreshGroundMoveModeButtons(): void {
+    for (const button of this.root.querySelectorAll<HTMLButtonElement>('#mv3-orders button[data-ground-mode]')) {
+      button.classList.toggle('on', button.dataset.groundMode === this.groundMoveMode);
+    }
   }
 
   private updateHud(): void {
@@ -377,6 +404,7 @@ export class MatchView3D {
       target: target ? { id: target.id, owner: target.owner } : null,
       localPlayerId: this.localPlayerId,
       cell,
+      groundMode: this.groundMoveMode,
     });
     if (cmd) {
       this.localCommands.push(cmd);

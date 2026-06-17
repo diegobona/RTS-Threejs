@@ -26,6 +26,19 @@ describe('3D right-click orders', () => {
     ).toEqual({ kind: 'move', entityIds: [3, 7], cellX: 10, cellY: 12 });
   });
 
+  it('attack-moves selected combat units when the ground mode says to fight on contact', () => {
+    expect(
+      rightClickCommand({
+        selectedIds: [7, 3],
+        combatIds: [7, 3],
+        target: null,
+        localPlayerId: 1,
+        cell: { x: 10, y: 12 },
+        groundMode: 'attackMove',
+      }),
+    ).toEqual({ kind: 'attackMove', entityIds: [3, 7], cellX: 10, cellY: 12 });
+  });
+
   it('falls back to movement when selected units cannot attack', () => {
     expect(
       rightClickCommand({
