@@ -35,6 +35,39 @@ describe('电力结算', () => {
 });
 
 describe('fighter dual-role combat', () => {
+  it('does not let infantry or tanks target aircraft', () => {
+    const w = new World(gridTerrain(40, 40), 125);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const gi = w.spawnUnit(1, 'gi', 5, 5)!;
+    const tank = w.spawnUnit(1, 'grizzly', 6, 5)!;
+    const aircraft = w.spawnUnit(2, 'fighter', 7, 5)!;
+    w.applyCommands([{ kind: 'attack', entityIds: [gi.id, tank.id], targetId: aircraft.id }]);
+
+    for (let i = 0; i < 160; i++) w.step();
+
+    expect(gi.targetId).toBeNull();
+    expect(tank.targetId).toBeNull();
+    expect(aircraft.hp).toBe(aircraft.maxHp);
+    expect(w.projectiles.filter((p) => p.targetId === aircraft.id)).toHaveLength(0);
+  });
+
+  it('does not damage aircraft with tank shell splash while attacking nearby ground units', () => {
+    const w = new World(gridTerrain(40, 40), 127);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const tank = w.spawnUnit(1, 'grizzly', 5, 5)!;
+    const groundTarget = w.spawnUnit(2, 'conscript', 6, 5)!;
+    const aircraft = w.spawnUnit(2, 'fighter', 6, 5)!;
+    w.applyCommands([{ kind: 'stance', entityIds: [groundTarget.id, aircraft.id], stance: 'holdfire' }]);
+    w.applyCommands([{ kind: 'attack', entityIds: [tank.id], targetId: groundTarget.id }]);
+
+    for (let i = 0; i < 80; i++) w.step();
+
+    expect(groundTarget.hp).toBeLessThan(groundTarget.maxHp);
+    expect(aircraft.hp).toBe(aircraft.maxHp);
+  });
+
   it('fires missile projectiles at aircraft outside bomb range', () => {
     const w = new World(gridTerrain(40, 40), 121);
     w.addPlayer(1, 'allied', 0);

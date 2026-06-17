@@ -126,6 +126,7 @@ export interface Projectile {
   owner: number;
   shooterId: number;
   weaponRole: WeaponRole;
+  targetDomains?: Domain[];
 }
 
 export type Command =
@@ -1189,7 +1190,11 @@ export class World {
   }
 
   private weaponCanTarget(weapon: WeaponSpec, domain: Domain): boolean {
-    return !weapon.targetDomains || weapon.targetDomains.includes(domain);
+    return this.targetDomainsCanTarget(weapon.targetDomains, domain);
+  }
+
+  private targetDomainsCanTarget(targetDomains: readonly Domain[] | undefined, domain: Domain): boolean {
+    return targetDomains ? targetDomains.includes(domain) : domain !== 'aircraft';
   }
 
   private weaponForTarget(type: UnitType, targetType: UnitType): WeaponSpec | null {
@@ -1338,7 +1343,7 @@ export class World {
   private fire(shooter: Entity, target: Entity, shooterType: UnitType, weapon: WeaponSpec): void {
     const dmg = Math.floor((weapon.damage * this.vetMul(shooter)) / 100); // 老兵加成
     if (weapon.projectileSpeed <= 0) {
-      this.applyDamage(target, dmg, weapon.warhead, weapon.splash, shooter.owner, shooter.id);
+      this.applyDamage(target, dmg, weapon.warhead, weapon.splash, shooter.owner, shooter.id, weapon.targetDomains);
     } else {
       this.projectiles.push({
         id: this.nextProjectileId++,
@@ -1352,6 +1357,7 @@ export class World {
         owner: shooter.owner,
         shooterId: shooter.id,
         weaponRole: this.weaponRoleFor(shooterType, weapon),
+        targetDomains: weapon.targetDomains ? [...weapon.targetDomains] : undefined,
       });
     }
   }
@@ -1367,6 +1373,7 @@ export class World {
     splash: number,
     owner: number,
     attackerId = -1,
+    targetDomains?: Domain[],
   ): void {
     const verses = this.rules.resolveVerses(warhead);
     const deal = (e: Entity, base: number): void => {
@@ -1391,6 +1398,8 @@ export class World {
     if (splash > 0) {
       for (const e of this.entities.values()) {
         if (e.id === target.id || e.owner === owner) continue;
+        const type = this.rules.units.get(e.typeId);
+        if (!type || !this.targetDomainsCanTarget(targetDomains, type.domain)) continue;
         const d = dist(e.x - target.x, e.y - target.y);
         if (d <= splash) deal(e, Math.floor((damage * (splash - d)) / splash));
       }
@@ -1409,7 +1418,7 @@ export class World {
       const dy = target.y - p.y;
       const d = dist(dx, dy);
       if (d <= p.speed) {
-        this.applyDamage(target, p.damage, JSON.parse(p.warheadId), p.splash, p.owner, p.shooterId);
+        this.applyDamage(target, p.damage, JSON.parse(p.warheadId), p.splash, p.owner, p.shooterId, p.targetDomains);
         this.projectiles.splice(i, 1);
       } else {
         const ang = dirToBangle(dx, dy);
