@@ -3,11 +3,13 @@ import { Vector3 } from 'three';
 import {
   combatEffectProfile3D,
   commandIndicatorProfile3D,
+  commandIndicatorTransform3D,
   aircraftIdleOrbitOffset3D,
   aircraftIdleOrbitYaw3D,
   aircraftVisualStep3D,
   entityRootAltitude3D,
   entitySelectionRingAltitude3D,
+  entitySelectionRingScale3D,
   entityYawForFacing3D,
   entityVisualAltitude3D,
   isPickableEntityPart3D,
@@ -31,6 +33,12 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
   it('puts aircraft selection feedback on the aircraft body, not on the shadow', () => {
     expect(entitySelectionRingAltitude3D({ domain: 'aircraft' })).toBeGreaterThanOrEqual(entityVisualAltitude3D({ domain: 'aircraft' }));
     expect(entitySelectionRingAltitude3D({ domain: 'vehicle' })).toBeCloseTo(0.045);
+  });
+
+  it('scales vehicle selection rings wider than infantry so tanks are clearly framed', () => {
+    expect(entitySelectionRingScale3D({ domain: 'infantry' })).toBe(1);
+    expect(entitySelectionRingScale3D({ domain: 'vehicle' })).toBeGreaterThanOrEqual(1.7);
+    expect(entitySelectionRingScale3D({ domain: 'aircraft' })).toBeGreaterThanOrEqual(1.7);
   });
 
   it('keeps aircraft shadows out of raycast picking', () => {
@@ -218,11 +226,22 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
   it('uses green command markers for movement and red sword markers for attacks', () => {
     const move = commandIndicatorProfile3D('move');
     const attack = commandIndicatorProfile3D('attack');
+    const moveTransform = commandIndicatorTransform3D('move');
 
-    expect(move.color).toBe(0x42e08a);
+    expect(move.color).toBe(0x00ffc8);
     expect(move.showSwords).toBe(false);
+    expect(move.life).toBeGreaterThanOrEqual(40);
+    expect(moveTransform.ringScale).toBeGreaterThan(1.3);
     expect(attack.color).toBe(0xff4b4b);
     expect(attack.showSwords).toBe(true);
-    expect(attack.life).toBeGreaterThan(move.life - 1);
+  });
+
+  it('scales and lifts attack markers for large building targets so they are not hidden under the model', () => {
+    const unit = commandIndicatorTransform3D('attack');
+    const building = commandIndicatorTransform3D('attack', { footprintW: 3, footprintH: 3 });
+
+    expect(unit.ringScale).toBe(1);
+    expect(building.ringScale).toBeGreaterThan(3);
+    expect(building.swordHeight).toBeGreaterThan(unit.swordHeight);
   });
 });

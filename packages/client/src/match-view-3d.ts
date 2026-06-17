@@ -427,7 +427,12 @@ export class MatchView3D {
     const pos = type?.building
       ? cellToWorld3D(target.cellX + (type.building.footprintW - 1) / 2, target.cellY + (type.building.footprintH - 1) / 2)
       : leptonToWorld3D(target.x, target.y);
-    this.renderer.spawnCommandIndicator('attack', pos.x, pos.z);
+    this.renderer.spawnCommandIndicator(
+      'attack',
+      pos.x,
+      pos.z,
+      type?.building ? { footprintW: type.building.footprintW, footprintH: type.building.footprintH } : undefined,
+    );
   }
 
   private tryPlaceBuilding(clientX: number, clientY: number): void {

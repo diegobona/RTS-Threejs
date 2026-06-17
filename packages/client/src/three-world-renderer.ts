@@ -60,6 +60,18 @@ export interface CommandIndicatorProfile3D {
   showSwords: boolean;
 }
 
+export interface CommandIndicatorTarget3D {
+  footprintW?: number;
+  footprintH?: number;
+}
+
+export interface CommandIndicatorTransform3D {
+  ringScale: number;
+  arrowOffsetZ: number;
+  arrowScale: number;
+  swordHeight: number;
+}
+
 export interface CombatEffectProfile3D {
   visual: 'muzzleFlash' | 'impactSpark' | 'blast';
   color: number;
@@ -125,7 +137,21 @@ export function entityRootAltitude3D(_type: Pick<UnitType, 'domain'>): number {
 export function commandIndicatorProfile3D(kind: CommandIndicatorKind3D): CommandIndicatorProfile3D {
   return kind === 'attack'
     ? { color: 0xff4b4b, life: 34, showSwords: true }
-    : { color: 0x42e08a, life: 32, showSwords: false };
+    : { color: 0x00ffc8, life: 44, showSwords: false };
+}
+
+export function commandIndicatorTransform3D(
+  kind: CommandIndicatorKind3D,
+  target: CommandIndicatorTarget3D = {},
+): CommandIndicatorTransform3D {
+  const footprint = Math.max(1, target.footprintW ?? 1, target.footprintH ?? 1);
+  const ringScale = kind === 'attack' && footprint > 1 ? footprint * 1.25 : kind === 'move' ? 1.55 : 1;
+  return {
+    ringScale,
+    arrowOffsetZ: -1.15 * ringScale,
+    arrowScale: kind === 'move' ? 1.35 : 1.08,
+    swordHeight: kind === 'attack' ? 0.78 + Math.max(0, footprint - 1) * 0.65 : 0.78,
+  };
 }
 
 export function entityVisualAltitude3D(type: Pick<UnitType, 'domain'>): number {
@@ -134,6 +160,12 @@ export function entityVisualAltitude3D(type: Pick<UnitType, 'domain'>): number {
 
 export function entitySelectionRingAltitude3D(type: Pick<UnitType, 'domain'>): number {
   return entityVisualAltitude3D(type) + 0.045;
+}
+
+export function entitySelectionRingScale3D(type: Pick<UnitType, 'domain'>): number {
+  if (type.domain === 'vehicle') return 1.8;
+  if (type.domain === 'aircraft') return 1.7;
+  return 1;
 }
 
 export function entityYawForFacing3D(facing: number): number {
@@ -431,8 +463,9 @@ export class ThreeWorldRenderer {
     this.renderer.render(this.scene, camera);
   }
 
-  spawnCommandIndicator(kind: CommandIndicatorKind3D, x: number, z: number): void {
+  spawnCommandIndicator(kind: CommandIndicatorKind3D, x: number, z: number, target: CommandIndicatorTarget3D = {}): void {
     const profile = commandIndicatorProfile3D(kind);
+    const transform = commandIndicatorTransform3D(kind, target);
     const root = new Group();
     root.position.set(x, 0.08, z);
 
@@ -446,6 +479,7 @@ export class ThreeWorldRenderer {
     ringMat.userData.baseOpacity = ringMat.opacity;
     const ring = new Mesh(this.commandRingGeo, ringMat);
     ring.rotation.x = -Math.PI / 2;
+    ring.scale.setScalar(transform.ringScale);
     root.add(ring);
 
     const arrowMat = new MeshBasicMaterial({
@@ -458,17 +492,17 @@ export class ThreeWorldRenderer {
     arrowMat.userData.baseOpacity = arrowMat.opacity;
     const arrow = new Mesh(this.commandArrowGeo, arrowMat);
     arrow.rotation.x = -Math.PI / 2;
-    arrow.position.set(0, 0.12, -1.15);
-    arrow.scale.setScalar(1.08);
+    arrow.position.set(0, 0.12, transform.arrowOffsetZ);
+    arrow.scale.setScalar(transform.arrowScale);
     root.add(arrow);
 
-    if (profile.showSwords) this.addCommandSwords(root);
+    if (profile.showSwords) this.addCommandSwords(root, transform.swordHeight);
 
     this.effectLayer.add(root);
     this.combatEffects.push({ root, life: profile.life, maxLife: profile.life, grow: 0.12 });
   }
 
-  private addCommandSwords(root: Group): void {
+  private addCommandSwords(root: Group, swordHeight: number): void {
     const bladeMat = new MeshBasicMaterial({ color: 0xf5f8ff, transparent: true, opacity: 0.92, depthWrite: false });
     const gripMat = new MeshBasicMaterial({ color: 0x2357ff, transparent: true, opacity: 0.86, depthWrite: false });
     bladeMat.userData.baseOpacity = bladeMat.opacity;
@@ -476,7 +510,7 @@ export class ThreeWorldRenderer {
 
     const makeSword = (rotationY: number): Group => {
       const sword = new Group();
-      sword.position.set(0, 0.78, -0.08);
+      sword.position.set(0, swordHeight, -0.08);
       sword.rotation.y = rotationY;
 
       const blade = new Mesh(this.commandSwordBladeGeo, bladeMat);
@@ -873,7 +907,7 @@ export class ThreeWorldRenderer {
     const selectionRing = new Mesh(this.selectionRingGeo, this.selectionRingMat);
     selectionRing.rotation.x = -Math.PI / 2;
     selectionRing.position.y = entitySelectionRingAltitude3D(type);
-    selectionRing.scale.setScalar(type.domain === 'aircraft' ? 1.7 : 1);
+    selectionRing.scale.setScalar(entitySelectionRingScale3D(type));
     selectionRing.visible = false;
     root.add(selectionRing, hpBar);
     root.traverse((child) => {
