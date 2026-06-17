@@ -214,6 +214,35 @@ export function aircraftVisualStep3D(current: Vector3, desired: Vector3, maxStep
   return current.clone().add(delta.multiplyScalar(maxStep / distance));
 }
 
+export function aircraftVisualDampedStep3D(
+  current: Vector3,
+  desired: Vector3,
+  previousVelocity: Vector3 | null | undefined,
+  dt: number,
+): { position: Vector3; velocity: Vector3 } {
+  const safeDt = Math.max(1 / 120, Math.min(0.12, dt));
+  const velocity = previousVelocity?.clone() ?? new Vector3();
+  const toTarget = desired.clone().sub(current);
+  const distance = toTarget.length();
+  if (distance <= 0.01 && velocity.length() <= 0.04) {
+    return { position: desired.clone(), velocity: new Vector3() };
+  }
+
+  const stiffness = 3.2;
+  const damping = 2 * stiffness;
+  const acceleration = toTarget.multiplyScalar(stiffness * stiffness).add(velocity.clone().multiplyScalar(-damping));
+  const nextVelocity = velocity.add(acceleration.multiplyScalar(safeDt));
+  const maxSpeed = 30;
+  const speed = nextVelocity.length();
+  if (speed > maxSpeed) nextVelocity.multiplyScalar(maxSpeed / speed);
+
+  const nextPosition = current.clone().add(nextVelocity.clone().multiplyScalar(safeDt));
+  if (desired.clone().sub(current).dot(desired.clone().sub(nextPosition)) <= 0) {
+    return { position: desired.clone(), velocity: new Vector3() };
+  }
+  return { position: nextPosition, velocity: nextVelocity };
+}
+
 function aircraftIdleLoiterPoint3D(timeSeconds: number, entityId: number, center: { x: number; z: number }): Vector3 {
   const profile = aircraftIdleLoiterProfile3D(entityId);
   const phase = timeSeconds * profile.speed * profile.direction + profile.phase;
@@ -462,6 +491,13 @@ export class ThreeWorldRenderer {
     this.processCombatEvents();
     this.stepCombatEffects();
     this.renderer.render(this.scene, camera);
+  }
+
+  commitInterpolation(): void {
+    for (const e of this.world.entities.values()) {
+      const view = this.views.get(e.id);
+      if (view) view.root.userData.last = { x: e.x, y: e.y };
+    }
   }
 
   spawnCommandIndicator(kind: CommandIndicatorKind3D, x: number, z: number, target: CommandIndicatorTarget3D = {}): void {
@@ -820,6 +856,7 @@ export class ThreeWorldRenderer {
       let view = this.views.get(e.id);
       if (!view) {
         view = this.createEntityView(type, e.owner, e.id);
+        view.root.userData.last = { x: e.x, y: e.y };
         this.views.set(e.id, view);
         this.entityLayer.add(view.root);
       }
@@ -848,17 +885,20 @@ export class ThreeWorldRenderer {
         const desired = new Vector3(pos.x + orbit.x, entityRootAltitude3D(type) + orbit.y, pos.z + orbit.z);
         if (type.domain === 'aircraft') {
           const lastVisual = view.root.userData.visualPosition as Vector3 | undefined;
+          const lastVelocity = view.root.userData.visualVelocity as Vector3 | undefined;
           const lastVisualTime = view.root.userData.visualTime as number | undefined;
           const dt = Math.max(1 / 120, Math.min(0.12, lastVisualTime === undefined ? 1 / 60 : nowSeconds - lastVisualTime));
-          const visual = lastVisual ? aircraftVisualStep3D(lastVisual, desired, 26 * dt) : desired;
-          view.root.position.copy(visual);
-          view.root.userData.visualPosition = visual.clone();
+          const visual = lastVisual
+            ? aircraftVisualDampedStep3D(lastVisual, desired, lastVelocity, dt)
+            : { position: desired, velocity: new Vector3() };
+          view.root.position.copy(visual.position);
+          view.root.userData.visualPosition = visual.position.clone();
+          view.root.userData.visualVelocity = visual.velocity.clone();
           view.root.userData.visualTime = nowSeconds;
         } else {
           view.root.position.copy(desired);
         }
         view.root.rotation.y = orbiting ? aircraftIdleOrbitYaw3D(nowSeconds, e.id) : entityYawForFacing3D(e.facing);
-        view.root.userData.last = { x: e.x, y: e.y };
       }
       view.visualRoot.scale.setScalar(selected.has(e.id) ? 1.12 : 1);
       view.selectionRing.visible = selected.has(e.id);

@@ -7,6 +7,7 @@ import {
   aircraftIdleOrbitOffset3D,
   aircraftIdleOrbitYaw3D,
   aircraftVisualStep3D,
+  aircraftVisualDampedStep3D,
   entityRootAltitude3D,
   entitySelectionRingAltitude3D,
   entitySelectionRingScale3D,
@@ -229,6 +230,19 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(stepped.distanceTo(current)).toBeCloseTo(2);
     expect(stepped.distanceTo(farDesired)).toBeGreaterThan(20);
     expect(aircraftVisualStep3D(current, new Vector3(1, 0, 0), 2).x).toBeCloseTo(1);
+  });
+
+  it('smooths aircraft movement velocity so it does not suddenly snap or surge', () => {
+    const current = new Vector3(0, 0, 0);
+    const desired = new Vector3(10, 0, 0);
+    const first = aircraftVisualDampedStep3D(current, desired, null, 0.05);
+    const second = aircraftVisualDampedStep3D(first.position, desired, first.velocity, 0.05);
+
+    expect(first.position.x).toBeGreaterThan(0);
+    expect(first.position.x).toBeLessThan(10);
+    expect(second.position.x).toBeGreaterThan(first.position.x);
+    expect(second.velocity.length()).toBeGreaterThan(first.velocity.length());
+    expect(second.velocity.length() - first.velocity.length()).toBeLessThan(4);
   });
 
   it('maps combat events to distinct visible spark and blast effects', () => {

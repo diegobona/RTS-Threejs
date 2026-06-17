@@ -114,6 +114,7 @@ export class MatchView3D {
   }
 
   stepWith(cmds: Command[]): void {
+    this.renderer.commitInterpolation();
     if (cmds.length > 0) this.world.applyCommands(cmds);
     this.world.step();
     this.lastStepAt = performance.now();
