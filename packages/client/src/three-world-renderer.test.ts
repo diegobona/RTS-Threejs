@@ -140,8 +140,8 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     const visualA = aircraftPos.clone().add(idleA);
     const visualB = aircraftPos.clone().add(idleB);
 
-    expect(visualA.distanceTo(baseCenter)).toBeGreaterThan(5.5);
-    expect(visualA.distanceTo(baseCenter)).toBeLessThan(9.5);
+    expect(visualA.distanceTo(baseCenter)).toBeGreaterThan(8);
+    expect(visualA.distanceTo(baseCenter)).toBeLessThan(26);
     expect(visualA.distanceTo(aircraftPos)).toBeGreaterThan(24);
     expect(visualB.distanceTo(visualA)).toBeGreaterThan(2.5);
     expect(Math.hypot(moving.x, moving.z)).toBe(0);
@@ -149,7 +149,7 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(Math.hypot(ground.x, ground.z)).toBe(0);
   });
 
-  it('scatters idle aircraft into mixed loiter routes instead of one orderly ring', () => {
+  it('stages idle aircraft into staggered loiter lanes instead of one cramped ring', () => {
     const aircraftPos = new Vector3(10, 0, 10);
     const baseCenter = new Vector3(40, 0, 42);
     const positions = Array.from({ length: 18 }, (_, i) => {
@@ -159,17 +159,39 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     });
     const distances = positions.map((p) => p.distanceTo(baseCenter));
     const ringWidth = Math.max(...distances) - Math.min(...distances);
-    const turnSigns = positions.map((p, i) => {
+    const distanceBands = new Set(distances.map((d) => Math.round(d / 2)));
+
+    expect(ringWidth).toBeGreaterThan(8);
+    expect(distanceBands.size).toBeGreaterThanOrEqual(4);
+  });
+
+  it('keeps many idle aircraft in wider readable lanes over the same airbase', () => {
+    const aircraftPos = new Vector3(10, 0, 10);
+    const airbaseCenter = new Vector3(40, 0, 42);
+    const positions = Array.from({ length: 24 }, (_, i) => {
       const id = i + 1;
-      const nextOffset = aircraftIdleOrbitOffset3D({ domain: 'aircraft' }, { targetId: null, pathLength: 0 }, aircraftPos, baseCenter, 4.3, id);
-      const next = aircraftPos.clone().add(nextOffset);
-      const radial = p.clone().sub(baseCenter);
-      const step = next.clone().sub(p);
-      return Math.sign(radial.x * step.z - radial.z * step.x);
+      const offset = aircraftIdleOrbitOffset3D(
+        { domain: 'aircraft' },
+        { targetId: null, pathLength: 0, loiterCenter: airbaseCenter },
+        aircraftPos,
+        new Vector3(2, 0, 2),
+        6,
+        id,
+      );
+      return aircraftPos.clone().add(offset);
     });
 
-    expect(ringWidth).toBeGreaterThan(4);
-    expect(new Set(turnSigns).size).toBeGreaterThanOrEqual(2);
+    let nearest = Infinity;
+    for (let i = 0; i < positions.length; i++) {
+      for (let j = i + 1; j < positions.length; j++) {
+        nearest = Math.min(nearest, positions[i]!.distanceTo(positions[j]!));
+      }
+    }
+
+    const distances = positions.map((p) => p.distanceTo(airbaseCenter));
+    expect(nearest).toBeGreaterThan(2.8);
+    expect(Math.min(...distances)).toBeGreaterThan(7.5);
+    expect(Math.max(...distances)).toBeLessThan(26);
   });
 
   it('orbits idle aircraft around their ordered airspace before falling back to home base', () => {
@@ -186,7 +208,7 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     );
     const visual = aircraftPos.clone().add(offset);
 
-    expect(visual.distanceTo(orderedAirspace)).toBeLessThan(12);
+    expect(visual.distanceTo(orderedAirspace)).toBeLessThan(26);
     expect(visual.distanceTo(homeBase)).toBeGreaterThan(20);
   });
 

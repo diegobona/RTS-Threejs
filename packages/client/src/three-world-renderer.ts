@@ -89,8 +89,9 @@ export interface ProjectileVisualProfile3D {
 
 const PLAYER_COLORS = [0xf8d020, 0x3a7fe0, 0x30c040, 0xe04030, 0xd060d0, 0xe08020, 0x40c0c0, 0xc0c0c0];
 const AIRCRAFT_ALTITUDE = 8;
-const AIRCRAFT_IDLE_ORBIT_RADIUS = 7.2;
-const AIRCRAFT_IDLE_ORBIT_SPEED = 0.48;
+const AIRCRAFT_IDLE_ORBIT_RADIUS = 11.5;
+const AIRCRAFT_IDLE_ORBIT_LANE_SPACING = 4;
+const AIRCRAFT_IDLE_ORBIT_SPEED = 0.42;
 
 interface AircraftActivity3D {
   targetId?: number | null;
@@ -237,26 +238,26 @@ function aircraftIdleLoiterProfile3D(entityId: number): {
   weaveX: number;
   weaveZ: number;
 } {
-  const r1 = aircraftIdleHash3D(entityId, 1);
   const r2 = aircraftIdleHash3D(entityId, 2);
   const r3 = aircraftIdleHash3D(entityId, 3);
-  const r4 = aircraftIdleHash3D(entityId, 4);
   const r5 = aircraftIdleHash3D(entityId, 5);
-  const r6 = aircraftIdleHash3D(entityId, 6);
   const r7 = aircraftIdleHash3D(entityId, 7);
-  const radiusScale = 0.62 + r1 * 0.98;
+  const lane = ((entityId - 1) % 4 + 4) % 4;
+  const laneCenter = lane - 1.5;
+  const phaseBand = Math.floor(Math.max(0, entityId - 1) / 4);
+  const stagger = (phaseBand * 0.61803398875 + lane * 0.035 + r5 * 0.018) % 1;
   return {
-    centerX: (r2 - 0.5) * 8.5,
-    centerZ: (r3 - 0.5) * 6.5,
-    direction: r4 < 0.5 ? -1 : 1,
-    phase: r5 * Math.PI * 2,
-    radiusX: AIRCRAFT_IDLE_ORBIT_RADIUS * radiusScale,
-    radiusZ: AIRCRAFT_IDLE_ORBIT_RADIUS * (0.48 + r6 * 0.74),
-    speed: AIRCRAFT_IDLE_ORBIT_SPEED * (0.9 + r7 * 0.8),
+    centerX: laneCenter * 0.28 + (r2 - 0.5) * 0.5,
+    centerZ: (r3 - 0.5) * 0.5,
+    direction: 1,
+    phase: stagger * Math.PI * 2,
+    radiusX: AIRCRAFT_IDLE_ORBIT_RADIUS + lane * AIRCRAFT_IDLE_ORBIT_LANE_SPACING,
+    radiusZ: AIRCRAFT_IDLE_ORBIT_RADIUS * 0.68 + lane * AIRCRAFT_IDLE_ORBIT_LANE_SPACING * 0.96,
+    speed: AIRCRAFT_IDLE_ORBIT_SPEED * (0.94 + lane * 0.025 + r7 * 0.08),
     weavePhase: aircraftIdleHash3D(entityId, 8) * Math.PI * 2,
-    weaveSpeed: AIRCRAFT_IDLE_ORBIT_SPEED * (0.9 + aircraftIdleHash3D(entityId, 9) * 0.9),
-    weaveX: 0.8 + aircraftIdleHash3D(entityId, 10) * 1.55,
-    weaveZ: 0.55 + aircraftIdleHash3D(entityId, 11) * 1.35,
+    weaveSpeed: AIRCRAFT_IDLE_ORBIT_SPEED * (0.55 + aircraftIdleHash3D(entityId, 9) * 0.22),
+    weaveX: 0.12 + aircraftIdleHash3D(entityId, 10) * 0.22,
+    weaveZ: 0.1 + aircraftIdleHash3D(entityId, 11) * 0.18,
   };
 }
 

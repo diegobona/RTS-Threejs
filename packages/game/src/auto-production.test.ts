@@ -114,6 +114,20 @@ describe('automatic production buildings', () => {
     expect(new Set(fighters.map(cellKey)).size).toBe(fighters.length);
   });
 
+  it('anchors auto-produced aircraft loiter to the airbase that launched them', () => {
+    const w = baseWorld(50000);
+    const airbase = w.spawnUnit(1, 'airbase', 10, 10)!;
+
+    runTicks(w, 55);
+
+    const fighter = unitsOfType(w, 'fighter')[0]!;
+    const footprint = w.rules.units.get('airbase')!.building!;
+    expect(airLoiterOf(fighter)).toMatchObject({
+      airLoiterX: airbase.cellX + Math.floor(footprint.footprintW / 2),
+      airLoiterY: airbase.cellY + footprint.footprintH + 1,
+    });
+  });
+
   it('moves aircraft groups into a loose air formation instead of adjacent stacked cells', () => {
     const w = baseWorld(50000);
     w.addPlayer(2, 'soviet', 0);

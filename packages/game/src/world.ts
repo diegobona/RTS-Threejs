@@ -697,10 +697,10 @@ export class World {
 
   private spawnFromProducer(building: Entity, type: UnitType): boolean {
     const exit = building.producerExit;
+    const aircraftAnchor = type.domain === 'aircraft' ? this.airProducerAnchor(building) : null;
     let spawn: { x: number; y: number } | null;
-    if (type.domain === 'aircraft') {
-      const anchor = this.airProducerAnchor(building);
-      spawn = this.findFreeUnitSlotNear(anchor.x, anchor.y, type.domain, 8) ?? anchor;
+    if (aircraftAnchor) {
+      spawn = this.findFreeUnitSlotNear(aircraftAnchor.x, aircraftAnchor.y, type.domain, 8) ?? aircraftAnchor;
     } else {
       if (!exit) return false;
       spawn = this.findFreeUnitSlotNear(exit.x, exit.y, type.domain, 6, -1, true) ?? exit;
@@ -708,9 +708,11 @@ export class World {
     const unit = this.makeEntity(building.owner, type, cellToLepton(spawn.x), cellToLepton(spawn.y));
     const rally = building.rallyX >= 0 && building.rallyY >= 0 ? { x: building.rallyX, y: building.rallyY } : null;
     const disperse = exit ? this.findFreeUnitSlotNear(exit.x, exit.y + 1, type.domain, 8, unit.id) : null;
-    const dest = rally ? this.findFreeUnitSlotNear(rally.x, rally.y, type.domain, 12, unit.id) ?? rally : disperse;
-    if (type.domain === 'aircraft' && dest) this.setAircraftLoiter(unit, dest.x, dest.y);
-    if (dest && (dest.x !== unit.cellX || dest.y !== unit.cellY)) this.orderMove(unit, dest.x, dest.y);
+    const rallySlot = rally ? this.findFreeUnitSlotNear(rally.x, rally.y, type.domain, 12, unit.id) ?? rally : null;
+    const moveDest = aircraftAnchor ? rallySlot : (rallySlot ?? disperse);
+    const loiterDest = aircraftAnchor ? (rallySlot ?? aircraftAnchor) : null;
+    if (loiterDest) this.setAircraftLoiter(unit, loiterDest.x, loiterDest.y);
+    if (moveDest && (moveDest.x !== unit.cellX || moveDest.y !== unit.cellY)) this.orderMove(unit, moveDest.x, moveDest.y);
     return true;
   }
 
