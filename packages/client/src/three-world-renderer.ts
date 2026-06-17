@@ -9,6 +9,7 @@ import {
   ConeGeometry,
   CylinderGeometry,
   DirectionalLight,
+  DoubleSide,
   Fog,
   Group,
   HemisphereLight,
@@ -22,6 +23,8 @@ import {
   Raycaster,
   RingGeometry,
   Scene,
+  Shape,
+  ShapeGeometry,
   SphereGeometry,
   Vector2,
   Vector3,
@@ -47,6 +50,14 @@ interface CombatEffect {
   life: number;
   maxLife: number;
   grow: number;
+}
+
+export type CommandIndicatorKind3D = 'move' | 'attack';
+
+export interface CommandIndicatorProfile3D {
+  color: number;
+  life: number;
+  showSwords: boolean;
 }
 
 export interface CombatEffectProfile3D {
@@ -109,6 +120,12 @@ export const LOWPOLY_FIGHTER_PART_IDS = [
 
 export function entityRootAltitude3D(_type: Pick<UnitType, 'domain'>): number {
   return 0;
+}
+
+export function commandIndicatorProfile3D(kind: CommandIndicatorKind3D): CommandIndicatorProfile3D {
+  return kind === 'attack'
+    ? { color: 0xff4b4b, life: 34, showSwords: true }
+    : { color: 0x42e08a, life: 32, showSwords: false };
 }
 
 export function entityVisualAltitude3D(type: Pick<UnitType, 'domain'>): number {
@@ -293,6 +310,15 @@ export function combatMuzzlePoint3D(
   return projectileTracerEnd3D(start, new Vector3(target.x, profile.height, target.z), muzzleOffset);
 }
 
+function commandArrowGeometry3D(): ShapeGeometry {
+  const shape = new Shape();
+  shape.moveTo(0, 0.58);
+  shape.lineTo(-0.42, -0.36);
+  shape.lineTo(0.42, -0.36);
+  shape.lineTo(0, 0.58);
+  return new ShapeGeometry(shape);
+}
+
 export class ThreeWorldRenderer {
   readonly renderer: WebGLRenderer;
   readonly scene = new Scene();
@@ -313,6 +339,11 @@ export class ThreeWorldRenderer {
   private readonly effectFlashGeo = new SphereGeometry(1, 10, 8);
   private readonly effectSparkGeo = new BoxGeometry(0.055, 0.055, 0.38);
   private readonly effectRingGeo = new RingGeometry(0.65, 0.86, 24);
+  private readonly commandRingGeo = new RingGeometry(0.72, 0.93, 36);
+  private readonly commandArrowGeo = commandArrowGeometry3D();
+  private readonly commandSwordBladeGeo = new BoxGeometry(0.13, 0.08, 1.05);
+  private readonly commandSwordGuardGeo = new BoxGeometry(0.5, 0.08, 0.12);
+  private readonly commandSwordGripGeo = new BoxGeometry(0.14, 0.08, 0.32);
   private readonly soldierGeo = new CapsuleGeometry(0.22, 0.7, 4, 8);
   private readonly vehicleGeo = new BoxGeometry(0.9, 0.35, 1.25);
   private readonly barrelGeo = new BoxGeometry(0.16, 0.12, 0.8);
@@ -398,6 +429,67 @@ export class ThreeWorldRenderer {
     this.processCombatEvents();
     this.stepCombatEffects();
     this.renderer.render(this.scene, camera);
+  }
+
+  spawnCommandIndicator(kind: CommandIndicatorKind3D, x: number, z: number): void {
+    const profile = commandIndicatorProfile3D(kind);
+    const root = new Group();
+    root.position.set(x, 0.08, z);
+
+    const ringMat = new MeshBasicMaterial({
+      color: profile.color,
+      transparent: true,
+      opacity: 0.82,
+      depthWrite: false,
+      side: DoubleSide,
+    });
+    ringMat.userData.baseOpacity = ringMat.opacity;
+    const ring = new Mesh(this.commandRingGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    root.add(ring);
+
+    const arrowMat = new MeshBasicMaterial({
+      color: profile.color,
+      transparent: true,
+      opacity: 0.76,
+      depthWrite: false,
+      side: DoubleSide,
+    });
+    arrowMat.userData.baseOpacity = arrowMat.opacity;
+    const arrow = new Mesh(this.commandArrowGeo, arrowMat);
+    arrow.rotation.x = -Math.PI / 2;
+    arrow.position.set(0, 0.12, -1.15);
+    arrow.scale.setScalar(1.08);
+    root.add(arrow);
+
+    if (profile.showSwords) this.addCommandSwords(root);
+
+    this.effectLayer.add(root);
+    this.combatEffects.push({ root, life: profile.life, maxLife: profile.life, grow: 0.12 });
+  }
+
+  private addCommandSwords(root: Group): void {
+    const bladeMat = new MeshBasicMaterial({ color: 0xf5f8ff, transparent: true, opacity: 0.92, depthWrite: false });
+    const gripMat = new MeshBasicMaterial({ color: 0x2357ff, transparent: true, opacity: 0.86, depthWrite: false });
+    bladeMat.userData.baseOpacity = bladeMat.opacity;
+    gripMat.userData.baseOpacity = gripMat.opacity;
+
+    const makeSword = (rotationY: number): Group => {
+      const sword = new Group();
+      sword.position.set(0, 0.78, -0.08);
+      sword.rotation.y = rotationY;
+
+      const blade = new Mesh(this.commandSwordBladeGeo, bladeMat);
+      blade.position.z = 0.22;
+      const guard = new Mesh(this.commandSwordGuardGeo, gripMat);
+      guard.position.z = -0.36;
+      const grip = new Mesh(this.commandSwordGripGeo, gripMat);
+      grip.position.z = -0.58;
+      sword.add(blade, guard, grip);
+      return sword;
+    };
+
+    root.add(makeSword(Math.PI / 4), makeSword(-Math.PI / 4));
   }
 
   pickOwnUnit(camera: Camera, clientX: number, clientY: number): number | null {

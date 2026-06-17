@@ -1,9 +1,9 @@
-import { World, categoryOf, type Command, type ProdCategory, type UnitType } from '@ra2web/game';
+import { World, categoryOf, type Command, type Entity, type ProdCategory, type UnitType } from '@ra2web/game';
 import { Vector3 } from 'three';
 import { audioBus } from './audio-bus';
 import { bgm } from './bgm';
 import { ThreeCameraController } from './three-camera';
-import { cellToWorld3D, worldToCell3D } from './three-coords';
+import { cellToWorld3D, leptonToWorld3D, worldToCell3D } from './three-coords';
 import { productionButtonState } from './three-build-ui';
 import { rightClickCommand, type GroundMoveMode } from './three-orders';
 import { idsInScreenRect, nearestIdWithinRadius } from './three-selection';
@@ -142,7 +142,7 @@ export class MatchView3D {
         <a href="#">Exit</a>
       </div>
       <div class="mv3-orders" id="mv3-orders">
-        <button type="button" data-ground-mode="move">途中遇敌绕行</button>
+        <button type="button" data-ground-mode="move">途中遇敌不攻击</button>
         <button type="button" data-ground-mode="attackMove">途中遇敌攻击</button>
       </div>
       <div class="mv3-build">
@@ -395,6 +395,7 @@ export class MatchView3D {
     const producer = this.selectedProducerBuilding();
     if (producer && cell && (!target || target.owner === this.localPlayerId)) {
       this.localCommands.push({ kind: 'setRally', owner: this.localPlayerId, buildingId: producer.id, cellX: cell.x, cellY: cell.y });
+      this.spawnGroundCommandIndicator(cell);
       audioBus.play('move');
       return;
     }
@@ -408,10 +409,25 @@ export class MatchView3D {
     });
     if (cmd) {
       this.localCommands.push(cmd);
+      if (cmd.kind === 'attack' && target) this.spawnTargetCommandIndicator(target);
+      else if (cell) this.spawnGroundCommandIndicator(cell);
       audioBus.play('move');
     } else {
       audioBus.play('deny');
     }
+  }
+
+  private spawnGroundCommandIndicator(cell: { x: number; y: number }): void {
+    const pos = cellToWorld3D(cell.x, cell.y);
+    this.renderer.spawnCommandIndicator('move', pos.x, pos.z);
+  }
+
+  private spawnTargetCommandIndicator(target: Entity): void {
+    const type = this.world.rules.units.get(target.typeId);
+    const pos = type?.building
+      ? cellToWorld3D(target.cellX + (type.building.footprintW - 1) / 2, target.cellY + (type.building.footprintH - 1) / 2)
+      : leptonToWorld3D(target.x, target.y);
+    this.renderer.spawnCommandIndicator('attack', pos.x, pos.z);
   }
 
   private tryPlaceBuilding(clientX: number, clientY: number): void {

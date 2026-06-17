@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
 import {
   combatEffectProfile3D,
+  commandIndicatorProfile3D,
   aircraftIdleOrbitOffset3D,
   aircraftIdleOrbitYaw3D,
   aircraftVisualStep3D,
@@ -212,5 +213,16 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(bomb.height).toBeGreaterThan(fire.height);
     expect(explosion.visual).toBe('blast');
     expect(explosion.sparkCount).toBeGreaterThan(cannon.sparkCount);
+  });
+
+  it('uses green command markers for movement and red sword markers for attacks', () => {
+    const move = commandIndicatorProfile3D('move');
+    const attack = commandIndicatorProfile3D('attack');
+
+    expect(move.color).toBe(0x42e08a);
+    expect(move.showSwords).toBe(false);
+    expect(attack.color).toBe(0xff4b4b);
+    expect(attack.showSwords).toBe(true);
+    expect(attack.life).toBeGreaterThan(move.life - 1);
   });
 });
