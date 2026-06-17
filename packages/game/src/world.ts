@@ -311,17 +311,37 @@ export class World {
             e.attackDest = { x: cmd.cellX, y: cmd.cellY };
           }
           break;
-        case 'attack':
-          for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
+        case 'attack': {
+          const ids = [...cmd.entityIds].sort((a, b) => a - b);
+          const target = this.entities.get(cmd.targetId);
+          const airIds = ids.filter((eid) => {
+            const e = this.entities.get(eid);
+            const type = e && this.rules.units.get(e.typeId);
+            return type?.domain === 'aircraft';
+          });
+          const firstAir = airIds.length > 0 ? this.entities.get(airIds[0]!) : null;
+          const firstAirType = firstAir ? this.rules.units.get(firstAir.typeId) : null;
+          const airSlots = target && firstAirType ? this.aircraftAttackDestinations(target, firstAirType, airIds.length) : [];
+          let airSlotIndex = 0;
+          for (const eid of ids) {
             const e = this.entities.get(eid);
             if (e) {
+              const type = this.rules.units.get(e.typeId);
               e.targetId = cmd.targetId;
               e.attackMove = false;
               e.attackDest = null;
               e.patrol = null;
+              if (type?.domain === 'aircraft') {
+                const slot = airSlots[airSlotIndex++];
+                if (slot) {
+                  this.setAircraftLoiter(e, slot.x, slot.y);
+                  if (slot.x !== e.cellX || slot.y !== e.cellY) this.orderMove(e, slot.x, slot.y);
+                }
+              }
             }
           }
           break;
+        }
         case 'engineerEnter': {
           // 工程师前往目标建筑：抵达即修复（己方）/ 占领（敌方），由 stepEngineer 处理。
           const tgt = this.entities.get(cmd.targetId);
@@ -986,6 +1006,44 @@ export class World {
     return out;
   }
 
+  private aircraftAttackDestinations(target: Entity, attackerType: UnitType, count: number): { x: number; y: number }[] {
+    const targetType = this.rules.units.get(target.typeId);
+    const weapon = targetType ? this.weaponForTarget(attackerType, targetType) : null;
+    const range = weapon?.range ?? 2 * 256;
+    const center = { x: leptonToCell(target.x), y: leptonToCell(target.y) };
+    const maxRadius = Math.max(1, Math.floor(range / 256));
+    const candidates: { x: number; y: number }[] = [];
+    const seen = new Set<number>();
+    const tryAdd = (x: number, y: number): void => {
+      if (x < 0 || y < 0 || x >= this.terrain.width || y >= this.terrain.height) return;
+      if (!this.terrain.passable(x, y)) return;
+      const key = y * this.terrain.width + x;
+      if (seen.has(key)) return;
+      const d = dist(cellToLepton(x) - target.x, cellToLepton(y) - target.y);
+      if (d > range) return;
+      seen.add(key);
+      candidates.push({ x, y });
+    };
+
+    for (let r = 1; r <= maxRadius; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          tryAdd(center.x + dx, center.y + dy);
+        }
+      }
+    }
+
+    if (candidates.length === 0) candidates.push(center);
+    return Array.from({ length: count }, (_, i) => candidates[i % candidates.length]!);
+  }
+
+  private aircraftAttackStation(e: Entity, target: Entity, weapon: WeaponSpec): { x: number; y: number } | null {
+    if (e.airLoiterX < 0 || e.airLoiterY < 0) return null;
+    const d = dist(cellToLepton(e.airLoiterX) - target.x, cellToLepton(e.airLoiterY) - target.y);
+    return d <= weapon.range ? { x: e.airLoiterX, y: e.airLoiterY } : null;
+  }
+
   private allAircraft(ids: number[]): boolean {
     if (ids.length === 0) return false;
     for (const id of ids) {
@@ -1297,7 +1355,9 @@ export class World {
       // 够不着：上前进入射程。攻击移动暂离行军路线迎敌（attackDest 留待事后续行）；
       // 显式攻击同样追击；建筑不能动。
       if (e.attackMove ? e.path.length === 0 && !e.waypoint : type.domain !== 'building' && !e.goal) {
-        const near = this.passableNear(target.cellX, target.cellY);
+        const near = type.domain === 'aircraft'
+          ? this.aircraftAttackStation(e, target, weapon) ?? this.passableNear(target.cellX, target.cellY)
+          : this.passableNear(target.cellX, target.cellY);
         if (near) this.orderMove(e, near.x, near.y);
       }
       return false;

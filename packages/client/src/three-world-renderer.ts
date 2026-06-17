@@ -191,8 +191,8 @@ export function aircraftIdleOrbitOffset3D(
   entityId: number,
 ): Vector3 {
   if (type.domain !== 'aircraft') return new Vector3();
-  if (activity.targetId !== null && activity.targetId !== undefined) return new Vector3();
   if ((activity.pathLength ?? 0) > 0 || activity.goal || activity.waypoint || activity.attackMove) return new Vector3();
+  if (activity.targetId !== null && activity.targetId !== undefined && !activity.loiterCenter) return new Vector3();
   const center = activity.loiterCenter ?? homeBaseCenter ?? aircraftPosition;
   const loiter = aircraftIdleLoiterPoint3D(timeSeconds, entityId, center);
   return new Vector3(loiter.x - aircraftPosition.x, 0, loiter.z - aircraftPosition.z);

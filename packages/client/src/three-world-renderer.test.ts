@@ -136,7 +136,15 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     const idleA = aircraftIdleOrbitOffset3D({ domain: 'aircraft' }, { targetId: null, pathLength: 0 }, aircraftPos, baseCenter, 0, 11);
     const idleB = aircraftIdleOrbitOffset3D({ domain: 'aircraft' }, { targetId: null, pathLength: 0 }, aircraftPos, baseCenter, 1.25, 11);
     const moving = aircraftIdleOrbitOffset3D({ domain: 'aircraft' }, { targetId: null, pathLength: 1 }, aircraftPos, baseCenter, 1.25, 11);
-    const attacking = aircraftIdleOrbitOffset3D({ domain: 'aircraft' }, { targetId: 42, pathLength: 0 }, aircraftPos, baseCenter, 1.25, 11);
+    const attackingWithoutStation = aircraftIdleOrbitOffset3D({ domain: 'aircraft' }, { targetId: 42, pathLength: 0 }, aircraftPos, baseCenter, 1.25, 11);
+    const attackingAtStation = aircraftIdleOrbitOffset3D(
+      { domain: 'aircraft' },
+      { targetId: 42, pathLength: 0, loiterCenter: baseCenter },
+      aircraftPos,
+      undefined,
+      1.25,
+      11,
+    );
     const ground = aircraftIdleOrbitOffset3D({ domain: 'vehicle' }, { targetId: null, pathLength: 0 }, aircraftPos, baseCenter, 1.25, 11);
     const visualA = aircraftPos.clone().add(idleA);
     const visualB = aircraftPos.clone().add(idleB);
@@ -146,7 +154,8 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(visualA.distanceTo(aircraftPos)).toBeGreaterThan(24);
     expect(visualB.distanceTo(visualA)).toBeGreaterThan(2.5);
     expect(Math.hypot(moving.x, moving.z)).toBe(0);
-    expect(Math.hypot(attacking.x, attacking.z)).toBe(0);
+    expect(Math.hypot(attackingWithoutStation.x, attackingWithoutStation.z)).toBe(0);
+    expect(Math.hypot(attackingAtStation.x, attackingAtStation.z)).toBeGreaterThan(24);
     expect(Math.hypot(ground.x, ground.z)).toBe(0);
   });
 

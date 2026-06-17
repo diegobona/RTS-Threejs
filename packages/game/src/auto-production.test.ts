@@ -160,6 +160,22 @@ describe('automatic production buildings', () => {
     expect(fighter.goal).toBeNull();
     expect(airLoiterOf(fighter)).toMatchObject({ airLoiterX: 25, airLoiterY: 25 });
   });
+
+  it('spreads aircraft attack stations around a shared target instead of stacking over it', () => {
+    const w = baseWorld(50000);
+    w.addPlayer(2, 'soviet', 0);
+    const target = w.spawnUnit(2, 'conyard', 28, 28)!;
+    const ids: number[] = [];
+    for (let i = 0; i < 8; i++) ids.push(w.spawnUnit(1, 'fighter', 4 + (i % 4), 4 + Math.floor(i / 4))!.id);
+
+    w.applyCommands([{ kind: 'attack', entityIds: ids, targetId: target.id }]);
+
+    const fighters = ids.map((id) => w.entities.get(id)!);
+    const stations = fighters.map((e) => `${airLoiterOf(e).airLoiterX},${airLoiterOf(e).airLoiterY}`);
+    expect(new Set(stations).size).toBe(fighters.length);
+    expect(new Set(fighters.map(goalKey)).size).toBe(fighters.length);
+    expect(fighters.every((e) => e.targetId === target.id)).toBe(true);
+  });
 });
 
 describe('simplified combat economy and tech tree', () => {
