@@ -87,6 +87,13 @@ export interface ProjectileVisualProfile3D {
   color: number;
 }
 
+export interface EntityConstructionBarProfile3D {
+  widthScale: number;
+  heightScale: number;
+  depthScale: number;
+  y: number;
+}
+
 const PLAYER_COLORS = [0xf8d020, 0x3a7fe0, 0x30c040, 0xe04030, 0xd060d0, 0xe08020, 0x40c0c0, 0xc0c0c0];
 const AIRCRAFT_ALTITUDE = 8;
 const AIRCRAFT_IDLE_ORBIT_RADIUS = 11.5;
@@ -177,6 +184,19 @@ export function entityConstructionProgress3D(entity: { constructionProgress: num
 export function entityConstructionOpacity3D(entity: { constructionProgress: number; constructionTotal: number }): number {
   const pct = entityConstructionProgress3D(entity);
   return pct >= 1 ? 1 : 0.38 + pct * 0.28;
+}
+
+export function entityConstructionBarProfile3D(type: Pick<UnitType, 'domain' | 'building'>): EntityConstructionBarProfile3D {
+  if (type.domain !== 'building' || !type.building) {
+    return { widthScale: 1, heightScale: 1, depthScale: 1, y: entityVisualAltitude3D(type) + 1.35 };
+  }
+  const footprint = Math.max(1, type.building.footprintW, type.building.footprintH);
+  return {
+    widthScale: Math.max(2.25, footprint * 0.9),
+    heightScale: 2.4,
+    depthScale: 2.25,
+    y: 2.95 + Math.min(0.7, footprint * 0.16),
+  };
 }
 
 export function entityYawForFacing3D(facing: number): number {
@@ -442,7 +462,7 @@ export class ThreeWorldRenderer {
   private readonly selectionRingMat = new MeshLambertMaterial({ color: 0x68f07a });
   private readonly hpBackMat = new MeshBasicLike(0x101010);
   private readonly hpGoodMat = new MeshBasicLike(0x42d66d);
-  private readonly hpConstructionMat = new MeshBasicLike(0xe9a12c);
+  private readonly hpConstructionMat = new MeshBasicLike(0xffd43b);
   private readonly projectileMat = new MeshLambertMaterial({ color: 0x111111 });
   private readonly projectileTracerMat = new MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.92, depthWrite: false });
   private readonly projectileMissileTracerMat = new MeshBasicMaterial({ color: 0xaedfff, transparent: true, opacity: 0.9, depthWrite: false });
@@ -917,6 +937,7 @@ export class ThreeWorldRenderer {
       view.visualRoot.scale.set(selectedScale, selectedScale * (constructing ? 0.88 + constructionPct * 0.12 : 1), selectedScale);
       this.setVisualOpacity(view.visualRoot, constructing ? entityConstructionOpacity3D(e) : 1);
       view.selectionRing.visible = selected.has(e.id);
+      this.applyHpBarProfile(view.hpBar, constructing ? entityConstructionBarProfile3D(type) : null);
       this.updateHpBar(
         view.hpBar,
         constructing ? constructionPct : e.hp / e.maxHp,
@@ -1847,18 +1868,34 @@ export class ThreeWorldRenderer {
     const root = new Group();
     const back = new Mesh(new BoxGeometry(width, 0.08, 0.05), this.hpBackMat.mat);
     const fill = new Mesh(new BoxGeometry(width, 0.09, 0.06), this.hpGoodMat.mat);
+    back.name = 'back';
     fill.name = 'fill';
     fill.position.z = -0.01;
     root.add(back, fill);
     root.position.y = y;
+    root.userData.baseWidth = width;
+    root.userData.baseY = y;
     return root;
+  }
+
+  private applyHpBarProfile(bar: Group, profile: EntityConstructionBarProfile3D | null): void {
+    if (!profile) {
+      bar.position.y = typeof bar.userData.baseY === 'number' ? bar.userData.baseY : bar.position.y;
+      bar.scale.set(1, 1, 1);
+      return;
+    }
+    bar.position.y = profile.y;
+    bar.scale.set(profile.widthScale, profile.heightScale, profile.depthScale);
   }
 
   private updateHpBar(bar: Group, pct: number, material: Material = this.hpGoodMat.mat, forceVisible = false): void {
     const fill = bar.getObjectByName('fill') as Mesh | null;
     if (!fill) return;
+    const clampedPct = Math.max(0.02, Math.min(1, pct));
+    const baseWidth = typeof bar.userData.baseWidth === 'number' ? bar.userData.baseWidth : 1;
     fill.material = material;
-    fill.scale.x = Math.max(0.02, Math.min(1, pct));
+    fill.scale.x = clampedPct;
+    fill.position.x = -(baseWidth * (1 - clampedPct)) / 2;
     fill.visible = forceVisible || pct < 0.999;
     bar.visible = forceVisible || pct < 0.999;
   }

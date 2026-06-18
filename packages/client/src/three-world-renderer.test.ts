@@ -12,6 +12,7 @@ import {
   entitySelectionRingAltitude3D,
   entitySelectionRingScale3D,
   entityConstructionOpacity3D,
+  entityConstructionBarProfile3D,
   entityConstructionProgress3D,
   entityYawForFacing3D,
   entityVisualAltitude3D,
@@ -37,6 +38,18 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(entityConstructionOpacity3D(complete)).toBe(1);
     expect(entityConstructionProgress3D(normal)).toBe(1);
     expect(entityConstructionOpacity3D(normal)).toBe(1);
+  });
+
+  it('makes map construction progress bars prominent above building ghosts', () => {
+    const profile = entityConstructionBarProfile3D({
+      domain: 'building',
+      building: { footprintW: 3, footprintH: 2, power: 0 },
+    });
+
+    expect(profile.widthScale).toBeGreaterThan(2);
+    expect(profile.heightScale).toBeGreaterThan(1.8);
+    expect(profile.depthScale).toBeGreaterThan(1.8);
+    expect(profile.y).toBeGreaterThan(2.9);
   });
 
   it('keeps the RTS entity root on the ground while rendering aircraft visibly in the sky', () => {
