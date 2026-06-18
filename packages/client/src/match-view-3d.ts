@@ -1,4 +1,4 @@
-import { World, categoryOf, type Command, type Entity, type ProdCategory, type UnitType } from '@ra2web/game';
+import { World, categoryOf, type CapacitySnapshot, type Command, type Entity, type ProdCategory, type UnitType } from '@ra2web/game';
 import { Vector3 } from 'three';
 import { audioBus } from './audio-bus';
 import { bgm } from './bgm';
@@ -16,6 +16,10 @@ export function initialCameraFocus3D(mapW: number, mapH: number): { x: number; z
 
 export const PRODUCTION_CATEGORIES_3D = ['building'] as const satisfies readonly ProdCategory[];
 
+export function capacitySummaryText3D(capacity: CapacitySnapshot): string {
+  return `建筑 ${capacity.building.count}/${capacity.building.limit} | 士兵 ${capacity.infantry.count}/${capacity.infantry.limit} | 坦克 ${capacity.vehicle.count}/${capacity.vehicle.limit} | 飞机 ${capacity.aircraft.count}/${capacity.aircraft.limit}`;
+}
+
 export const MATCH_3D_STYLE = `
 .mv3-root { position: fixed; inset: 0; overflow: hidden; background: #070b0d;
   font: 13px/1.4 system-ui, 'PingFang SC', sans-serif; color: #d8e0e6; touch-action: none; }
@@ -24,6 +28,7 @@ export const MATCH_3D_STYLE = `
   padding: 8px 12px; background: rgba(8,12,16,.82); border: 1px solid rgba(120,150,170,.18); border-radius: 8px; }
 .mv3-top b { color: #f0d040; font-variant-numeric: tabular-nums; }
 .mv3-top a { color: #6db3e8; text-decoration: none; }
+.mv3-capacity { color: #b9c9d2; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mv3-orders { position: fixed; left: 12px; top: 58px; z-index: 10; display: flex; gap: 6px;
   padding: 6px; background: rgba(8,12,16,.76); border: 1px solid rgba(120,150,170,.18); border-radius: 8px; }
 .mv3-orders button { height: 30px; padding: 0 10px; border: 1px solid rgba(125,150,165,.22); border-radius: 6px;
@@ -61,6 +66,7 @@ export class MatchView3D {
   private renderer!: ThreeWorldRenderer;
   private camera!: ThreeCameraController;
   private creditsEl!: HTMLElement;
+  private capacityEl!: HTMLElement;
   private selBox!: HTMLElement;
   private tabsEl!: HTMLElement;
   private buildEl!: HTMLElement;
@@ -138,6 +144,7 @@ export class MatchView3D {
       `<div class="mv3-top">
         <span>3D RTS Preview</span>
         <span>Credits <b id="mv3-credits">0</b></span>
+        <span id="mv3-capacity" class="mv3-capacity"></span>
         <span id="mv3-selected"></span>
         <button id="mv3-mute" type="button" style="background:none;border:none;color:#9aa7b0;cursor:pointer;font-size:15px">Sound</button>
         <a href="#">Exit</a>
@@ -155,6 +162,7 @@ export class MatchView3D {
       <div class="mv3-chip">Build, rally, command the swarm</div>`,
     );
     this.creditsEl = this.root.querySelector('#mv3-credits')!;
+    this.capacityEl = this.root.querySelector('#mv3-capacity')!;
     this.selBox = this.root.querySelector('#mv3-selbox')!;
     this.tabsEl = this.root.querySelector('#mv3-tabs')!;
     this.buildEl = this.root.querySelector('#mv3-prod-list')!;
@@ -189,6 +197,7 @@ export class MatchView3D {
   private updateHud(): void {
     const p = this.world.players.get(this.localPlayerId);
     this.creditsEl.textContent = String(p?.credits ?? 0);
+    this.capacityEl.textContent = capacitySummaryText3D(this.world.capacityFor(this.localPlayerId));
     const sel = this.root.querySelector('#mv3-selected');
     if (sel) sel.textContent = this.selected.size > 0 ? `Selected ${this.selected.size}` : '';
     this.refreshBuildPanel();

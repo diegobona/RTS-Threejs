@@ -35,6 +35,56 @@ function airLoiterOf(e: unknown): { airLoiterX?: number; airLoiterY?: number } {
 }
 
 describe('automatic production buildings', () => {
+  it('reports per-player capacity counts with the default swarm limits', () => {
+    const w = baseWorld(50000);
+    w.spawnUnit(1, 'barracks', 10, 10);
+    w.spawnUnit(1, 'gi', 12, 12);
+    w.spawnUnit(1, 'grizzly', 14, 12);
+    w.spawnUnit(1, 'fighter', 16, 12);
+
+    expect(w.capacityFor(1)).toMatchObject({
+      building: { count: 2, limit: 20 },
+      infantry: { count: 1, limit: 500 },
+      vehicle: { count: 1, limit: 100 },
+      aircraft: { count: 1, limit: 50 },
+    });
+  });
+
+  it('blocks additional building placement once the building cap is reached', () => {
+    const w = new World(gridTerrain(80, 80), 7);
+    w.addPlayer(1, 'allied', 50000);
+    const pillbox = w.rules.units.get('pillbox')!;
+    for (let i = 0; i < 19; i++) w.spawnUnit(1, 'pillbox', 5 + i, 5);
+
+    expect(w.canPlace(1, pillbox, 24, 5)).toBe(true);
+    w.spawnUnit(1, 'pillbox', 24, 5);
+
+    expect(w.capacityFor(1).building).toMatchObject({ count: 20, limit: 20 });
+    expect(w.canBuild(1, pillbox)).toBe(false);
+    expect(w.canPlace(1, pillbox, 25, 5)).toBe(false);
+  });
+
+  it('pauses infantry auto-production at its cap and resumes after losses free capacity', () => {
+    const w = new World(gridTerrain(80, 80), 7);
+    w.addPlayer(1, 'allied', 50000);
+    const barracks = w.spawnUnit(1, 'barracks', 10, 10)!;
+    for (let i = 0; i < 500; i++) w.spawnUnit(1, 'gi', 20 + (i % 20), 20 + Math.floor(i / 20));
+    const creditsAtCap = w.players.get(1)!.credits;
+
+    w.step();
+
+    expect(w.capacityFor(1).infantry).toMatchObject({ count: 500, limit: 500 });
+    expect(w.players.get(1)!.credits).toBe(creditsAtCap);
+    expect(barracks.producer?.paidTypeId).toBeNull();
+    unitsOfType(w, 'gi')[0]!.hp = 0;
+    w.step();
+    w.step();
+
+    expect(w.capacityFor(1).infantry.count).toBe(499);
+    expect(barracks.producer?.paidTypeId).toBe('gi');
+    expect(w.players.get(1)!.credits).toBeLessThan(creditsAtCap);
+  });
+
   it('produces infantry from every barracks in parallel', () => {
     const w = baseWorld(10000);
     w.spawnUnit(1, 'barracks', 10, 10);

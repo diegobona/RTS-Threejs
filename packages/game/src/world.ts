@@ -162,7 +162,19 @@ const SIM_TICKS_PER_SECOND = 5;
 const CONYARD_INCOME_PER_SECOND = 150;
 const REFINERY_INCOME_PER_SECOND = 600;
 const AUTO_PRODUCTION_STEP = 2;
-const MAX_NON_BUILDING_UNITS_PER_PLAYER = 600;
+export interface CapacitySlot {
+  count: number;
+  limit: number;
+}
+
+export type CapacitySnapshot = Record<Domain, CapacitySlot>;
+
+export const DEFAULT_CAPACITY_LIMITS: Record<Domain, number> = {
+  building: 20,
+  infantry: 500,
+  vehicle: 100,
+  aircraft: 50,
+};
 /** 建造半径（格）：新建筑须距己方某建筑足迹不超过此距离。 */
 const BUILD_RADIUS = 6;
 /** 单位「警戒」半径（lepton）：空闲单位会主动迎击此范围内的敌人（即便超出武器射程也会上前）。 */
@@ -540,8 +552,29 @@ export class World {
   }
 
   /** 该单位当前能否建造（生产建筑存在 + 前置满足）。 */
+  capacityFor(owner: number): CapacitySnapshot {
+    const snapshot: CapacitySnapshot = {
+      building: { count: 0, limit: DEFAULT_CAPACITY_LIMITS.building },
+      infantry: { count: 0, limit: DEFAULT_CAPACITY_LIMITS.infantry },
+      vehicle: { count: 0, limit: DEFAULT_CAPACITY_LIMITS.vehicle },
+      aircraft: { count: 0, limit: DEFAULT_CAPACITY_LIMITS.aircraft },
+    };
+    for (const e of this.entities.values()) {
+      if (e.owner !== owner) continue;
+      const type = this.rules.units.get(e.typeId);
+      if (type) snapshot[type.domain].count++;
+    }
+    return snapshot;
+  }
+
+  private isCapacityFull(owner: number, domain: Domain): boolean {
+    const slot = this.capacityFor(owner)[domain];
+    return slot.count >= slot.limit;
+  }
+
   canBuild(owner: number, type: UnitType): boolean {
     if (type.builtBy === '') return false;
+    if (type.domain === 'building' && this.isCapacityFull(owner, 'building')) return false;
     if (!this.hasBuilding(owner, type.builtBy)) return false;
     for (const pre of type.prerequisites) {
       if (!this.hasBuilding(owner, pre)) return false;
@@ -676,7 +709,6 @@ export class World {
     const producer = building.producer;
     const player = this.players.get(building.owner);
     if (!producer || !producer.enabled || !player || player.defeated) return;
-    if (this.nonBuildingUnitCount(building.owner) >= MAX_NON_BUILDING_UNITS_PER_PLAYER) return;
 
     const activeTypeId = producer.paidTypeId ?? producer.typeId;
     let type = this.rules.units.get(activeTypeId);
@@ -688,6 +720,7 @@ export class World {
       producer.paidTypeId = null;
       type = this.rules.units.get(fallback)!;
     }
+    if (this.isCapacityFull(building.owner, type.domain)) return;
 
     if (!producer.paidTypeId) {
       if (player.credits < type.cost) return;
@@ -706,16 +739,8 @@ export class World {
     producer.paidTypeId = null;
   }
 
-  private nonBuildingUnitCount(owner: number): number {
-    let count = 0;
-    for (const e of this.entities.values()) {
-      const type = this.rules.units.get(e.typeId);
-      if (e.owner === owner && type && type.domain !== 'building') count++;
-    }
-    return count;
-  }
-
   private spawnFromProducer(building: Entity, type: UnitType): boolean {
+    if (this.isCapacityFull(building.owner, type.domain)) return false;
     const exit = building.producerExit;
     const aircraftAnchor = type.domain === 'aircraft' ? this.airProducerAnchor(building) : null;
     let spawn: { x: number; y: number } | null;
@@ -820,6 +845,7 @@ export class World {
   canPlace(owner: number, type: UnitType, cellX: number, cellY: number): boolean {
     const b = type.building;
     if (!b) return false;
+    if (this.isCapacityFull(owner, 'building')) return false;
     for (let dy = 0; dy < b.footprintH; dy++) {
       for (let dx = 0; dx < b.footprintW; dx++) {
         const cx = cellX + dx;

@@ -9,8 +9,11 @@ export { StateHash } from './hash';
 export { findPath, type PathGrid } from './pathfind';
 export {
   World,
+  DEFAULT_CAPACITY_LIMITS,
   categoryOf,
   producibleBy,
+  type CapacitySnapshot,
+  type CapacitySlot,
   type Entity,
   type Command,
   type Stance,

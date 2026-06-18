@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { initialCameraFocus3D, PRODUCTION_CATEGORIES_3D } from './match-view-3d';
+import { capacitySummaryText3D, initialCameraFocus3D, PRODUCTION_CATEGORIES_3D } from './match-view-3d';
 
 describe('MatchView3D camera defaults', () => {
   it('starts focused on the center of the map instead of the local spawn', () => {
@@ -10,5 +10,18 @@ describe('MatchView3D camera defaults', () => {
 describe('MatchView3D production tabs', () => {
   it('only exposes manual building production; units are produced automatically by buildings', () => {
     expect(PRODUCTION_CATEGORIES_3D).toEqual(['building']);
+  });
+});
+
+describe('MatchView3D capacity HUD', () => {
+  it('summarizes building and unit caps in generated-over-limit form', () => {
+    expect(
+      capacitySummaryText3D({
+        building: { count: 12, limit: 20 },
+        infantry: { count: 340, limit: 500 },
+        vehicle: { count: 76, limit: 100 },
+        aircraft: { count: 31, limit: 50 },
+      }),
+    ).toBe('建筑 12/20 | 士兵 340/500 | 坦克 76/100 | 飞机 31/50');
   });
 });
