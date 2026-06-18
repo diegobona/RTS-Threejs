@@ -3,10 +3,10 @@
  * 从首页一路放到遭遇战设置/大厅，并续播进正式对战（压低音量，见 enterMatch）。
  * 浏览器禁自动播放：须用户首次手势后 play()。无该文件则标记不可用（隐藏开关）。
  */
-export const BGM_SOURCE = '/bgm.wav?v=modern-war-rts-no-chirp-v4';
-export const BGM_EPIC_PROFILE = 'modern-war-rts-no-chirp-v4';
-export const BGM_MENU_VOLUME = 0.62;
-export const BGM_MATCH_VOLUME = 0.46;
+export const BGM_SOURCE = '/bgm.wav?v=bright-modern-war-march-v5';
+export const BGM_EPIC_PROFILE = 'bright-modern-war-march-v5';
+export const BGM_MENU_VOLUME = 0.58;
+export const BGM_MATCH_VOLUME = 0.42;
 
 class Bgm {
   private el: HTMLAudioElement | null = null;
