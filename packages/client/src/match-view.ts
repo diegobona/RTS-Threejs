@@ -50,6 +50,7 @@ const UNIT_HINT: Record<string, string> = {
   battlelab: '解锁高级单位',
   pillbox: '防御·对步兵',
   tesla: '防御·强力',
+  worker: '工人·自动生产',
   gi: '步兵·通用',
   conscript: '步兵·廉价',
   engineer: '占领/维修',

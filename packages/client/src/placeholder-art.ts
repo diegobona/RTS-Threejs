@@ -20,6 +20,7 @@ const APPEARANCE: Record<string, { color: number; short: string }> = {
   pillbox: { color: 0x707860, short: '碉' },
   tesla: { color: 0x6080c0, short: '磁' },
   gi: { color: 0x5088c0, short: '兵' },
+  worker: { color: 0xd0a84a, short: '工' },
   conscript: { color: 0xc05050, short: '动' },
   engineer: { color: 0xc0a040, short: '工' },
   harvester: { color: 0xc09030, short: '矿' },

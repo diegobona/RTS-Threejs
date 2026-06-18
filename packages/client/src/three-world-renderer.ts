@@ -1050,6 +1050,8 @@ export class ThreeWorldRenderer {
     } else if (type.domain === 'aircraft') {
       visualRoot.add(this.createAircraft(ownerColor));
       root.add(this.createAircraftShadow());
+    } else if (type.id === 'worker') {
+      visualRoot.add(this.createWorker(ownerColor));
     } else {
       visualRoot.add(this.createInfantry(ownerColor));
     }
@@ -1644,6 +1646,65 @@ export class ThreeWorldRenderer {
 
     const teamPatch = addPart('team-patch', new Mesh(new BoxGeometry(0.08, 0.16, 0.035), accentMat));
     teamPatch.position.set(0.24, 0.96, -0.21);
+
+    return root;
+  }
+
+  private createWorker(ownerColor: number): Object3D {
+    const root = new Group();
+    root.name = 'lowpoly-worker';
+    const shirtMat = new MeshLambertMaterial({ color: 0x5f7456 });
+    const pantsMat = new MeshLambertMaterial({ color: 0x35433a });
+    const skinMat = new MeshLambertMaterial({ color: 0xb08a65 });
+    const helmetMat = new MeshLambertMaterial({ color: 0xe0b23c });
+    const toolMat = new MeshLambertMaterial({ color: 0x2e3230 });
+    const crateMat = new MeshLambertMaterial({ color: 0x8b6a3d });
+    const accentMat = new MeshLambertMaterial({ color: ownerColor });
+    const addPart = (name: string, mesh: Mesh): Mesh => {
+      mesh.name = `worker-${name}`;
+      root.add(mesh);
+      return mesh;
+    };
+
+    const body = addPart('body', new Mesh(this.soldierGeo, shirtMat));
+    body.position.y = 0.66;
+    body.scale.set(0.82, 0.86, 0.74);
+
+    const head = addPart('head', new Mesh(new SphereGeometry(0.17, 8, 8), skinMat));
+    head.position.set(0, 1.2, -0.02);
+    const helmet = addPart('hardhat', new Mesh(new CylinderGeometry(0.22, 0.2, 0.14, 8), helmetMat));
+    helmet.position.set(0, 1.36, -0.02);
+    const brim = addPart('hardhat-brim', new Mesh(new BoxGeometry(0.38, 0.035, 0.18), helmetMat));
+    brim.position.set(0, 1.3, -0.15);
+
+    const backpack = addPart('toolpack', new Mesh(new BoxGeometry(0.26, 0.34, 0.16), crateMat));
+    backpack.position.set(0, 0.76, 0.24);
+
+    const leftArm = addPart('left-arm', new Mesh(new BoxGeometry(0.12, 0.46, 0.12), shirtMat));
+    leftArm.position.set(-0.27, 0.78, -0.05);
+    leftArm.rotation.x = -0.35;
+    leftArm.rotation.z = -0.2;
+    const rightArm = addPart('right-arm', new Mesh(new BoxGeometry(0.12, 0.46, 0.12), shirtMat));
+    rightArm.position.set(0.28, 0.8, -0.1);
+    rightArm.rotation.x = -0.7;
+    rightArm.rotation.z = 0.2;
+
+    const leftLeg = addPart('left-leg', new Mesh(new BoxGeometry(0.13, 0.46, 0.13), pantsMat));
+    leftLeg.position.set(-0.1, 0.24, 0.03);
+    leftLeg.rotation.x = -0.1;
+    const rightLeg = addPart('right-leg', new Mesh(new BoxGeometry(0.13, 0.46, 0.13), pantsMat));
+    rightLeg.position.set(0.1, 0.24, -0.03);
+    rightLeg.rotation.x = 0.1;
+
+    const wrenchHandle = addPart('tool-handle', new Mesh(new BoxGeometry(0.05, 0.05, 0.48), toolMat));
+    wrenchHandle.position.set(0.26, 0.75, -0.42);
+    wrenchHandle.rotation.x = -0.35;
+    const wrenchHead = addPart('tool-head', new Mesh(new BoxGeometry(0.18, 0.06, 0.06), toolMat));
+    wrenchHead.position.set(0.25, 0.85, -0.62);
+    wrenchHead.rotation.x = -0.35;
+
+    const patch = addPart('team-patch', new Mesh(new BoxGeometry(0.08, 0.15, 0.035), accentMat));
+    patch.position.set(0.23, 0.92, -0.2);
 
     return root;
   }

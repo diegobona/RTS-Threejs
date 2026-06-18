@@ -95,6 +95,21 @@ describe('automatic production buildings', () => {
     expect(countType(w, 'gi')).toBe(2);
   });
 
+  it('automatically produces workers from the construction yard', () => {
+    const w = baseWorld(10000);
+    const conyard = [...w.entities.values()].find((e) => e.typeId === 'conyard')!;
+
+    expect(conyard.producer?.typeId).toBe('worker');
+
+    runTicks(w, 15);
+
+    const workers = unitsOfType(w, 'worker');
+    expect(workers).toHaveLength(1);
+    expect(conyard.producerExit).not.toBeNull();
+    expect(workers[0]!.cellX).toBe(conyard.producerExit!.x);
+    expect(workers[0]!.cellY).toBe(conyard.producerExit!.y);
+  });
+
   it('produces tanks and aircraft from their own factories', () => {
     const w = baseWorld(20000);
     w.spawnUnit(1, 'warfactory', 10, 10);

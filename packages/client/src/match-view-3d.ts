@@ -592,6 +592,7 @@ export class MatchView3D {
       airbase: 'Airbase',
       pillbox: 'Pillbox',
       battlelab: 'Battle Lab',
+      worker: 'Worker',
       gi: 'British Soldier',
       engineer: 'Engineer',
       grizzly: 'British Tank',

@@ -191,6 +191,7 @@ export function categoryOf(u: UnitType): ProdCategory {
 }
 
 function producerDomain(buildingId: string): Exclude<ProdCategory, 'building'> | null {
+  if (buildingId === 'conyard') return 'infantry';
   if (buildingId === 'barracks') return 'infantry';
   if (buildingId === 'warfactory') return 'vehicle';
   if (buildingId === 'airbase') return 'aircraft';
@@ -198,6 +199,7 @@ function producerDomain(buildingId: string): Exclude<ProdCategory, 'building'> |
 }
 
 function defaultProducerUnit(buildingId: string, side: Side): string | null {
+  if (buildingId === 'conyard') return 'worker';
   if (buildingId === 'barracks') return side === 'soviet' ? 'conscript' : 'gi';
   if (buildingId === 'warfactory') return side === 'soviet' ? 'rhino' : 'grizzly';
   if (buildingId === 'airbase') return 'fighter';
