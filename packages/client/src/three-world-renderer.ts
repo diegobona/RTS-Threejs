@@ -224,7 +224,9 @@ export function aircraftIdleOrbitOffset3D(
   if ((activity.pathLength ?? 0) > 0 || activity.goal || activity.waypoint || activity.attackMove) return new Vector3();
   if (activity.targetId !== null && activity.targetId !== undefined && !activity.loiterCenter) return new Vector3();
   const center = activity.loiterCenter ?? homeBaseCenter ?? aircraftPosition;
-  const loiter = aircraftIdleLoiterPoint3D(timeSeconds, entityId, center);
+  const loiter = activity.targetId !== null && activity.targetId !== undefined && activity.loiterCenter
+    ? aircraftCombatLoiterPoint3D(timeSeconds, entityId, center)
+    : aircraftIdleLoiterPoint3D(timeSeconds, entityId, center);
   return new Vector3(loiter.x - aircraftPosition.x, 0, loiter.z - aircraftPosition.z);
 }
 
@@ -235,6 +237,21 @@ export function aircraftIdleOrbitYaw3D(timeSeconds: number, entityId: number): n
   const vx = next.x - current.x;
   const vz = next.z - current.z;
   return Math.atan2(-vz, vx);
+}
+
+export function aircraftLoiterYaw3D(
+  type: Pick<UnitType, 'domain'>,
+  activity: AircraftActivity3D,
+  timeSeconds: number,
+  entityId: number,
+): number | null {
+  if (type.domain !== 'aircraft') return null;
+  if ((activity.pathLength ?? 0) > 0 || activity.goal || activity.waypoint || activity.attackMove) return null;
+  if (activity.targetId !== null && activity.targetId !== undefined && !activity.loiterCenter) return null;
+  if (activity.targetId !== null && activity.targetId !== undefined && activity.loiterCenter) {
+    return aircraftCombatOrbitYaw3D(timeSeconds, entityId);
+  }
+  return aircraftIdleOrbitYaw3D(timeSeconds, entityId);
 }
 
 export function aircraftVisualStep3D(current: Vector3, desired: Vector3, maxStep: number): Vector3 {
@@ -284,6 +301,26 @@ function aircraftIdleLoiterPoint3D(timeSeconds: number, entityId: number, center
   );
 }
 
+function aircraftCombatLoiterPoint3D(timeSeconds: number, entityId: number, center: { x: number; z: number }): Vector3 {
+  const profile = aircraftCombatLoiterProfile3D(entityId);
+  const phase = timeSeconds * profile.speed * profile.direction + profile.phase;
+  const weave = timeSeconds * profile.weaveSpeed * -profile.direction + profile.weavePhase;
+  return new Vector3(
+    center.x + profile.centerX + Math.cos(phase) * profile.radiusX + Math.sin(weave) * profile.weaveX,
+    0,
+    center.z + profile.centerZ + Math.sin(phase) * profile.radiusZ + Math.cos(weave) * profile.weaveZ,
+  );
+}
+
+function aircraftCombatOrbitYaw3D(timeSeconds: number, entityId: number): number {
+  const center = new Vector3();
+  const current = aircraftCombatLoiterPoint3D(timeSeconds, entityId, center);
+  const next = aircraftCombatLoiterPoint3D(timeSeconds + 0.18, entityId, center);
+  const vx = next.x - current.x;
+  const vz = next.z - current.z;
+  return Math.atan2(-vz, vx);
+}
+
 function aircraftIdleLoiterProfile3D(entityId: number): {
   centerX: number;
   centerZ: number;
@@ -317,6 +354,38 @@ function aircraftIdleLoiterProfile3D(entityId: number): {
     weaveSpeed: AIRCRAFT_IDLE_ORBIT_SPEED * (0.55 + aircraftIdleHash3D(entityId, 9) * 0.22),
     weaveX: 0.12 + aircraftIdleHash3D(entityId, 10) * 0.22,
     weaveZ: 0.1 + aircraftIdleHash3D(entityId, 11) * 0.18,
+  };
+}
+
+function aircraftCombatLoiterProfile3D(entityId: number): {
+  centerX: number;
+  centerZ: number;
+  direction: 1 | -1;
+  phase: number;
+  radiusX: number;
+  radiusZ: number;
+  speed: number;
+  weavePhase: number;
+  weaveSpeed: number;
+  weaveX: number;
+  weaveZ: number;
+} {
+  const lane = ((entityId - 1) % 3 + 3) % 3;
+  const r2 = aircraftIdleHash3D(entityId, 22);
+  const r3 = aircraftIdleHash3D(entityId, 23);
+  const r5 = aircraftIdleHash3D(entityId, 25);
+  return {
+    centerX: (r2 - 0.5) * 0.72,
+    centerZ: (r3 - 0.5) * 0.72,
+    direction: aircraftIdleHash3D(entityId, 24) > 0.5 ? 1 : -1,
+    phase: ((Math.floor(Math.max(0, entityId - 1) / 3) * 0.381966 + lane * 0.28 + r5 * 0.04) % 1) * Math.PI * 2,
+    radiusX: 3.15 + lane * 0.78,
+    radiusZ: 2.7 + lane * 0.58,
+    speed: 0.62 + aircraftIdleHash3D(entityId, 27) * 0.08,
+    weavePhase: aircraftIdleHash3D(entityId, 28) * Math.PI * 2,
+    weaveSpeed: 0.34 + aircraftIdleHash3D(entityId, 29) * 0.08,
+    weaveX: 0.14 + aircraftIdleHash3D(entityId, 30) * 0.14,
+    weaveZ: 0.1 + aircraftIdleHash3D(entityId, 31) * 0.12,
   };
 }
 
@@ -904,9 +973,10 @@ export class ThreeWorldRenderer {
           type.domain === 'aircraft' && e.airLoiterX >= 0 && e.airLoiterY >= 0
             ? cellToWorld3D(e.airLoiterX, e.airLoiterY)
             : null;
+        const aircraftActivity = { targetId: e.targetId, pathLength: e.path.length, goal: e.goal, waypoint: e.waypoint, attackMove: e.attackMove, loiterCenter };
         const orbit = aircraftIdleOrbitOffset3D(
           type,
-          { targetId: e.targetId, pathLength: e.path.length, goal: e.goal, waypoint: e.waypoint, attackMove: e.attackMove, loiterCenter },
+          aircraftActivity,
           { x: pos.x, z: pos.z },
           airOrbitCenters.get(e.owner),
           nowSeconds,
@@ -929,7 +999,8 @@ export class ThreeWorldRenderer {
         } else {
           view.root.position.copy(desired);
         }
-        view.root.rotation.y = orbiting ? aircraftIdleOrbitYaw3D(nowSeconds, e.id) : entityYawForFacing3D(e.facing);
+        const loiterYaw = aircraftLoiterYaw3D(type, aircraftActivity, nowSeconds, e.id);
+        view.root.rotation.y = orbiting && loiterYaw !== null ? loiterYaw : entityYawForFacing3D(e.facing);
       }
       const constructionPct = entityConstructionProgress3D(e);
       const constructing = type.domain === 'building' && constructionPct < 1;

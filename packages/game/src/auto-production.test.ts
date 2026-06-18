@@ -196,7 +196,7 @@ describe('automatic production buildings', () => {
         minDistance = Math.min(minDistance, Math.hypot(goals[i]!.x - goals[j]!.x, goals[i]!.y - goals[j]!.y));
       }
     }
-    expect(minDistance).toBeGreaterThanOrEqual(3);
+    expect(minDistance).toBeGreaterThanOrEqual(5);
   });
 
   it('keeps aircraft loiter anchored to the ordered airspace after a ground move', () => {
@@ -225,6 +225,49 @@ describe('automatic production buildings', () => {
     expect(new Set(stations).size).toBe(fighters.length);
     expect(new Set(fighters.map(goalKey)).size).toBe(fighters.length);
     expect(fighters.every((e) => e.targetId === target.id)).toBe(true);
+  });
+
+  it('keeps aircraft dogfight attack stations in loose air lanes', () => {
+    const w = baseWorld(50000);
+    w.addPlayer(2, 'soviet', 0);
+    const target = w.spawnUnit(2, 'fighter', 28, 28)!;
+    const ids: number[] = [];
+    for (let i = 0; i < 8; i++) ids.push(w.spawnUnit(1, 'fighter', 4 + (i % 4), 4 + Math.floor(i / 4))!.id);
+
+    w.applyCommands([{ kind: 'attack', entityIds: ids, targetId: target.id }]);
+
+    const stations = ids.map((id) => {
+      const station = airLoiterOf(w.entities.get(id)!);
+      expect(station.airLoiterX).toBeDefined();
+      expect(station.airLoiterY).toBeDefined();
+      return { x: station.airLoiterX!, y: station.airLoiterY! };
+    });
+    let minDistance = Infinity;
+    for (let i = 0; i < stations.length; i++) {
+      for (let j = i + 1; j < stations.length; j++) {
+        const a = stations[i]!;
+        const b = stations[j]!;
+        minDistance = Math.min(minDistance, Math.hypot(a.x - b.x, a.y - b.y));
+      }
+    }
+    const targetDistances = stations.map((s) => Math.hypot(s.x - target.cellX, s.y - target.cellY));
+
+    expect(minDistance).toBeGreaterThanOrEqual(7);
+    expect(Math.min(...targetDistances)).toBeGreaterThanOrEqual(8);
+  });
+
+  it('orders aircraft to break away instead of firing missiles while mixed into the target', () => {
+    const w = baseWorld(50000);
+    w.addPlayer(2, 'soviet', 0);
+    const fighter = w.spawnUnit(1, 'fighter', 20, 20)!;
+    const target = w.spawnUnit(2, 'fighter', 21, 20)!;
+
+    w.applyCommands([{ kind: 'attack', entityIds: [fighter.id], targetId: target.id }]);
+    w.step();
+
+    expect(fighter.goal).not.toBeNull();
+    expect(fighter.goal && Math.hypot(fighter.goal.x - target.cellX, fighter.goal.y - target.cellY)).toBeGreaterThanOrEqual(8);
+    expect(w.projectiles.filter((p) => p.shooterId === fighter.id)).toHaveLength(0);
   });
 });
 

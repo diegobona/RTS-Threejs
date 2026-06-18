@@ -39,6 +39,7 @@ describe('WWI air force content', () => {
     });
     expect(fighter?.antiAirWeapon).toMatchObject({
       role: 'missile',
+      range: 16 * 256,
       targetDomains: ['aircraft'],
     });
   });

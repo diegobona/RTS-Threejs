@@ -278,7 +278,7 @@ export class World {
           // 多个单位：散开到目标周围不同格（队形展开），避免挤成一坨/互相挡路
           const ids = [...cmd.entityIds].sort((a, b) => a - b);
           const airFormation = this.allAircraft(ids);
-          const slots = ids.length > 1 ? this.spreadDestinations(cmd.cellX, cmd.cellY, ids.length, airFormation ? 3 : 1, airFormation) : [{ x: cmd.cellX, y: cmd.cellY }];
+          const slots = ids.length > 1 ? this.spreadDestinations(cmd.cellX, cmd.cellY, ids.length, airFormation ? 5 : 1, airFormation) : [{ x: cmd.cellX, y: cmd.cellY }];
           ids.forEach((eid, i) => {
             const e = this.entities.get(eid);
             if (!e) return;
@@ -297,7 +297,7 @@ export class World {
         case 'attackMove': {
           const ids = [...cmd.entityIds].sort((a, b) => a - b);
           const airFormation = this.allAircraft(ids);
-          const slots = ids.length > 1 ? this.spreadDestinations(cmd.cellX, cmd.cellY, ids.length, airFormation ? 3 : 1, airFormation) : [{ x: cmd.cellX, y: cmd.cellY }];
+          const slots = ids.length > 1 ? this.spreadDestinations(cmd.cellX, cmd.cellY, ids.length, airFormation ? 5 : 1, airFormation) : [{ x: cmd.cellX, y: cmd.cellY }];
           ids.forEach((eid, i) => {
             const e = this.entities.get(eid);
             if (!e) return;
@@ -1081,8 +1081,14 @@ export class World {
     const targetType = this.rules.units.get(target.typeId);
     const weapon = targetType ? this.weaponForTarget(attackerType, targetType) : null;
     const range = weapon?.range ?? 2 * 256;
+    const missile = weapon?.role === 'missile';
     const center = { x: leptonToCell(target.x), y: leptonToCell(target.y) };
     const maxRadius = Math.max(1, Math.floor(range / 256));
+    const minRadius = missile ? Math.max(1, Math.floor(maxRadius * 0.68)) : 1;
+    if (missile) {
+      const slots = this.aircraftMissileAttackDestinations(center.x, center.y, count, Math.max(10, maxRadius - 2));
+      if (slots.length >= count) return slots;
+    }
     const candidates: { x: number; y: number }[] = [];
     const seen = new Set<number>();
     const tryAdd = (x: number, y: number): void => {
@@ -1096,7 +1102,7 @@ export class World {
       candidates.push({ x, y });
     };
 
-    for (let r = 1; r <= maxRadius; r++) {
+    for (let r = missile ? maxRadius : 1; missile ? r >= minRadius : r <= maxRadius; missile ? r-- : r++) {
       for (let dy = -r; dy <= r; dy++) {
         for (let dx = -r; dx <= r; dx++) {
           if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
@@ -1106,13 +1112,89 @@ export class World {
     }
 
     if (candidates.length === 0) candidates.push(center);
-    return Array.from({ length: count }, (_, i) => candidates[i % candidates.length]!);
+    const preferredSpacing = missile ? 7 : 3;
+    const selected: { x: number; y: number }[] = [];
+    const selectedKeys = new Set<number>();
+    const addSpaced = (minSpacing: number): void => {
+      for (const c of candidates) {
+        if (selected.length >= count) return;
+        const key = c.y * this.terrain.width + c.x;
+        if (selectedKeys.has(key)) continue;
+        if (selected.some((s) => Math.hypot(s.x - c.x, s.y - c.y) < minSpacing)) continue;
+        selected.push(c);
+        selectedKeys.add(key);
+      }
+    };
+
+    addSpaced(preferredSpacing);
+    if (selected.length < count && preferredSpacing > 2) addSpaced(2);
+    if (selected.length < count) addSpaced(1);
+
+    const fallback = selected[0] ?? candidates[0]!;
+    while (selected.length < count) selected.push(fallback);
+    return selected;
+  }
+
+  private aircraftMissileAttackDestinations(cx: number, cy: number, count: number, radius: number): { x: number; y: number }[] {
+    const out: { x: number; y: number }[] = [];
+    const seen = new Set<number>();
+    const clamp = (v: number, min: number, max: number): number => Math.max(min, Math.min(max, v));
+    const phase = ((cx * 13 + cy * 7) % 360) * Math.PI / 180;
+    for (let i = 0; i < count; i++) {
+      let placed = false;
+      for (let attempt = 0; attempt < count * 3 && !placed; attempt++) {
+        const angle = phase + ((i + attempt * 0.37) / count) * Math.PI * 2;
+        const x = clamp(Math.round(cx + Math.cos(angle) * radius), 0, this.terrain.width - 1);
+        const y = clamp(Math.round(cy + Math.sin(angle) * radius), 0, this.terrain.height - 1);
+        const slot = this.passableAirNear(x, y, 4);
+        if (!slot) continue;
+        const key = slot.y * this.terrain.width + slot.x;
+        if (seen.has(key)) continue;
+        if (out.some((s) => Math.hypot(s.x - slot.x, s.y - slot.y) < 7)) continue;
+        seen.add(key);
+        out.push(slot);
+        placed = true;
+      }
+    }
+    return out;
   }
 
   private aircraftAttackStation(e: Entity, target: Entity, weapon: WeaponSpec): { x: number; y: number } | null {
     if (e.airLoiterX < 0 || e.airLoiterY < 0) return null;
     const d = dist(cellToLepton(e.airLoiterX) - target.x, cellToLepton(e.airLoiterY) - target.y);
     return d <= weapon.range ? { x: e.airLoiterX, y: e.airLoiterY } : null;
+  }
+
+  private aircraftMissileStandoffDistance(type: UnitType, weapon: WeaponSpec): number {
+    return type.domain === 'aircraft' && weapon.role === 'missile' ? 8 * 256 : 0;
+  }
+
+  private aircraftStandoffStation(e: Entity, target: Entity, weapon: WeaponSpec): { x: number; y: number } | null {
+    const maxCells = Math.max(1, Math.floor(weapon.range / 256));
+    const desiredCells = Math.max(8, maxCells - 2);
+    const dx = e.x - target.x;
+    const dy = e.y - target.y;
+    const length = dist(dx, dy);
+    const angle = length > 1 ? Math.atan2(dy, dx) : ((e.id * 137) % 360) * Math.PI / 180;
+    const cx = leptonToCell(target.x + Math.cos(angle) * desiredCells * 256);
+    const cy = leptonToCell(target.y + Math.sin(angle) * desiredCells * 256);
+    return this.passableAirNear(cx, cy, 6);
+  }
+
+  private passableAirNear(cx: number, cy: number, maxR = 6): { x: number; y: number } | null {
+    const ok = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < this.terrain.width && y < this.terrain.height && this.terrain.passable(x, y);
+    if (ok(cx, cy)) return { x: cx, y: cy };
+    for (let r = 1; r <= maxR; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          const x = cx + dx;
+          const y = cy + dy;
+          if (ok(x, y)) return { x, y };
+        }
+      }
+    }
+    return null;
   }
 
   private allAircraft(ids: number[]): boolean {
@@ -1417,6 +1499,15 @@ export class World {
     const dx = target.x - e.x;
     const dy = target.y - e.y;
     const d = dist(dx, dy);
+    const aircraftStandoff = this.aircraftMissileStandoffDistance(type, weapon);
+    if (aircraftStandoff > 0 && d < aircraftStandoff) {
+      const away = this.aircraftStandoffStation(e, target, weapon);
+      if (away) {
+        this.setAircraftLoiter(e, away.x, away.y);
+        this.orderMove(e, away.x, away.y);
+      }
+      return false;
+    }
     if (d > weapon.range) {
       // 坚守：绝不移动追击，够不着就放下目标原地待机
       if (!e.attackMove && e.stance === 'holdground') {

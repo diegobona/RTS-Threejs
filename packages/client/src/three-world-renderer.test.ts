@@ -168,7 +168,7 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     const attackingAtStation = aircraftIdleOrbitOffset3D(
       { domain: 'aircraft' },
       { targetId: 42, pathLength: 0, loiterCenter: baseCenter },
-      aircraftPos,
+      baseCenter,
       undefined,
       1.25,
       11,
@@ -183,7 +183,8 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(visualB.distanceTo(visualA)).toBeGreaterThan(2.5);
     expect(Math.hypot(moving.x, moving.z)).toBe(0);
     expect(Math.hypot(attackingWithoutStation.x, attackingWithoutStation.z)).toBe(0);
-    expect(Math.hypot(attackingAtStation.x, attackingAtStation.z)).toBeGreaterThan(24);
+    expect(Math.hypot(attackingAtStation.x, attackingAtStation.z)).toBeGreaterThan(2.6);
+    expect(Math.hypot(attackingAtStation.x, attackingAtStation.z)).toBeLessThan(6.5);
     expect(Math.hypot(ground.x, ground.z)).toBe(0);
   });
 
