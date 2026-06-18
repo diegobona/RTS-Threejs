@@ -77,7 +77,7 @@ export class MatchView3D {
   private readonly selected = new Set<number>();
   private readonly localCommands: Command[] = [];
   private readonly buildButtons: { button: HTMLButtonElement; state: HTMLElement; type: UnitType }[] = [];
-  private readonly prevReady: Record<ProdCategory, boolean> = { building: false, infantry: false, vehicle: false, aircraft: false };
+  private readonly announcedCompletedBuildings = new Set<number>();
   private producerPanelKey = '';
   private groundMoveMode: GroundMoveMode = 'move';
 
@@ -282,6 +282,13 @@ export class MatchView3D {
       this.placingType = type;
       this.selected.clear();
       audioBus.play('select');
+      return;
+    }
+    if (type.domain === 'building' && (!q || q.items.length === 0)) {
+      this.localCommands.push({ kind: 'produce', owner: this.localPlayerId, typeId: type.id });
+      this.placingType = type;
+      this.selected.clear();
+      audioBus.play('build');
       return;
     }
     this.localCommands.push({ kind: 'produce', owner: this.localPlayerId, typeId: type.id });
@@ -558,12 +565,13 @@ export class MatchView3D {
   }
 
   private updateProductionAudio(): void {
-    for (const category of PRODUCTION_CATEGORIES_3D) {
-      const ready = !!this.world.queueFor(this.localPlayerId, category)?.readyToPlace;
-      if (ready && !this.prevReady[category]) {
-        if (category === 'building') audioBus.playEva('buildComplete');
+    for (const e of this.world.entities.values()) {
+      const type = this.world.rules.units.get(e.typeId);
+      if (e.owner !== this.localPlayerId || type?.domain !== 'building' || e.constructionTotal <= 0) continue;
+      if (e.constructionProgress >= e.constructionTotal && !this.announcedCompletedBuildings.has(e.id)) {
+        audioBus.playEva('buildComplete');
+        this.announcedCompletedBuildings.add(e.id);
       }
-      this.prevReady[category] = ready;
     }
   }
 

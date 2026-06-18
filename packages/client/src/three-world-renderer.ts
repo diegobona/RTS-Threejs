@@ -169,6 +169,16 @@ export function entitySelectionRingScale3D(type: Pick<UnitType, 'domain'>): numb
   return 1;
 }
 
+export function entityConstructionProgress3D(entity: { constructionProgress: number; constructionTotal: number }): number {
+  if (entity.constructionTotal <= 0) return 1;
+  return Math.max(0, Math.min(1, entity.constructionProgress / entity.constructionTotal));
+}
+
+export function entityConstructionOpacity3D(entity: { constructionProgress: number; constructionTotal: number }): number {
+  const pct = entityConstructionProgress3D(entity);
+  return pct >= 1 ? 1 : 0.38 + pct * 0.28;
+}
+
 export function entityYawForFacing3D(facing: number): number {
   return -(((facing % 256) + 256) % 256 / 256) * Math.PI * 2;
 }
@@ -432,6 +442,7 @@ export class ThreeWorldRenderer {
   private readonly selectionRingMat = new MeshLambertMaterial({ color: 0x68f07a });
   private readonly hpBackMat = new MeshBasicLike(0x101010);
   private readonly hpGoodMat = new MeshBasicLike(0x42d66d);
+  private readonly hpConstructionMat = new MeshBasicLike(0xe9a12c);
   private readonly projectileMat = new MeshLambertMaterial({ color: 0x111111 });
   private readonly projectileTracerMat = new MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.92, depthWrite: false });
   private readonly projectileMissileTracerMat = new MeshBasicMaterial({ color: 0xaedfff, transparent: true, opacity: 0.9, depthWrite: false });
@@ -900,9 +911,18 @@ export class ThreeWorldRenderer {
         }
         view.root.rotation.y = orbiting ? aircraftIdleOrbitYaw3D(nowSeconds, e.id) : entityYawForFacing3D(e.facing);
       }
-      view.visualRoot.scale.setScalar(selected.has(e.id) ? 1.12 : 1);
+      const constructionPct = entityConstructionProgress3D(e);
+      const constructing = type.domain === 'building' && constructionPct < 1;
+      const selectedScale = selected.has(e.id) ? 1.12 : 1;
+      view.visualRoot.scale.set(selectedScale, selectedScale * (constructing ? 0.88 + constructionPct * 0.12 : 1), selectedScale);
+      this.setVisualOpacity(view.visualRoot, constructing ? entityConstructionOpacity3D(e) : 1);
       view.selectionRing.visible = selected.has(e.id);
-      this.updateHpBar(view.hpBar, e.hp / e.maxHp);
+      this.updateHpBar(
+        view.hpBar,
+        constructing ? constructionPct : e.hp / e.maxHp,
+        constructing ? this.hpConstructionMat.mat : this.hpGoodMat.mat,
+        constructing,
+      );
     }
 
     for (const [id, view] of this.views) {
@@ -1834,12 +1854,30 @@ export class ThreeWorldRenderer {
     return root;
   }
 
-  private updateHpBar(bar: Group, pct: number): void {
-    const fill = bar.getObjectByName('fill');
+  private updateHpBar(bar: Group, pct: number, material: Material = this.hpGoodMat.mat, forceVisible = false): void {
+    const fill = bar.getObjectByName('fill') as Mesh | null;
     if (!fill) return;
+    fill.material = material;
     fill.scale.x = Math.max(0.02, Math.min(1, pct));
-    fill.visible = pct < 0.999;
-    bar.visible = pct < 0.999;
+    fill.visible = forceVisible || pct < 0.999;
+    bar.visible = forceVisible || pct < 0.999;
+  }
+
+  private setVisualOpacity(root: Object3D, opacity: number): void {
+    root.traverse((child) => {
+      const mesh = child as Mesh;
+      const material = mesh.material;
+      if (!material) return;
+      const materials = Array.isArray(material) ? material : [material];
+      for (const mat of materials) {
+        const m = mat as Material & { opacity?: number; transparent?: boolean; depthWrite?: boolean };
+        const baseOpacity = typeof m.userData.baseOpacity === 'number' ? m.userData.baseOpacity : (m.opacity ?? 1);
+        m.userData.baseOpacity = baseOpacity;
+        m.opacity = baseOpacity * opacity;
+        m.transparent = opacity < 0.999 || baseOpacity < 0.999;
+        m.depthWrite = opacity >= 0.999;
+      }
+    });
   }
 
   private syncProjectiles(): void {

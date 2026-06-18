@@ -11,6 +11,8 @@ import {
   entityRootAltitude3D,
   entitySelectionRingAltitude3D,
   entitySelectionRingScale3D,
+  entityConstructionOpacity3D,
+  entityConstructionProgress3D,
   entityYawForFacing3D,
   entityVisualAltitude3D,
   isPickableEntityPart3D,
@@ -24,6 +26,19 @@ import {
 } from './three-world-renderer';
 
 describe('ThreeWorldRenderer aircraft altitude', () => {
+  it('derives construction progress and ghost opacity from map construction state', () => {
+    const building = { constructionProgress: 30, constructionTotal: 100 };
+    const complete = { constructionProgress: 100, constructionTotal: 100 };
+    const normal = { constructionProgress: 0, constructionTotal: 0 };
+
+    expect(entityConstructionProgress3D(building)).toBeCloseTo(0.3);
+    expect(entityConstructionOpacity3D(building)).toBeLessThan(0.75);
+    expect(entityConstructionProgress3D(complete)).toBe(1);
+    expect(entityConstructionOpacity3D(complete)).toBe(1);
+    expect(entityConstructionProgress3D(normal)).toBe(1);
+    expect(entityConstructionOpacity3D(normal)).toBe(1);
+  });
+
   it('keeps the RTS entity root on the ground while rendering aircraft visibly in the sky', () => {
     expect(entityRootAltitude3D({ domain: 'aircraft' })).toBe(0);
     expect(entityVisualAltitude3D({ domain: 'aircraft' })).toBeGreaterThanOrEqual(8);

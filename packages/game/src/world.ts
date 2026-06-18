@@ -81,6 +81,8 @@ export interface Entity {
   hp: number;
   maxHp: number;
   /** 建筑左上角格（仅建筑）。 */
+  constructionProgress: number;
+  constructionTotal: number;
   cellX: number;
   cellY: number;
   // 移动
@@ -463,6 +465,8 @@ export class World {
       facing: 0,
       hp: type.hp,
       maxHp: type.hp,
+      constructionProgress: 0,
+      constructionTotal: 0,
       cellX: leptonToCell(x),
       cellY: leptonToCell(y),
       path: [],
@@ -523,7 +527,12 @@ export class World {
     const type = this.rules.units.get(typeId);
     if (type?.domain !== 'building') return false;
     if (!type || !this.canBuild(owner, type)) return false;
-    this.getQueue(owner, categoryOf(type)).items.push(typeId);
+    const q = this.getQueue(owner, categoryOf(type));
+    q.items.push(typeId);
+    if (type.domain === 'building' && q.items[0] === typeId) {
+      q.progress = 0;
+      q.readyToPlace = true;
+    }
     return true;
   }
 
@@ -538,17 +547,21 @@ export class World {
     }
     q.items.shift();
     q.progress = 0;
-    q.readyToPlace = false;
+    q.readyToPlace = q.items.length > 0;
   }
 
   /** 玩家是否拥有某 typeId 的建筑（前置科技判断）。 */
   hasBuilding(owner: number, buildingId: string): boolean {
     for (const e of this.entities.values()) {
-      if (e.owner === owner && e.typeId === buildingId && this.rules.units.get(e.typeId)?.domain === 'building') {
+      if (e.owner === owner && e.typeId === buildingId && this.rules.units.get(e.typeId)?.domain === 'building' && this.isConstructionComplete(e)) {
         return true;
       }
     }
     return false;
+  }
+
+  private isConstructionComplete(e: Entity): boolean {
+    return e.constructionTotal <= 0 || e.constructionProgress >= e.constructionTotal;
   }
 
   /** 该单位当前能否建造（生产建筑存在 + 前置满足）。 */
@@ -693,8 +706,19 @@ export class World {
     for (const e of this.entities.values()) {
       const player = this.players.get(e.owner);
       if (!player || player.defeated) continue;
+      if (!this.isConstructionComplete(e)) continue;
       if (e.typeId === 'conyard') player.credits += CONYARD_INCOME_PER_SECOND;
       else if (e.typeId === 'refinery') player.credits += REFINERY_INCOME_PER_SECOND;
+    }
+  }
+
+  private stepConstruction(): void {
+    for (const e of this.entities.values()) {
+      if (e.constructionTotal <= 0 || e.constructionProgress >= e.constructionTotal) continue;
+      const type = this.rules.units.get(e.typeId);
+      if (!type?.building) continue;
+      e.constructionProgress = Math.min(e.constructionTotal, e.constructionProgress + AUTO_PRODUCTION_STEP);
+      if (e.constructionProgress >= e.constructionTotal) this.completeConstruction(e, type);
     }
   }
 
@@ -824,6 +848,10 @@ export class World {
         e.repairing = false;
         continue;
       }
+      if (!this.isConstructionComplete(e)) {
+        e.repairing = false;
+        continue;
+      }
       if (e.hp >= e.maxHp) {
         e.repairing = false;
         continue;
@@ -918,14 +946,17 @@ export class World {
     // 必须是队首已就绪的该建筑
     if (!q || !q.readyToPlace || q.items[0] !== typeId) return null;
     if (!this.canPlace(owner, type, cellX, cellY)) return null;
-    const e = this.placeBuildingEntity(owner, type, cellX, cellY);
+    const player = this.players.get(owner);
+    if (!player || player.credits < type.cost) return null;
+    player.credits -= type.cost;
+    const e = this.placeBuildingEntity(owner, type, cellX, cellY, { underConstruction: true });
     q.items.shift();
     q.progress = 0;
-    q.readyToPlace = false;
+    q.readyToPlace = q.items.length > 0;
     return e;
   }
 
-  private placeBuildingEntity(owner: number, type: UnitType, cellX: number, cellY: number): Entity {
+  private placeBuildingEntity(owner: number, type: UnitType, cellX: number, cellY: number, options: { underConstruction?: boolean } = {}): Entity {
     const b = type.building!;
     const cx = cellX + b.footprintW / 2;
     const cy = cellY + b.footprintH / 2;
@@ -941,13 +972,33 @@ export class World {
         this.occupied.set((cellY + dy) * this.terrain.width + (cellX + dx), e.id);
       }
     }
-    this.initProducer(e, type);
-    // 精炼厂送一辆免费矿车
-    if (b.freeHarvester) {
-      const hx = Math.min(cellX + b.footprintW, this.terrain.width - 1);
-      this.makeEntity(owner, this.rules.units.get('harvester')!, cellToLepton(hx), cellToLepton(cellY + 1));
+    if (options.underConstruction && type.buildTime > 0) {
+      e.constructionProgress = 0;
+      e.constructionTotal = type.buildTime;
+      this.reserveProducerExit(e, type);
+    } else {
+      this.completeConstruction(e, type);
     }
     return e;
+  }
+
+  private completeConstruction(e: Entity, type: UnitType): void {
+    e.constructionProgress = e.constructionTotal;
+    this.initProducer(e, type);
+    const b = type.building;
+    if (b?.freeHarvester) {
+      const hx = Math.min(e.cellX + b.footprintW, this.terrain.width - 1);
+      this.makeEntity(e.owner, this.rules.units.get('harvester')!, cellToLepton(hx), cellToLepton(e.cellY + 1));
+    }
+  }
+
+  private reserveProducerExit(e: Entity, type: UnitType): void {
+    if (!this.needsGroundProducerExit(type) || e.producerExit) return;
+    const exit = this.findProducerExit(type, e.cellX, e.cellY);
+    if (exit) {
+      e.producerExit = exit;
+      this.reservedProducerExits.set(exit.y * this.terrain.width + exit.x, e.id);
+    }
   }
 
   private initProducer(e: Entity, type: UnitType): void {
@@ -955,13 +1006,7 @@ export class World {
     const defaultType = player ? defaultProducerUnit(type.id, player.side) : null;
     if (!defaultType) return;
     e.producer = { enabled: true, typeId: defaultType, progress: 0, paidTypeId: null };
-    if (this.needsGroundProducerExit(type)) {
-      const exit = this.findProducerExit(type, e.cellX, e.cellY);
-      if (exit) {
-        e.producerExit = exit;
-        this.reservedProducerExits.set(exit.y * this.terrain.width + exit.x, e.id);
-      }
-    }
+    this.reserveProducerExit(e, type);
   }
 
   private removeBuildingOccupancy(e: Entity): void {
@@ -1543,10 +1588,12 @@ export class World {
   step(): void {
     this.stepCombatIncome();
     this.stepProduction();
+    this.stepConstruction();
     this.stepRepair();
     for (const e of this.entities.values()) {
       const type = this.rules.units.get(e.typeId);
       if (!type) continue;
+      if (type.domain === 'building' && !this.isConstructionComplete(e)) continue;
       if (e.enterTarget !== null && this.stepEngineer(e)) continue; // 工程师进入建筑→已消耗，跳过本帧余下
       const engaging = this.stepCombat(e, type);
       if (!engaging) this.stepMovement(e, type);
@@ -1569,6 +1616,7 @@ export class World {
     }
     for (const e of this.entities.values()) {
       h.addInt(e.id).addInt(e.owner).addInt(e.x).addInt(e.y).addInt(e.facing).addInt(e.hp);
+      h.addInt(e.constructionProgress).addInt(e.constructionTotal);
       h.addInt(e.harvester ? e.harvester.load : -1);
       h.addInt(e.repairing ? 1 : 0).addInt(e.rallyX).addInt(e.rallyY).addInt(e.airLoiterX).addInt(e.airLoiterY).addInt(e.enterTarget ?? -1);
       h.addInt(e.producer ? 1 : 0)

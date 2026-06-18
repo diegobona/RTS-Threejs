@@ -17,7 +17,7 @@ export function productionButtonState(
   const ready = !!isHead && queue.readyToPlace;
   let progressText = `$${type.cost}`;
   if (ready) {
-    progressText = 'Ready';
+    progressText = placingTypeId === type.id ? 'Placing' : 'Place';
   } else if (isHead && queue.items.length > 0) {
     const pct = type.buildTime > 0 ? Math.floor((queue.progress / type.buildTime) * 100) : 100;
     progressText = `${Math.max(0, Math.min(100, pct))}%`;

@@ -105,6 +105,31 @@ describe('fighter dual-role combat', () => {
   });
 });
 
+describe('map construction placement', () => {
+  it('places buildings immediately and completes construction on the map over time', () => {
+    const w = baseWorld();
+    withConyard(w);
+
+    expect(w.queueProduction(1, 'barracks')).toBe(true);
+    const q = w.queueFor(1, 'building')!;
+    expect(q.readyToPlace).toBe(true);
+    expect(q.progress).toBe(0);
+
+    const placed = w.placeBuilding(1, 'barracks', 10, 10)!;
+    expect(placed).not.toBeNull();
+    expect(placed.constructionProgress).toBe(0);
+    expect(placed.constructionTotal).toBe(w.rules.units.get('barracks')!.buildTime);
+    expect(w.hasBuilding(1, 'barracks')).toBe(false);
+    expect(w.buildOptions(1).map((u) => u.id)).not.toContain('gi');
+
+    for (let i = 0; i < placed.constructionTotal; i++) w.step();
+
+    expect(placed.constructionProgress).toBe(placed.constructionTotal);
+    expect(w.hasBuilding(1, 'barracks')).toBe(true);
+    expect(w.buildOptions(1).map((u) => u.id)).toContain('gi');
+  });
+});
+
 describe('airbase and fighter production', () => {
   it('airbase unlocks fighter production and fighters spawn from the airbase queue', () => {
     const w = baseWorld();
@@ -156,14 +181,14 @@ describe('生产队列', () => {
     withConyard(w);
     expect(w.queueProduction(1, 'barracks')).toBe(true);
     // 推进到建造完成
-    for (let i = 0; i < 200; i++) w.step();
-    for (let i = 0; i < 200; i++) w.step();
     const q = w.queueFor(1, 'building')!;
     expect(q.readyToPlace).toBe(true);
     expect(w.players.get(1)!.credits).toBeGreaterThanOrEqual(0);
     // 放置
     const placed = w.placeBuilding(1, 'barracks', 10, 10);
     expect(placed).not.toBeNull();
+    expect(w.hasBuilding(1, 'barracks')).toBe(false);
+    for (let i = 0; i < placed!.constructionTotal; i++) w.step();
     expect(w.hasBuilding(1, 'barracks')).toBe(true);
     expect(q.readyToPlace).toBe(false);
   });
@@ -173,9 +198,9 @@ describe('生产队列', () => {
     w.addPlayer(1, 'allied', 300); // 不够 800 的发电厂
     withConyard(w);
     w.queueProduction(1, 'barracks');
-    for (let i = 0; i < 200; i++) w.step();
     expect(w.players.get(1)!.credits).toBeGreaterThanOrEqual(0);
     expect(w.queueFor(1, 'building')!.readyToPlace).toBe(true);
+    expect(w.placeBuilding(1, 'barracks', 10, 10)).toBeNull();
   });
 
   it('取消生产退还已花费', () => {
@@ -184,9 +209,9 @@ describe('生产队列', () => {
     expect(w.queueProduction(1, 'barracks')).toBe(true);
     for (let i = 0; i < 4; i++) w.step();
     const mid = w.players.get(1)!.credits;
-    expect(mid).toBeLessThan(5000); // 已花掉一部分
+    expect(mid).toBe(5000);
     w.cancelProduction(1, 'building');
-    expect(w.players.get(1)!.credits).toBeGreaterThan(mid); // 有退款
+    expect(w.players.get(1)!.credits).toBe(mid);
     expect(w.queueFor(1, 'building')!.items.length).toBe(0);
   });
 

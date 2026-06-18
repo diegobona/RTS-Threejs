@@ -388,7 +388,7 @@ export class SimpleAI {
   }
 
   private nextBuilding(world: World, _player: Player): string | null {
-    const has = (id: string): boolean => world.hasBuilding(this.playerId, id);
+    const has = (id: string): boolean => this.countBuildings(world, id) > 0;
     for (const id of BUILD_ORDER) if (!has(id)) return id;
     if (this.countBuildings(world, 'refinery') < this.m.refineries) return 'refinery';
     if (this.countBuildings(world, 'tesla') + this.countBuildings(world, 'pillbox') < this.m.defenseTarget) return 'pillbox';

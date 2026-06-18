@@ -79,6 +79,21 @@ describe('SimpleAI', () => {
     expect(cmds.some(isAttackCommand)).toBe(false);
   });
 
+  it('does not queue duplicate core buildings while the first one is under construction', () => {
+    const world = new World(gridTerrain(40, 40), 91);
+    world.addPlayer(1, 'allied', 5000);
+    world.spawnUnit(1, 'conyard', 5, 5);
+    const ai = new SimpleAI(1, 'normal', 1);
+
+    ai.emit(world);
+    world.applyCommands(ai.emit(world));
+    ai.emit(world);
+
+    const buildingQueue = world.queueFor(1, 'building');
+    expect([...world.entities.values()].filter((e) => e.owner === 1 && e.typeId === 'refinery')).toHaveLength(1);
+    expect(buildingQueue?.items ?? []).not.toContain('refinery');
+  });
+
   it('stages each unit type into separate formations before proactive attacks', () => {
     const world = aiAttackWorld();
     world.tick = 1500;

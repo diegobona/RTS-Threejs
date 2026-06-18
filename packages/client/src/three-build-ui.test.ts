@@ -45,23 +45,23 @@ describe('3D building button state', () => {
     });
   });
 
-  it('shows progress for the building queue head', () => {
-    const queue: ProductionQueue = { items: ['barracks'], progress: 38, readyToPlace: false };
+  it('marks a queued building as placeable immediately instead of showing queue progress', () => {
+    const queue: ProductionQueue = { items: ['barracks'], progress: 0, readyToPlace: true };
 
     expect(productionButtonState(barracks, true, queue, null)).toMatchObject({
       disabled: false,
-      progressText: '50%',
-      ready: false,
+      progressText: 'Place',
+      ready: true,
       activePlace: false,
     });
   });
 
-  it('marks a completed building as ready and active when it is being placed', () => {
-    const queue: ProductionQueue = { items: ['barracks'], progress: 75, readyToPlace: true };
+  it('marks a queued building as active when it is being placed', () => {
+    const queue: ProductionQueue = { items: ['barracks'], progress: 0, readyToPlace: true };
 
     expect(productionButtonState(barracks, true, queue, 'barracks')).toEqual({
       disabled: false,
-      progressText: 'Ready',
+      progressText: 'Placing',
       ready: true,
       activePlace: true,
     });
