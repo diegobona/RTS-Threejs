@@ -20,6 +20,10 @@ export function capacitySummaryText3D(capacity: CapacitySnapshot): string {
   return `建筑 ${capacity.building.count}/${capacity.building.limit} | 士兵 ${capacity.infantry.count}/${capacity.infantry.limit} | 坦克 ${capacity.vehicle.count}/${capacity.vehicle.limit} | 飞机 ${capacity.aircraft.count}/${capacity.aircraft.limit}`;
 }
 
+export function topHudText3D(capacity: CapacitySnapshot): string {
+  return capacitySummaryText3D(capacity);
+}
+
 export const MATCH_3D_STYLE = `
 .mv3-root { position: fixed; inset: 0; overflow: hidden; background: #070b0d;
   font: 13px/1.4 system-ui, 'PingFang SC', sans-serif; color: #d8e0e6; touch-action: none; }
@@ -65,7 +69,6 @@ export const MATCH_3D_STYLE = `
 export class MatchView3D {
   private renderer!: ThreeWorldRenderer;
   private camera!: ThreeCameraController;
-  private creditsEl!: HTMLElement;
   private capacityEl!: HTMLElement;
   private selBox!: HTMLElement;
   private tabsEl!: HTMLElement;
@@ -143,7 +146,6 @@ export class MatchView3D {
       'beforeend',
       `<div class="mv3-top">
         <span>3D RTS Preview</span>
-        <span>Credits <b id="mv3-credits">0</b></span>
         <span id="mv3-capacity" class="mv3-capacity"></span>
         <span id="mv3-selected"></span>
         <button id="mv3-mute" type="button" style="background:none;border:none;color:#9aa7b0;cursor:pointer;font-size:15px">Sound</button>
@@ -161,7 +163,6 @@ export class MatchView3D {
       <div class="mv3-selbox" id="mv3-selbox"></div>
       <div class="mv3-chip">Build, rally, command the swarm</div>`,
     );
-    this.creditsEl = this.root.querySelector('#mv3-credits')!;
     this.capacityEl = this.root.querySelector('#mv3-capacity')!;
     this.selBox = this.root.querySelector('#mv3-selbox')!;
     this.tabsEl = this.root.querySelector('#mv3-tabs')!;
@@ -195,9 +196,7 @@ export class MatchView3D {
   }
 
   private updateHud(): void {
-    const p = this.world.players.get(this.localPlayerId);
-    this.creditsEl.textContent = String(p?.credits ?? 0);
-    this.capacityEl.textContent = capacitySummaryText3D(this.world.capacityFor(this.localPlayerId));
+    this.capacityEl.textContent = topHudText3D(this.world.capacityFor(this.localPlayerId));
     const sel = this.root.querySelector('#mv3-selected');
     if (sel) sel.textContent = this.selected.size > 0 ? `Selected ${this.selected.size}` : '';
     this.refreshBuildPanel();
@@ -235,7 +234,7 @@ export class MatchView3D {
     for (const type of units) {
       const button = document.createElement('button');
       button.type = 'button';
-      button.title = `${type.name} $${type.cost}`;
+      button.title = type.name;
       const name = document.createElement('span');
       name.className = 'name';
       name.textContent = this.buildLabel(type);

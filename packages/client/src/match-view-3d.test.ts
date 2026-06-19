@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { capacitySummaryText3D, initialCameraFocus3D, PRODUCTION_CATEGORIES_3D } from './match-view-3d';
+import { capacitySummaryText3D, initialCameraFocus3D, PRODUCTION_CATEGORIES_3D, topHudText3D } from './match-view-3d';
 
 describe('MatchView3D camera defaults', () => {
   it('starts focused on the center of the map instead of the local spawn', () => {
@@ -20,8 +20,21 @@ describe('MatchView3D capacity HUD', () => {
         building: { count: 12, limit: 20 },
         infantry: { count: 340, limit: 500 },
         vehicle: { count: 76, limit: 100 },
-        aircraft: { count: 31, limit: 50 },
+        aircraft: { count: 31, limit: 30 },
       }),
-    ).toBe('建筑 12/20 | 士兵 340/500 | 坦克 76/100 | 飞机 31/50');
+    ).toBe('建筑 12/20 | 士兵 340/500 | 坦克 76/100 | 飞机 31/30');
+  });
+
+  it('does not expose credits in the top HUD summary', () => {
+    const text = topHudText3D({
+      building: { count: 4, limit: 20 },
+      infantry: { count: 117, limit: 500 },
+      vehicle: { count: 48, limit: 100 },
+      aircraft: { count: 23, limit: 30 },
+    });
+
+    expect(text).toBe('建筑 4/20 | 士兵 117/500 | 坦克 48/100 | 飞机 23/30');
+    expect(text).not.toContain('Credits');
+    expect(text).not.toContain('$');
   });
 });

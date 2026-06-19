@@ -46,7 +46,7 @@ describe('automatic production buildings', () => {
       building: { count: 2, limit: 20 },
       infantry: { count: 1, limit: 500 },
       vehicle: { count: 1, limit: 100 },
-      aircraft: { count: 1, limit: 50 },
+      aircraft: { count: 1, limit: 30 },
     });
   });
 
@@ -82,7 +82,7 @@ describe('automatic production buildings', () => {
 
     expect(w.capacityFor(1).infantry.count).toBe(499);
     expect(barracks.producer?.paidTypeId).toBe('gi');
-    expect(w.players.get(1)!.credits).toBeLessThan(creditsAtCap);
+    expect(w.players.get(1)!.credits).toBe(creditsAtCap);
   });
 
   it('produces infantry from every barracks in parallel', () => {
@@ -124,16 +124,16 @@ describe('automatic production buildings', () => {
     expect(countType(w, 'fighter')).toBeGreaterThanOrEqual(1);
   });
 
-  it('pauses automatic production without creating negative credits', () => {
+  it('auto-produces units even with zero credits', () => {
     const w = new World(gridTerrain(40, 40), 7);
     w.addPlayer(1, 'allied', 0);
     const barracks = w.spawnUnit(1, 'barracks', 10, 10)!;
 
     runTicks(w, 20);
 
-    expect(countType(w, 'gi')).toBe(0);
-    expect(w.players.get(1)!.credits).toBeGreaterThanOrEqual(0);
-    expect(barracks.producer?.progress).toBe(0);
+    expect(countType(w, 'gi')).toBeGreaterThanOrEqual(1);
+    expect(w.players.get(1)!.credits).toBe(0);
+    expect(barracks.producer?.progress).toBeGreaterThanOrEqual(0);
   });
 
   it('can disable and retarget a single production building', () => {
@@ -290,13 +290,13 @@ describe('automatic production buildings', () => {
 });
 
 describe('simplified combat economy and tech tree', () => {
-  it('generates fast combat income from conyards and refineries once per second', () => {
+  it('does not generate credits now that money is disabled', () => {
     const w = baseWorld(0);
     w.spawnUnit(1, 'refinery', 10, 10);
 
     runTicks(w, 5);
 
-    expect(w.players.get(1)!.credits).toBe(750);
+    expect(w.players.get(1)!.credits).toBe(0);
   });
 
   it('removes powerplant from build options and unlocks airbase directly from the conyard', () => {

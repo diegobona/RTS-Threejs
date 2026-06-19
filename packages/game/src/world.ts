@@ -177,7 +177,7 @@ export const DEFAULT_CAPACITY_LIMITS: Record<Domain, number> = {
   building: 20,
   infantry: 500,
   vehicle: 100,
-  aircraft: 50,
+  aircraft: 30,
 };
 /** 建造半径（格）：新建筑须距己方某建筑足迹不超过此距离。 */
 const BUILD_RADIUS = 6;
@@ -459,8 +459,6 @@ export class World {
     const e = this.entities.get(entityId);
     const type = e && this.rules.units.get(e.typeId);
     if (!e || e.owner !== owner || !type?.building) return;
-    const player = this.players.get(owner);
-    if (player) player.credits += Math.floor((type.cost * e.hp) / e.maxHp / 2); // 按现血量半价回款
     this.removeBuildingOccupancy(e);
     this.entities.delete(entityId);
   }
@@ -551,12 +549,6 @@ export class World {
   cancelProduction(owner: number, category: ProdCategory): void {
     const q = this.queueFor(owner, category);
     if (!q || q.items.length === 0) return;
-    // 退还队首已花费的金钱
-    const type = this.rules.units.get(q.items[0]!);
-    if (type) {
-      const player = this.players.get(owner);
-      if (player) player.credits += Math.floor((q.progress / type.buildTime) * type.cost);
-    }
     q.items.shift();
     q.progress = 0;
     q.readyToPlace = q.items.length > 0;
@@ -630,12 +622,7 @@ export class World {
         // 生产建筑被摧毁 → 暂停
         if (!this.hasBuilding(player.id, CATEGORY_PRODUCER[category])) continue;
 
-        const step = AUTO_PRODUCTION_STEP;
-        const costPerTick = type.cost / type.buildTime;
-        const wouldSpend = Math.ceil(costPerTick * step);
-        if (player.credits < wouldSpend) continue; // 钱不够则停滞
-        player.credits -= wouldSpend;
-        q.progress += step;
+        q.progress += AUTO_PRODUCTION_STEP;
 
         if (q.progress >= type.buildTime) {
           q.progress = type.buildTime;
@@ -697,9 +684,7 @@ export class World {
 
   private refundProducerProgress(owner: number, producer: ProducerState): void {
     if (!producer.paidTypeId) return;
-    const type = this.rules.units.get(producer.paidTypeId);
-    const player = this.players.get(owner);
-    if (type && player) player.credits += type.cost;
+    void owner;
   }
 
   private isValidProducerChoice(owner: number, building: Entity, typeId: string): boolean {
@@ -714,14 +699,7 @@ export class World {
   }
 
   private stepCombatIncome(): void {
-    if ((this.tick + 1) % SIM_TICKS_PER_SECOND !== 0) return;
-    for (const e of this.entities.values()) {
-      const player = this.players.get(e.owner);
-      if (!player || player.defeated) continue;
-      if (!this.isConstructionComplete(e)) continue;
-      if (e.typeId === 'conyard') player.credits += CONYARD_INCOME_PER_SECOND;
-      else if (e.typeId === 'refinery') player.credits += REFINERY_INCOME_PER_SECOND;
-    }
+    // Money is disabled in the swarm ruleset; keep the hook as a no-op for deterministic step ordering.
   }
 
   private stepConstruction(): void {
@@ -730,6 +708,7 @@ export class World {
       const type = this.rules.units.get(e.typeId);
       if (!type?.building) continue;
       this.assignConstructionWorkers(e, type);
+      if (!this.assignedConstructionWorkersReady(e, type)) continue;
       e.constructionProgress = Math.min(e.constructionTotal, e.constructionProgress + AUTO_PRODUCTION_STEP);
       if (e.constructionProgress >= e.constructionTotal) this.completeConstruction(e, type);
     }
@@ -760,8 +739,6 @@ export class World {
     if (this.isCapacityFull(building.owner, type.domain)) return;
 
     if (!producer.paidTypeId) {
-      if (player.credits < type.cost) return;
-      player.credits -= type.cost;
       producer.paidTypeId = type.id;
       producer.progress = 0;
     }
@@ -869,15 +846,10 @@ export class World {
         e.repairing = false;
         continue;
       }
-      const player = this.players.get(e.owner);
-      // 每次回血 maxHp/40，花费按造价等比例
+      // 每次回血 maxHp/40；金钱系统已下线，维修不再扣费。
       const heal = Math.max(1, Math.ceil(e.maxHp / 40));
-      const cost = Math.ceil((heal / e.maxHp) * type.cost * REPAIR_COST_RATIO);
-      if (player && player.credits >= cost) {
-        player.credits -= cost;
-        e.hp = Math.min(e.maxHp, e.hp + heal);
-        if (e.hp >= e.maxHp) e.repairing = false; // 修满即停
-      }
+      e.hp = Math.min(e.maxHp, e.hp + heal);
+      if (e.hp >= e.maxHp) e.repairing = false; // 修满即停
     }
   }
 
@@ -959,9 +931,7 @@ export class World {
     // 必须是队首已就绪的该建筑
     if (!q || !q.readyToPlace || q.items[0] !== typeId) return null;
     if (!this.canPlace(owner, type, cellX, cellY)) return null;
-    const player = this.players.get(owner);
-    if (!player || player.credits < type.cost) return null;
-    player.credits -= type.cost;
+    if (!this.players.has(owner)) return null;
     const e = this.placeBuildingEntity(owner, type, cellX, cellY, { underConstruction: true });
     q.items.shift();
     q.progress = 0;
@@ -1030,6 +1000,13 @@ export class World {
       worker.enterTarget = null;
       this.orderMove(worker, slot.x, slot.y);
     });
+  }
+
+  private assignedConstructionWorkersReady(site: Entity, type: UnitType): boolean {
+    const assigned = [...this.entities.values()].filter((e) => e.owner === site.owner && e.typeId === 'worker' && e.constructionTargetId === site.id);
+    if (assigned.length === 0) return false;
+    const slots = new Set(this.constructionWorkerSlots(site, type, CONSTRUCTION_WORKER_COUNT).map((slot) => slot.y * this.terrain.width + slot.x));
+    return assigned.every((worker) => slots.has(worker.cellY * this.terrain.width + worker.cellX));
   }
 
   private constructionWorkerSlots(site: Entity, type: UnitType, count: number): { x: number; y: number }[] {
@@ -1426,8 +1403,6 @@ export class World {
         break;
       }
       case 'unload': {
-        const player = this.players.get(e.owner);
-        if (player) player.credits += h.load;
         h.load = 0;
         h.mode = 'seek';
         break;

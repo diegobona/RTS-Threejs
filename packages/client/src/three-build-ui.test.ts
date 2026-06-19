@@ -36,10 +36,19 @@ const infantry: UnitType = {
 };
 
 describe('3D building button state', () => {
-  it('shows an unavailable building as disabled with its cost', () => {
+  it('shows an unavailable building as disabled without showing a cost', () => {
     expect(productionButtonState(barracks, false, undefined, null)).toEqual({
       disabled: true,
-      progressText: '$500',
+      progressText: 'Locked',
+      ready: false,
+      activePlace: false,
+    });
+  });
+
+  it('shows an available building as buildable without showing a cost', () => {
+    expect(productionButtonState(barracks, true, undefined, null)).toEqual({
+      disabled: false,
+      progressText: 'Build',
       ready: false,
       activePlace: false,
     });

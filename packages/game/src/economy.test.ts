@@ -109,6 +109,9 @@ describe('map construction placement', () => {
   it('places buildings immediately and completes construction on the map over time', () => {
     const w = baseWorld();
     withConyard(w);
+    w.spawnUnit(1, 'worker', 11, 12);
+    w.spawnUnit(1, 'worker', 10, 12);
+    w.spawnUnit(1, 'worker', 12, 10);
 
     expect(w.queueProduction(1, 'barracks')).toBe(true);
     const q = w.queueFor(1, 'building')!;
@@ -149,6 +152,37 @@ describe('map construction placement', () => {
       expect(worker.goal!.y).toBeGreaterThanOrEqual(9);
       expect(worker.goal!.y).toBeLessThanOrEqual(13);
     }
+  });
+
+  it('waits for assigned workers to reach the site before construction progresses', () => {
+    const w = baseWorld();
+    withConyard(w);
+    w.spawnUnit(1, 'worker', 1, 1);
+    w.spawnUnit(1, 'worker', 2, 1);
+    w.spawnUnit(1, 'worker', 3, 1);
+
+    expect(w.queueProduction(1, 'barracks')).toBe(true);
+    const placed = w.placeBuilding(1, 'barracks', 10, 10)!;
+
+    for (let i = 0; i < 8; i++) w.step();
+    expect(placed.constructionProgress).toBe(0);
+
+    for (let i = 0; i < 500 && placed.constructionProgress === 0; i++) w.step();
+    expect(placed.constructionProgress).toBeGreaterThan(0);
+  });
+
+  it('waits for every assigned worker when some workers are still travelling', () => {
+    const w = baseWorld();
+    withConyard(w);
+    w.spawnUnit(1, 'worker', 11, 12);
+    w.spawnUnit(1, 'worker', 1, 1);
+    w.spawnUnit(1, 'worker', 2, 1);
+
+    expect(w.queueProduction(1, 'barracks')).toBe(true);
+    const placed = w.placeBuilding(1, 'barracks', 10, 10)!;
+
+    for (let i = 0; i < 8; i++) w.step();
+    expect(placed.constructionProgress).toBe(0);
   });
 
   it('assigns newly available workers to an existing construction site', () => {
@@ -215,6 +249,9 @@ describe('生产队列', () => {
   it('排队建筑 → 扣钱 → 就绪 → 放置落地', () => {
     const w = baseWorld();
     withConyard(w);
+    w.spawnUnit(1, 'worker', 11, 12);
+    w.spawnUnit(1, 'worker', 10, 12);
+    w.spawnUnit(1, 'worker', 12, 10);
     expect(w.queueProduction(1, 'barracks')).toBe(true);
     // 推进到建造完成
     const q = w.queueFor(1, 'building')!;
@@ -229,14 +266,14 @@ describe('生产队列', () => {
     expect(q.readyToPlace).toBe(false);
   });
 
-  it('钱不够则停滞，不扣成负', () => {
+  it('0 资金也能立即放置建筑', () => {
     const w = new World(gridTerrain(40, 40), 7);
-    w.addPlayer(1, 'allied', 300); // 不够 800 的发电厂
+    w.addPlayer(1, 'allied', 0);
     withConyard(w);
     w.queueProduction(1, 'barracks');
-    expect(w.players.get(1)!.credits).toBeGreaterThanOrEqual(0);
     expect(w.queueFor(1, 'building')!.readyToPlace).toBe(true);
-    expect(w.placeBuilding(1, 'barracks', 10, 10)).toBeNull();
+    expect(w.placeBuilding(1, 'barracks', 10, 10)).not.toBeNull();
+    expect(w.players.get(1)!.credits).toBe(0);
   });
 
   it('取消生产退还已花费', () => {
@@ -265,7 +302,7 @@ describe('生产队列', () => {
 });
 
 describe('采矿闭环', () => {
-  it('矿车采矿 → 返厂 → 金钱增加', () => {
+  it('采矿车不再增加 credits', () => {
     const w = new World(gridTerrain(30, 30), 11);
     w.addPlayer(1, 'allied', 0);
     // 精炼厂自带矿车
@@ -274,7 +311,7 @@ describe('采矿闭环', () => {
     for (let y = 8; y < 12; y++) for (let x = 8; x < 12; x++) w.setOre(x, y, 500);
     const start = w.players.get(1)!.credits;
     runScript(w, [], 1500);
-    expect(w.players.get(1)!.credits).toBeGreaterThan(start);
+    expect(w.players.get(1)!.credits).toBe(start);
     // 矿被采走了一部分
     expect(w.oreAt(8, 8)).toBe(500);
   });
@@ -353,19 +390,19 @@ describe('战斗（M5 雏形）', () => {
     expect(tank.attackMove).toBe(false);
   });
 
-  it('出售建筑：回款并移除', () => {
+  it('出售建筑：移除但不回款', () => {
     const w = baseWorld();
     const cy = w.spawnUnit(1, 'conyard', 5, 5)!;
     w.spawnUnit(1, 'barracks', 9, 5); // 第二座建筑，避免卖完即判负
     const before = w.players.get(1)!.credits;
     w.applyCommands([{ kind: 'sell', owner: 1, entityId: cy.id }]);
     expect(w.entities.has(cy.id)).toBe(false);
-    expect(w.players.get(1)!.credits).toBeGreaterThan(before); // 有回款
+    expect(w.players.get(1)!.credits).toBe(before);
     // 占地已释放，可在原处重建
     expect(w.canPlace(1, w.rules.units.get('barracks')!, 5, 5)).toBe(true);
   });
 
-  it('修理建筑：扣钱回血至满停止', () => {
+  it('修理建筑：不扣钱回血至满停止', () => {
     const w = baseWorld();
     const pp = w.spawnUnit(1, 'barracks', 5, 5)!;
     pp.hp = 100;
@@ -373,7 +410,7 @@ describe('战斗（M5 雏形）', () => {
     w.applyCommands([{ kind: 'repair', owner: 1, entityId: pp.id }]);
     for (let i = 0; i < 400 && pp.hp < pp.maxHp; i++) w.step();
     expect(pp.hp).toBe(pp.maxHp); // 修满
-    expect(w.players.get(1)!.credits).toBeLessThan(before); // 花了钱
+    expect(w.players.get(1)!.credits).toBe(before);
     expect(pp.repairing).toBe(false); // 修满自动停
   });
 

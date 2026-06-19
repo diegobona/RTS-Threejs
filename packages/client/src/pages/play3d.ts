@@ -31,7 +31,6 @@ export async function renderPlay3D(root: HTMLElement): Promise<void> {
   document.head.appendChild(style);
 
   let difficulty = (localStorage.getItem('ra2.diff') as Difficulty) || 'normal';
-  let credits = Number(localStorage.getItem('ra2.cash') ?? 10000);
   let mapSize = (localStorage.getItem('ra2.map') as MapSize) || 'medium';
 
   function renderSetup(): void {
@@ -43,12 +42,6 @@ export async function renderPlay3D(root: HTMLElement): Promise<void> {
           <button data-v="easy">Easy</button>
           <button data-v="normal">Normal</button>
           <button data-v="hard">Hard</button>
-        </div>
-        <div class="p3-label">Starting credits</div>
-        <div class="p3-opts" id="p3-cash">
-          <button data-v="3000">3000</button>
-          <button data-v="5000">5000</button>
-          <button data-v="10000">10000</button>
         </div>
         <div class="p3-label">Map size</div>
         <div class="p3-opts" id="p3-map">
@@ -62,20 +55,12 @@ export async function renderPlay3D(root: HTMLElement): Promise<void> {
       </div></div>`;
     const sync = (): void => {
       for (const b of root.querySelectorAll('#p3-diff button')) b.classList.toggle('on', (b as HTMLElement).dataset.v === difficulty);
-      for (const b of root.querySelectorAll('#p3-cash button')) b.classList.toggle('on', Number((b as HTMLElement).dataset.v) === credits);
       for (const b of root.querySelectorAll('#p3-map button')) b.classList.toggle('on', (b as HTMLElement).dataset.v === mapSize);
     };
     root.querySelector('#p3-diff')!.addEventListener('click', (e) => {
       const v = (e.target as HTMLElement).dataset.v as Difficulty;
       if (v) {
         difficulty = v;
-        sync();
-      }
-    });
-    root.querySelector('#p3-cash')!.addEventListener('click', (e) => {
-      const v = (e.target as HTMLElement).dataset.v;
-      if (v) {
-        credits = Number(v);
         sync();
       }
     });
@@ -89,7 +74,6 @@ export async function renderPlay3D(root: HTMLElement): Promise<void> {
     root.querySelector('#p3-start')!.addEventListener('click', () => {
       audioBus.resume();
       localStorage.setItem('ra2.diff', difficulty);
-      localStorage.setItem('ra2.cash', String(credits));
       localStorage.setItem('ra2.map', mapSize);
       startMatch();
     });
@@ -97,7 +81,7 @@ export async function renderPlay3D(root: HTMLElement): Promise<void> {
   }
 
   function startMatch(): void {
-    const config = localSkirmishConfig(credits, mapSize);
+    const config = localSkirmishConfig(0, mapSize);
     const world = createMatchWorld(config);
     const view = new MatchView3D(root, world, HUMAN, config.mapWidth, config.mapHeight);
     const ai = new SimpleAI(AI_ID, difficulty, (Date.now() ^ (AI_ID * 2654435761)) >>> 0);
