@@ -12,7 +12,6 @@ export function createWorldFromConfig(config: MatchConfig): World {
   for (const spawn of config.spawns) {
     world.addPlayer(spawn.playerId, spawn.side, startCredits);
     world.spawnUnit(spawn.playerId, 'conyard', spawn.cellX, spawn.cellY);
-    world.spawnUnit(spawn.playerId, 'refinery', spawn.cellX, spawn.cellY + 4);
   }
   for (const patch of config.orePatches) {
     for (let dy = -2; dy <= 2; dy++) {

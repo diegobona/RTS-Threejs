@@ -99,11 +99,9 @@ describe('端到端联机同步', () => {
     // 各自的操作脚本（盟军 A=玩家1，苏军 B=玩家2；建造场坐标见 server start）
     const aOps: Record<number, Command[]> = {
       70: [{ kind: 'produce', owner: 1, typeId: 'barracks' }],
-      72: [{ kind: 'produce', owner: 1, typeId: 'refinery' }],
     };
     const bOps: Record<number, Command[]> = {
       70: [{ kind: 'produce', owner: 2, typeId: 'barracks' }],
-      74: [{ kind: 'produce', owner: 2, typeId: 'refinery' }],
     };
 
     // 异步泵：反复处理消息直到双方都已过首个工人产出和建造命令同步窗口

@@ -1,6 +1,6 @@
 import type { Command, Entity, Player, World } from '@ra2web/game';
 
-const BUILD_ORDER = ['refinery', 'barracks', 'warfactory', 'airbase'];
+const BUILD_ORDER = ['barracks', 'warfactory', 'airbase'];
 const SIM_TICKS_PER_SECOND = 5;
 const AI_ATTACK_COOLDOWN_TICKS = 5 * 60 * SIM_TICKS_PER_SECOND;
 const FORMATION_TIMEOUT_TICKS = 18 * SIM_TICKS_PER_SECOND;
@@ -18,14 +18,13 @@ const MODES: Mode[] = ['defensive', 'balanced', 'aggressive'];
 interface ModeParams {
   defenseTarget: number;
   waveSize: number;
-  refineries: number;
   homeReserve: number;
 }
 
 const MODE: Record<Mode, ModeParams> = {
-  defensive: { defenseTarget: 3, waveSize: 10, refineries: 1, homeReserve: 1 },
-  balanced: { defenseTarget: 2, waveSize: 8, refineries: 1, homeReserve: 1 },
-  aggressive: { defenseTarget: 1, waveSize: 6, refineries: 1, homeReserve: 0 },
+  defensive: { defenseTarget: 3, waveSize: 10, homeReserve: 1 },
+  balanced: { defenseTarget: 2, waveSize: 8, homeReserve: 1 },
+  aggressive: { defenseTarget: 1, waveSize: 6, homeReserve: 0 },
 };
 
 interface DiffParams {
@@ -390,7 +389,6 @@ export class SimpleAI {
   private nextBuilding(world: World, _player: Player): string | null {
     const has = (id: string): boolean => this.countBuildings(world, id) > 0;
     for (const id of BUILD_ORDER) if (!has(id)) return id;
-    if (this.countBuildings(world, 'refinery') < this.m.refineries) return 'refinery';
     if (this.countBuildings(world, 'tesla') + this.countBuildings(world, 'pillbox') < this.m.defenseTarget) return 'pillbox';
     return null;
   }

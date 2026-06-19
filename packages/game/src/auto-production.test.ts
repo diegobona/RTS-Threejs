@@ -317,13 +317,15 @@ describe('simplified combat economy and tech tree', () => {
     expect(w.players.get(1)!.credits).toBe(0);
   });
 
-  it('removes powerplant from build options and unlocks airbase directly from the conyard', () => {
+  it('removes economy buildings from build options and unlocks airbase directly from the conyard', () => {
     const w = baseWorld();
     w.spawnUnit(1, 'worker', 8, 9);
     const ids = w.buildOptions(1).map((u) => u.id);
 
     expect(ids).not.toContain('powerplant');
-    expect(ids).toEqual(expect.arrayContaining(['refinery', 'barracks', 'warfactory', 'airbase']));
+    expect(ids).not.toContain('refinery');
+    expect(ids).not.toContain('harvester');
+    expect(ids).toEqual(expect.arrayContaining(['barracks', 'warfactory', 'airbase']));
   });
 });
 

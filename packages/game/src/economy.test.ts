@@ -241,7 +241,9 @@ describe('前置科技与建造清单', () => {
     w.applyCommands([{ kind: 'sell', owner: 1, entityId: conyard.id }]);
 
     const ids = w.buildOptions(1).map((u) => u.id);
-    expect(ids).toEqual(expect.arrayContaining(['refinery', 'barracks', 'warfactory', 'airbase']));
+    expect(ids).not.toContain('refinery');
+    expect(ids).not.toContain('harvester');
+    expect(ids).toEqual(expect.arrayContaining(['barracks', 'warfactory', 'airbase']));
     expect(w.queueProduction(1, 'barracks')).toBe(true);
   });
 
@@ -251,7 +253,9 @@ describe('前置科技与建造清单', () => {
     w.spawnUnit(1, 'worker', 8, 9);
     const ids = w.buildOptions(1).map((u) => u.id);
     expect(ids).not.toContain('powerplant');
-    expect(ids).toEqual(expect.arrayContaining(['refinery', 'barracks', 'warfactory', 'airbase']));
+    expect(ids).not.toContain('refinery');
+    expect(ids).not.toContain('harvester');
+    expect(ids).toEqual(expect.arrayContaining(['barracks', 'warfactory', 'airbase']));
     expect(ids).toContain('barracks');
     // 步兵需要兵营，不可造
     expect(ids).not.toContain('gi');
@@ -264,11 +268,10 @@ describe('前置科技与建造清单', () => {
     expect(w.buildOptions(1).map((u) => u.id)).toContain('barracks');
     w.spawnUnit(1, 'barracks', 14, 10);
     expect(w.buildOptions(1).map((u) => u.id)).toContain('gi');
-    w.spawnUnit(1, 'refinery', 18, 10);
     w.spawnUnit(1, 'warfactory', 22, 10);
     const ids = w.buildOptions(1).map((u) => u.id);
     expect(ids).toContain('grizzly');
-    expect(ids).toContain('harvester');
+    expect(ids).not.toContain('harvester');
   });
 });
 

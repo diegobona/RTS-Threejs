@@ -91,7 +91,9 @@ describe('SimpleAI', () => {
     ai.emit(world);
 
     const buildingQueue = world.queueFor(1, 'building');
-    expect([...world.entities.values()].filter((e) => e.owner === 1 && e.typeId === 'refinery')).toHaveLength(1);
+    expect([...world.entities.values()].filter((e) => e.owner === 1 && e.typeId === 'barracks')).toHaveLength(1);
+    expect([...world.entities.values()].filter((e) => e.owner === 1 && e.typeId === 'refinery')).toHaveLength(0);
+    expect(buildingQueue?.items ?? []).not.toContain('barracks');
     expect(buildingQueue?.items ?? []).not.toContain('refinery');
   });
 
