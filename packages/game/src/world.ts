@@ -166,6 +166,8 @@ const CONYARD_INCOME_PER_SECOND = 150;
 const REFINERY_INCOME_PER_SECOND = 600;
 const AUTO_PRODUCTION_STEP = 2;
 const CONSTRUCTION_WORKER_COUNT = 3;
+const AIR_BOMB_RUN_FIRST_DISTANCE = 6;
+const AIR_BOMB_RUN_SPACING = 4;
 export interface CapacitySlot {
   count: number;
   limit: number;
@@ -342,14 +344,12 @@ export class World {
         case 'attack': {
           const ids = [...cmd.entityIds].sort((a, b) => a - b);
           const target = this.entities.get(cmd.targetId);
-          const airIds = ids.filter((eid) => {
-            const e = this.entities.get(eid);
-            const type = e && this.rules.units.get(e.typeId);
-            return type?.domain === 'aircraft';
-          });
-          const firstAir = airIds.length > 0 ? this.entities.get(airIds[0]!) : null;
+          const airUnits = ids
+            .map((eid) => this.entities.get(eid))
+            .filter((e): e is Entity => !!e && this.rules.units.get(e.typeId)?.domain === 'aircraft');
+          const firstAir = airUnits[0] ?? null;
           const firstAirType = firstAir ? this.rules.units.get(firstAir.typeId) : null;
-          const airSlots = target && firstAirType ? this.aircraftAttackDestinations(target, firstAirType, airIds.length) : [];
+          const airSlots = target && firstAirType ? this.aircraftAttackDestinations(target, firstAirType, airUnits) : [];
           let airSlotIndex = 0;
           for (const eid of ids) {
             const e = this.entities.get(eid);
@@ -1169,9 +1169,11 @@ export class World {
     return out;
   }
 
-  private aircraftAttackDestinations(target: Entity, attackerType: UnitType, count: number): { x: number; y: number }[] {
+  private aircraftAttackDestinations(target: Entity, attackerType: UnitType, attackers: Entity[]): { x: number; y: number }[] {
     const targetType = this.rules.units.get(target.typeId);
     const weapon = targetType ? this.weaponForTarget(attackerType, targetType) : null;
+    if (weapon && this.usesAircraftBombRun(attackerType, target, weapon)) return this.aircraftBombingRunDestinations(target, attackers);
+    const count = attackers.length;
     const range = weapon?.range ?? 2 * 256;
     const missile = weapon?.role === 'missile';
     const center = { x: leptonToCell(target.x), y: leptonToCell(target.y) };
@@ -1227,6 +1229,54 @@ export class World {
     return selected;
   }
 
+  private aircraftBombingRunDestinations(target: Entity, attackers: Entity[]): { x: number; y: number }[] {
+    if (attackers.length === 0) return [];
+    const center = { x: leptonToCell(target.x), y: leptonToCell(target.y) };
+    let sx = 0;
+    let sy = 0;
+    for (const e of attackers) {
+      sx += e.cellX;
+      sy += e.cellY;
+    }
+    const avgX = sx / attackers.length;
+    const avgY = sy / attackers.length;
+    let vx = center.x - avgX;
+    let vy = center.y - avgY;
+    const len = Math.hypot(vx, vy) || 1;
+    vx /= len;
+    vy /= len;
+    const px = -vy;
+    const py = vx;
+    const out: { x: number; y: number }[] = [];
+    const seen = new Set<number>();
+    const laneLength = Math.min(5, Math.max(4, Math.ceil(Math.sqrt(attackers.length))));
+
+    for (let i = 0; i < attackers.length; i++) {
+      const lane = Math.floor(i / laneLength);
+      const laneOffset = lane === 0 ? 0 : Math.ceil(lane / 2) * (lane % 2 === 0 ? -1 : 1) * AIR_BOMB_RUN_SPACING;
+      const distance = AIR_BOMB_RUN_FIRST_DISTANCE + (i % laneLength) * AIR_BOMB_RUN_SPACING;
+      let placed = false;
+      for (let attempt = 0; attempt < 17 && !placed; attempt++) {
+        const nudge = attempt === 0 ? 0 : Math.ceil(attempt / 2) * (attempt % 2 === 0 ? -1 : 1);
+        const side = laneOffset + nudge;
+        const x = Math.round(center.x - vx * distance + px * side);
+        const y = Math.round(center.y - vy * distance + py * side);
+        const slot = this.passableAirNear(x, y, 3);
+        if (!slot) continue;
+        const key = slot.y * this.terrain.width + slot.x;
+        if (seen.has(key)) continue;
+        if (out.some((s) => Math.hypot(s.x - slot.x, s.y - slot.y) < AIR_BOMB_RUN_SPACING)) continue;
+        seen.add(key);
+        out.push(slot);
+        placed = true;
+      }
+    }
+
+    const fallback = out[0] ?? center;
+    while (out.length < attackers.length) out.push(fallback);
+    return out;
+  }
+
   private aircraftMissileAttackDestinations(cx: number, cy: number, count: number, radius: number): { x: number; y: number }[] {
     const out: { x: number; y: number }[] = [];
     const seen = new Set<number>();
@@ -1251,10 +1301,35 @@ export class World {
     return out;
   }
 
-  private aircraftAttackStation(e: Entity, target: Entity, weapon: WeaponSpec): { x: number; y: number } | null {
+  private aircraftAttackStation(e: Entity, target: Entity, range: number): { x: number; y: number } | null {
     if (e.airLoiterX < 0 || e.airLoiterY < 0) return null;
     const d = dist(cellToLepton(e.airLoiterX) - target.x, cellToLepton(e.airLoiterY) - target.y);
-    return d <= weapon.range ? { x: e.airLoiterX, y: e.airLoiterY } : null;
+    return d <= range ? { x: e.airLoiterX, y: e.airLoiterY } : null;
+  }
+
+  private aircraftBombReleaseStation(e: Entity, target: Entity, weapon: WeaponSpec): { x: number; y: number } | null {
+    const cx = leptonToCell(target.x);
+    const cy = leptonToCell(target.y);
+    const radius = Math.max(1, Math.floor(weapon.range / 256));
+    const offsets: { dx: number; dy: number }[] = [{ dx: 0, dy: 0 }];
+    for (let r = 1; r <= radius; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          offsets.push({ dx, dy });
+        }
+      }
+    }
+
+    const start = e.id % offsets.length;
+    for (let i = 0; i < offsets.length; i++) {
+      const offset = offsets[(start + i) % offsets.length]!;
+      const slot = this.passableAirNear(cx + offset.dx, cy + offset.dy, 1);
+      if (!slot) continue;
+      const d = dist(cellToLepton(slot.x) - target.x, cellToLepton(slot.y) - target.y);
+      if (d <= weapon.range) return slot;
+    }
+    return this.passableAirNear(cx, cy, radius);
   }
 
   private aircraftMissileStandoffDistance(type: UnitType, weapon: WeaponSpec): number {
@@ -1511,6 +1586,21 @@ export class World {
     return type.domain === 'aircraft' ? 'bomb' : 'cannon';
   }
 
+  private isAircraftBombWeapon(type: UnitType, weapon: WeaponSpec): boolean {
+    return type.domain === 'aircraft' && this.weaponRoleFor(type, weapon) === 'bomb';
+  }
+
+  private usesAircraftBombRun(type: UnitType, target: Entity, weapon: WeaponSpec): boolean {
+    return this.isAircraftBombWeapon(type, weapon) && this.rules.units.get(target.typeId)?.domain === 'building';
+  }
+
+  private effectiveWeaponRange(type: UnitType, e: Entity, target: Entity, weapon: WeaponSpec): number {
+    void type;
+    void e;
+    void target;
+    return weapon.range;
+  }
+
   private acquireRangeForWeapon(type: UnitType, e: Entity, weapon: WeaponSpec, targetIsBuilding: boolean, onMission: boolean): number {
     if (targetIsBuilding && !onMission) return weapon.range;
     if (type.domain === 'building') return weapon.range;
@@ -1590,6 +1680,8 @@ export class World {
     const dy = target.y - e.y;
     const d = dist(dx, dy);
     const aircraftStandoff = this.aircraftMissileStandoffDistance(type, weapon);
+    const bombRun = this.usesAircraftBombRun(type, target, weapon);
+    const effectiveRange = this.effectiveWeaponRange(type, e, target, weapon);
     if (aircraftStandoff > 0 && d < aircraftStandoff) {
       const away = this.aircraftStandoffStation(e, target, weapon);
       if (away) {
@@ -1598,7 +1690,8 @@ export class World {
       }
       return false;
     }
-    if (d > weapon.range) {
+    if (bombRun && e.goal) return false;
+    if (d > effectiveRange) {
       // 坚守：绝不移动追击，够不着就放下目标原地待机
       if (!e.attackMove && e.stance === 'holdground') {
         e.targetId = null;
@@ -1608,9 +1701,12 @@ export class World {
       // 显式攻击同样追击；建筑不能动。
       if (e.attackMove ? e.path.length === 0 && !e.waypoint : type.domain !== 'building' && !e.goal) {
         const near = type.domain === 'aircraft'
-          ? this.aircraftAttackStation(e, target, weapon) ?? this.passableNear(target.cellX, target.cellY)
+          ? (bombRun ? this.aircraftBombReleaseStation(e, target, weapon) : this.aircraftAttackStation(e, target, effectiveRange)) ?? this.passableNear(target.cellX, target.cellY)
           : this.passableNear(target.cellX, target.cellY);
-        if (near) this.orderMove(e, near.x, near.y);
+        if (near) {
+          if (bombRun) this.setAircraftLoiter(e, near.x, near.y);
+          this.orderMove(e, near.x, near.y);
+        }
       }
       return false;
     }

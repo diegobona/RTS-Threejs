@@ -3,15 +3,16 @@
  * 从首页一路放到遭遇战设置/大厅，并续播进正式对战（压低音量，见 enterMatch）。
  * 浏览器禁自动播放：须用户首次手势后 play()。无该文件则标记不可用（隐藏开关）。
  */
-export const BGM_SOURCE = '/bgm.wav?v=bright-modern-war-march-v5';
-export const BGM_EPIC_PROFILE = 'bright-modern-war-march-v5';
-export const BGM_MENU_VOLUME = 0.58;
-export const BGM_MATCH_VOLUME = 0.42;
+export const BGM_ENABLED = false;
+export const BGM_SOURCE = '';
+export const BGM_EPIC_PROFILE = 'disabled';
+export const BGM_MENU_VOLUME = 0;
+export const BGM_MATCH_VOLUME = 0;
 
 class Bgm {
   private el: HTMLAudioElement | null = null;
-  private unavailable = false;
-  private wanted = typeof localStorage === 'undefined' ? true : localStorage.getItem('ra2.bgm') !== 'off';
+  private unavailable = !BGM_ENABLED;
+  private wanted = BGM_ENABLED && (typeof localStorage === 'undefined' ? true : localStorage.getItem('ra2.bgm') !== 'off');
   private readonly cbs: (() => void)[] = [];
 
   private ensure(): HTMLAudioElement {
@@ -41,6 +42,7 @@ class Bgm {
 
   /** 按当前意愿尝试播放（须在用户手势后调用方能出声）。 */
   play(): void {
+    if (!BGM_ENABLED) return;
     if (!this.wanted) return;
     void this.ensure()
       .play()
@@ -49,6 +51,12 @@ class Bgm {
 
   /** 开关；记忆到 localStorage。 */
   setOn(on: boolean): void {
+    if (!BGM_ENABLED) {
+      this.wanted = false;
+      if (typeof localStorage !== 'undefined') localStorage.setItem('ra2.bgm', 'off');
+      this.el?.pause();
+      return;
+    }
     this.wanted = on;
     if (typeof localStorage !== 'undefined') localStorage.setItem('ra2.bgm', on ? 'on' : 'off');
     if (on) this.play();
@@ -58,12 +66,14 @@ class Bgm {
   /** 进入正式对战：不再静音战场——压低音量（让音效/EVA 盖在上面）后续播，
    *  使战斗全程也有配乐（红警的灵魂）。无 BGM 文件或已关闭则保持无声。 */
   enterMatch(): void {
+    if (!BGM_ENABLED) return;
     if (this.wanted) this.ensure().volume = BGM_MATCH_VOLUME; // 战斗内压低；菜单维持菜单音量
     this.play();
   }
 
   /** 对战内"全部静音"开关联动：静音即暂停音乐，取消静音按意愿恢复（不改用户偏好）。 */
   setMatchMuted(muted: boolean): void {
+    if (!BGM_ENABLED) return;
     if (!this.el) return;
     if (muted) this.el.pause();
     else if (this.wanted) void this.el.play().catch(() => undefined);

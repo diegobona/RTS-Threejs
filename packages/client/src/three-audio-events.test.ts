@@ -102,12 +102,35 @@ describe('ThreeAudioEventTracker', () => {
     expect(events.map((e) => e.kind)).toEqual(['cannon']);
   });
 
+  it('emits scream events when infantry take damage', () => {
+    const tracker = new ThreeAudioEventTracker();
+    tracker.update(
+      snapshot({
+        entities: [
+          entity({ id: 1, hp: 100, domain: 'infantry' }),
+          entity({ id: 2, hp: 300, domain: 'vehicle' }),
+        ],
+      }),
+    );
+
+    const events = tracker.update(
+      snapshot({
+        entities: [
+          entity({ id: 1, hp: 70, domain: 'infantry' }),
+          entity({ id: 2, hp: 250, domain: 'vehicle' }),
+        ],
+      }),
+    );
+
+    expect(events.map((e) => e.kind)).toEqual(['scream', 'hit']);
+  });
+
   it('emits hit and explosion events from damage, projectile impact, and entity removal', () => {
     const tracker = new ThreeAudioEventTracker();
     tracker.update(
       snapshot({
         entities: [
-          entity({ id: 1 }),
+          entity({ id: 1, domain: 'vehicle' }),
           entity({ id: 2, x: 16, z: 18, hp: 500, building: true, domain: 'building' }),
         ],
         projectiles: [{ id: 7, x: 11, z: 13, impactKind: 'explosion' }],
@@ -116,7 +139,7 @@ describe('ThreeAudioEventTracker', () => {
 
     const events = tracker.update(
       snapshot({
-        entities: [entity({ id: 1, hp: 70 })],
+        entities: [entity({ id: 1, hp: 70, domain: 'vehicle' })],
         projectiles: [],
       }),
     );

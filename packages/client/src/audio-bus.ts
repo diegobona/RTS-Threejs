@@ -7,9 +7,9 @@
 import { BufferSource, MixFile, parseAud } from '@ra2web/data';
 import { loadGameMix } from './game-files';
 
-export type Sfx = 'fire' | 'cannon' | 'bomb' | 'hit' | 'explosion' | 'bigExplosion' | 'build' | 'ready' | 'place' | 'select' | 'move' | 'deny';
+export type Sfx = 'fire' | 'cannon' | 'bomb' | 'bombImpact' | 'scream' | 'hit' | 'explosion' | 'bigExplosion' | 'build' | 'ready' | 'place' | 'select' | 'move' | 'deny';
 
-const ALLOWED_SFX = new Set<Sfx>(['fire', 'cannon', 'bomb', 'build']);
+const ALLOWED_SFX = new Set<Sfx>(['fire', 'cannon', 'bomb', 'bombImpact', 'scream', 'build']);
 
 export function shouldPlaySfx(sfx: Sfx): boolean {
   return ALLOWED_SFX.has(sfx);
@@ -66,6 +66,7 @@ const REAL_GAIN: Partial<Record<Sfx, number>> = {
   fire: 0.5,
   cannon: 0.7,
   bomb: 0.65,
+  bombImpact: 0.95,
   hit: 0.5,
   explosion: 0.9,
   bigExplosion: 1,
@@ -113,63 +114,73 @@ interface SyntheticBombSfxProfile {
   airRushGain: number;
   bodyMs: number;
   bodyGain: number;
+  impactLowGain: number;
+  impactTailMs: number;
+  impactTailGain: number;
 }
 
 export const SYNTHETIC_WEAPON_SFX: Record<SyntheticWeaponSfx, SyntheticWeaponSfxProfile> = {
   fire: {
     usesTonalBlip: false,
-    noiseLayers: 2,
-    crackMs: 42,
-    crackHz: 2800,
-    crackQ: 0.9,
-    crackGain: 0.26,
-    lowPunchHz: 130,
-    lowPunchEndHz: 62,
-    lowPunchMs: 58,
-    lowPunchGain: 0.1,
-    tailMs: 65,
+    noiseLayers: 3,
+    crackMs: 54,
+    crackHz: 2450,
+    crackQ: 0.82,
+    crackGain: 0.34,
+    lowPunchHz: 150,
+    lowPunchEndHz: 46,
+    lowPunchMs: 116,
+    lowPunchGain: 0.26,
+    tailMs: 190,
     tailDelayMs: 8,
-    tailCutoffHz: 760,
-    tailQ: 0.7,
-    tailGain: 0.08,
+    tailCutoffHz: 560,
+    tailQ: 0.62,
+    tailGain: 0.19,
+    shockMs: 118,
+    shockDelayMs: 18,
+    shockCutoffHz: 132,
+    shockGain: 0.09,
   },
   cannon: {
     usesTonalBlip: false,
-    noiseLayers: 3,
-    crackMs: 80,
-    crackHz: 1050,
+    noiseLayers: 4,
+    crackMs: 96,
+    crackHz: 920,
     crackQ: 0.55,
-    crackGain: 0.25,
-    lowPunchHz: 92,
-    lowPunchEndHz: 28,
-    lowPunchMs: 260,
-    lowPunchGain: 0.34,
-    tailMs: 310,
+    crackGain: 0.37,
+    lowPunchHz: 86,
+    lowPunchEndHz: 20,
+    lowPunchMs: 430,
+    lowPunchGain: 0.68,
+    tailMs: 690,
     tailDelayMs: 18,
-    tailCutoffHz: 420,
-    tailQ: 0.65,
-    tailGain: 0.26,
-    shockMs: 150,
+    tailCutoffHz: 310,
+    tailQ: 0.58,
+    tailGain: 0.5,
+    shockMs: 260,
     shockDelayMs: 28,
-    shockCutoffHz: 180,
-    shockGain: 0.16,
+    shockCutoffHz: 118,
+    shockGain: 0.34,
   },
 };
 
 export const SYNTHETIC_BOMB_SFX: SyntheticBombSfxProfile = {
-  tonalLayers: 0,
+  tonalLayers: 2,
   dropCueGain: 0,
   dropCueHz: 0,
   dropCueMs: 0,
-  whistleMs: 0,
-  whistleStartHz: 0,
-  whistleEndHz: 0,
-  whistleGain: 0,
-  airRushMs: 190,
-  airRushCutoffHz: 360,
-  airRushGain: 0.08,
-  bodyMs: 180,
-  bodyGain: 0.16,
+  whistleMs: 1720,
+  whistleStartHz: 1450,
+  whistleEndHz: 210,
+  whistleGain: 0.08,
+  airRushMs: 1840,
+  airRushCutoffHz: 390,
+  airRushGain: 0.12,
+  bodyMs: 135,
+  bodyGain: 0.46,
+  impactLowGain: 0.36,
+  impactTailMs: 620,
+  impactTailGain: 0.26,
 };
 
 export class AudioBus {
@@ -230,6 +241,8 @@ export class AudioBus {
     fire: 45,
     cannon: 70,
     bomb: 120,
+    bombImpact: 90,
+    scream: 260,
     hit: 60,
     explosion: 80,
     bigExplosion: 150,
@@ -297,7 +310,7 @@ export class AudioBus {
     const gap = AudioBus.MIN_GAP[sfx];
     const last = this.lastPlayed.get(sfx) ?? -1e9;
     if (now - last < gap) return;
-    if (this.activeVoices > 24) return;
+    if (this.activeVoices > (sfx === 'bombImpact' ? 36 : 24)) return;
     this.lastPlayed.set(sfx, now);
     this.curOut = this.makeOut(opts.pan ?? 0, opts.gain ?? 1);
     try {
@@ -314,6 +327,12 @@ export class AudioBus {
           break;
         case 'bomb':
           this.playBombDrop();
+          break;
+        case 'bombImpact':
+          this.playBombImpact();
+          break;
+        case 'scream':
+          this.playInfantryScream();
           break;
         case 'hit':
           this.noise(0.06, 2500, 0.12);
@@ -530,6 +549,15 @@ export class AudioBus {
   private playWeaponShot(kind: SyntheticWeaponSfx): void {
     const profile = SYNTHETIC_WEAPON_SFX[kind];
     this.filteredNoise(profile.crackMs / 1000, 'bandpass', profile.crackHz, profile.crackQ, profile.crackGain);
+    if (profile.noiseLayers >= 2) {
+      this.filteredNoise((profile.crackMs * 0.85) / 1000, 'bandpass', profile.crackHz * 0.52, Math.max(0.45, profile.crackQ * 0.75), profile.crackGain * 0.5, 0.006);
+    }
+    if (profile.noiseLayers >= 3) {
+      this.filteredNoise((profile.crackMs * 1.25) / 1000, 'lowpass', profile.tailCutoffHz * 0.8, Math.max(0.4, profile.tailQ * 0.7), profile.tailGain * 0.7, 0.012);
+    }
+    if (profile.noiseLayers >= 4) {
+      this.filteredNoise((profile.tailMs * 0.75) / 1000, 'lowpass', Math.max(90, profile.tailCutoffHz * 0.42), 0.5, profile.tailGain * 0.48, 0.04);
+    }
     this.pitchDrop(profile.lowPunchHz, profile.lowPunchEndHz, profile.lowPunchMs / 1000, 'triangle', profile.lowPunchGain);
     this.filteredNoise(profile.tailMs / 1000, 'lowpass', profile.tailCutoffHz, profile.tailQ, profile.tailGain, profile.tailDelayMs / 1000);
     if (profile.shockMs && profile.shockCutoffHz && profile.shockGain) {
@@ -539,8 +567,27 @@ export class AudioBus {
 
   private playBombDrop(): void {
     const profile = SYNTHETIC_BOMB_SFX;
+    const whistleDur = profile.whistleMs / 1000;
+    for (let i = 0; i < profile.tonalLayers; i++) {
+      const layerGain = profile.whistleGain / (i + 1);
+      const detune = 1 + i * 0.035;
+      this.pitchDrop(profile.whistleStartHz * detune, profile.whistleEndHz * (1 - i * 0.08), whistleDur, i === 0 ? 'sawtooth' : 'triangle', layerGain, i * 0.018);
+    }
     this.filteredNoise(profile.airRushMs / 1000, 'lowpass', profile.airRushCutoffHz, 0.55, profile.airRushGain, 0.02);
-    this.filteredNoise(profile.bodyMs / 1000, 'lowpass', 130, 0.5, profile.bodyGain, 0.055);
+  }
+
+  private playBombImpact(): void {
+    const profile = SYNTHETIC_BOMB_SFX;
+    this.filteredNoise(profile.bodyMs / 1000, 'bandpass', 930, 0.78, profile.bodyGain);
+    this.filteredNoise((profile.bodyMs + 210) / 1000, 'lowpass', 105, 0.46, profile.impactLowGain, 0.008);
+    this.filteredNoise(profile.impactTailMs / 1000, 'lowpass', 235, 0.5, profile.impactTailGain, 0.04);
+    this.pitchDrop(86, 23, Math.min(0.48, profile.impactTailMs / 1000), 'triangle', profile.impactLowGain * 0.5, 0.015);
+  }
+
+  private playInfantryScream(): void {
+    this.pitchDrop(620, 230, 0.34, 'sawtooth', 0.1);
+    this.pitchDrop(470, 180, 0.28, 'triangle', 0.055, 0.035);
+    this.filteredNoise(0.22, 'bandpass', 1450, 1.2, 0.055, 0.015);
   }
 
   private pitchDrop(startFreq: number, endFreq: number, dur: number, type: OscillatorType, gain: number, delay = 0): void {

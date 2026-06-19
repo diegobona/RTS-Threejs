@@ -34,6 +34,11 @@ export function matchOutcomeText3D(world: World, localPlayerId: number): 'Defeat
   return null;
 }
 
+export function bindAudioUnlock(pointerTarget: EventTarget, keyboardTarget: EventTarget | null = typeof window === 'undefined' ? null : window, resume = (): void => audioBus.resume()): void {
+  pointerTarget.addEventListener('pointerdown', resume, { once: true });
+  keyboardTarget?.addEventListener('keydown', resume, { once: true });
+}
+
 export const MATCH_3D_STYLE = `
 .mv3-root { position: fixed; inset: 0; overflow: hidden; background: #070b0d;
   font: 13px/1.4 system-ui, 'PingFang SC', sans-serif; color: #d8e0e6; touch-action: none; }
@@ -328,9 +333,7 @@ export class MatchView3D {
 
   private bindCameraInput(): void {
     const canvas = this.renderer.renderer.domElement;
-    const unlock = (): void => audioBus.resume();
-    canvas.addEventListener('pointerdown', unlock, { once: true });
-    window.addEventListener('keydown', unlock, { once: true });
+    bindAudioUnlock(this.root);
     let panDrag: { x: number; y: number } | null = null;
     let selectDrag: { x: number; y: number } | null = null;
     canvas.addEventListener('contextmenu', (e: MouseEvent) => e.preventDefault());

@@ -21,7 +21,7 @@ export interface ThreeProjectileAudioState {
   id: number;
   x: number;
   z: number;
-  impactKind?: Extract<Sfx, 'hit' | 'explosion'>;
+  impactKind?: Extract<Sfx, 'hit' | 'explosion' | 'bombImpact'>;
 }
 
 export interface ThreeAudioSnapshot {
@@ -30,7 +30,7 @@ export interface ThreeAudioSnapshot {
 }
 
 export interface ThreeAudioEvent {
-  kind: Extract<Sfx, 'fire' | 'cannon' | 'bomb' | 'hit' | 'explosion' | 'bigExplosion'>;
+  kind: Extract<Sfx, 'fire' | 'cannon' | 'bomb' | 'bombImpact' | 'scream' | 'hit' | 'explosion' | 'bigExplosion'>;
   x: number;
   z: number;
   targetX?: number;
@@ -49,7 +49,7 @@ export class ThreeAudioEventTracker {
       seenEntities.add(entity.id);
       const prev = this.entities.get(entity.id);
       if (prev) {
-        if (entity.hp < prev.hp) events.push({ kind: 'hit', x: entity.x, z: entity.z });
+        if (entity.hp < prev.hp) events.push({ kind: entity.domain === 'infantry' ? 'scream' : 'hit', x: entity.x, z: entity.z });
         if (entity.targetId !== null && entity.cooldown > prev.cooldown + 1) {
           const target = byId.get(entity.targetId);
           events.push({

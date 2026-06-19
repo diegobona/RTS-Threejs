@@ -25,7 +25,9 @@ describe('AudioBus battle ambience', () => {
     expect(shouldPlaySfx('fire')).toBe(true);
     expect(shouldPlaySfx('cannon')).toBe(true);
     expect(shouldPlaySfx('bomb')).toBe(true);
+    expect(shouldPlaySfx('bombImpact')).toBe(true);
     expect(shouldPlaySfx('build')).toBe(true);
+    expect(shouldPlaySfx('scream')).toBe(true);
 
     expect(shouldPlaySfx('ready')).toBe(false);
     expect(shouldPlaySfx('select')).toBe(false);
@@ -55,18 +57,38 @@ describe('AudioBus battle ambience', () => {
     expect(SYNTHETIC_WEAPON_SFX.fire.usesTonalBlip).toBe(false);
     expect(SYNTHETIC_WEAPON_SFX.cannon.usesTonalBlip).toBe(false);
     expect(SYNTHETIC_WEAPON_SFX.fire.noiseLayers).toBeGreaterThanOrEqual(2);
+    expect(SYNTHETIC_WEAPON_SFX.fire.lowPunchGain).toBeGreaterThanOrEqual(0.24);
+    expect(SYNTHETIC_WEAPON_SFX.fire.tailMs).toBeGreaterThanOrEqual(170);
+    expect(SYNTHETIC_WEAPON_SFX.fire.tailGain).toBeGreaterThanOrEqual(0.18);
+    expect(SYNTHETIC_WEAPON_SFX.fire.shockGain).toBeGreaterThanOrEqual(0.08);
     expect(SYNTHETIC_WEAPON_SFX.cannon.noiseLayers).toBeGreaterThan(SYNTHETIC_WEAPON_SFX.fire.noiseLayers);
     expect(SYNTHETIC_WEAPON_SFX.cannon.lowPunchGain).toBeGreaterThan(SYNTHETIC_WEAPON_SFX.fire.lowPunchGain);
+    expect(SYNTHETIC_WEAPON_SFX.cannon.lowPunchGain).toBeGreaterThanOrEqual(0.62);
     expect(SYNTHETIC_WEAPON_SFX.cannon.tailMs).toBeGreaterThan(SYNTHETIC_WEAPON_SFX.fire.tailMs);
+    expect(SYNTHETIC_WEAPON_SFX.cannon.tailMs).toBeGreaterThanOrEqual(620);
+    expect(SYNTHETIC_WEAPON_SFX.cannon.tailGain).toBeGreaterThanOrEqual(0.45);
+    expect(SYNTHETIC_WEAPON_SFX.cannon.shockGain).toBeGreaterThanOrEqual(0.32);
   });
 
-  it('keeps aircraft bomb drops noise-based without a chirpy tonal cue', () => {
-    expect(SYNTHETIC_BOMB_SFX.tonalLayers).toBe(0);
+  it('shapes aircraft bomb drops as a long falling whistle with a separate heavy impact profile', () => {
+    const bombImpact = SYNTHETIC_BOMB_SFX as typeof SYNTHETIC_BOMB_SFX & {
+      impactLowGain?: number;
+      impactTailGain?: number;
+      impactTailMs?: number;
+    };
+
+    expect(SYNTHETIC_BOMB_SFX.tonalLayers).toBeGreaterThanOrEqual(1);
     expect(SYNTHETIC_BOMB_SFX.dropCueGain).toBe(0);
     expect(SYNTHETIC_BOMB_SFX.dropCueMs).toBe(0);
-    expect(SYNTHETIC_BOMB_SFX.whistleMs).toBe(0);
-    expect(SYNTHETIC_BOMB_SFX.whistleGain).toBe(0);
-    expect(SYNTHETIC_BOMB_SFX.airRushMs).toBeLessThanOrEqual(260);
-    expect(SYNTHETIC_BOMB_SFX.bodyGain).toBeGreaterThan(0);
+    expect(SYNTHETIC_BOMB_SFX.whistleMs).toBeGreaterThanOrEqual(1550);
+    expect(SYNTHETIC_BOMB_SFX.whistleStartHz).toBeGreaterThan(SYNTHETIC_BOMB_SFX.whistleEndHz);
+    expect(SYNTHETIC_BOMB_SFX.whistleGain).toBeGreaterThanOrEqual(0.07);
+    expect(SYNTHETIC_BOMB_SFX.airRushMs).toBeGreaterThanOrEqual(SYNTHETIC_BOMB_SFX.whistleMs);
+    expect(SYNTHETIC_BOMB_SFX.airRushGain).toBeGreaterThanOrEqual(0.1);
+    expect(SYNTHETIC_BOMB_SFX.bodyMs).toBeGreaterThanOrEqual(120);
+    expect(SYNTHETIC_BOMB_SFX.bodyGain).toBeGreaterThanOrEqual(0.42);
+    expect(bombImpact.impactLowGain).toBeGreaterThanOrEqual(0.32);
+    expect(bombImpact.impactTailMs).toBeGreaterThanOrEqual(520);
+    expect(bombImpact.impactTailGain).toBeGreaterThanOrEqual(0.22);
   });
 });

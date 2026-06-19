@@ -263,6 +263,80 @@ describe('automatic production buildings', () => {
     expect(fighters.every((e) => e.targetId === target.id)).toBe(true);
   });
 
+  it('queues aircraft bombing runs along an ingress lane instead of crowding over a ground target', () => {
+    const w = baseWorld(50000);
+    w.addPlayer(2, 'soviet', 0);
+    const target = w.spawnUnit(2, 'warfactory', 28, 28)!;
+    const ids: number[] = [];
+    for (let i = 0; i < 8; i++) ids.push(w.spawnUnit(1, 'fighter', 4 + (i % 4), 8 + Math.floor(i / 4))!.id);
+
+    w.applyCommands([{ kind: 'attack', entityIds: ids, targetId: target.id }]);
+
+    const stations = ids.map((id) => {
+      const station = airLoiterOf(w.entities.get(id)!);
+      expect(station.airLoiterX).toBeDefined();
+      expect(station.airLoiterY).toBeDefined();
+      return { x: station.airLoiterX!, y: station.airLoiterY! };
+    });
+    let minDistance = Infinity;
+    for (let i = 0; i < stations.length; i++) {
+      for (let j = i + 1; j < stations.length; j++) {
+        const a = stations[i]!;
+        const b = stations[j]!;
+        minDistance = Math.min(minDistance, Math.hypot(a.x - b.x, a.y - b.y));
+      }
+    }
+    const targetDistances = stations.map((s) => Math.hypot(s.x - target.cellX, s.y - target.cellY));
+
+    expect(new Set(stations.map((s) => `${s.x},${s.y}`)).size).toBe(stations.length);
+    expect(minDistance).toBeGreaterThanOrEqual(4);
+    expect(Math.min(...targetDistances)).toBeGreaterThanOrEqual(4);
+    expect(Math.max(...targetDistances)).toBeGreaterThanOrEqual(16);
+  });
+
+  it('keeps bombers moving from the ingress lane to the target before releasing bombs', () => {
+    const w = new World(gridTerrain(56, 56), 7);
+    w.addPlayer(1, 'allied', 50000);
+    w.addPlayer(2, 'soviet', 0);
+    const target = w.spawnUnit(2, 'warfactory', 38, 38)!;
+    const fighter = w.spawnUnit(1, 'fighter', 8, 12)!;
+
+    w.applyCommands([{ kind: 'attack', entityIds: [fighter.id], targetId: target.id }]);
+
+    const station = airLoiterOf(fighter);
+    expect(station.airLoiterX).toBeDefined();
+    expect(station.airLoiterY).toBeDefined();
+    expect(Math.hypot(station.airLoiterX! - target.cellX, station.airLoiterY! - target.cellY)).toBeGreaterThanOrEqual(4);
+    for (let i = 0; i < 900 && fighter.goal; i++) w.step();
+
+    expect(fighter.goal).toBeNull();
+    expect(Math.hypot(fighter.cellX - target.cellX, fighter.cellY - target.cellY)).toBeGreaterThan(2);
+
+    w.step();
+
+    expect(w.projectiles.filter((p) => p.shooterId === fighter.id)).toHaveLength(0);
+    expect(fighter.goal).not.toBeNull();
+    expect(fighter.goal && Math.hypot(fighter.goal.x - target.cellX, fighter.goal.y - target.cellY)).toBeLessThanOrEqual(2);
+  });
+
+  it('keeps large bomber groups in queued lanes without duplicate attack stations', () => {
+    const w = new World(gridTerrain(56, 56), 7);
+    w.addPlayer(1, 'allied', 50000);
+    w.addPlayer(2, 'soviet', 0);
+    const target = w.spawnUnit(2, 'warfactory', 36, 36)!;
+    const ids: number[] = [];
+    for (let i = 0; i < 24; i++) ids.push(w.spawnUnit(1, 'fighter', 8 + (i % 6), 10 + Math.floor(i / 6))!.id);
+
+    w.applyCommands([{ kind: 'attack', entityIds: ids, targetId: target.id }]);
+
+    const stations = ids.map((id) => {
+      const station = airLoiterOf(w.entities.get(id)!);
+      return { x: station.airLoiterX!, y: station.airLoiterY! };
+    });
+    expect(new Set(stations.map((s) => `${s.x},${s.y}`)).size).toBe(stations.length);
+    expect(stations.every((s) => s.x >= 0 && s.y >= 0 && s.x < w.terrain.width && s.y < w.terrain.height)).toBe(true);
+  });
+
   it('keeps aircraft dogfight attack stations in loose air lanes', () => {
     const w = baseWorld(50000);
     w.addPlayer(2, 'soviet', 0);

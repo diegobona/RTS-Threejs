@@ -23,6 +23,7 @@ import {
   proceduralModelYawOffset3D,
   combatMuzzlePoint3D,
   projectileTracerEnd3D,
+  projectileImpactKind3D,
   projectileVisualProfile3D,
   projectileVisualPoint3D,
 } from './three-world-renderer';
@@ -117,6 +118,13 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(aircraft.kind).toBe('bomb');
     expect(aircraft.color).toBe(0x111111);
     expect(aircraftMissile.kind).toBe('tracer');
+  });
+
+  it('marks aircraft bomb impacts with a dedicated audible impact instead of muted generic explosions', () => {
+    expect(projectileImpactKind3D({ domain: 'aircraft' }, 'bomb', 0)).toBe('bombImpact');
+    expect(projectileImpactKind3D({ domain: 'aircraft' }, 'missile', 0)).toBe('explosion');
+    expect(projectileImpactKind3D({ domain: 'vehicle' }, 'cannon', 0)).toBe('explosion');
+    expect(projectileImpactKind3D({ domain: 'infantry' }, 'gun', 0)).toBe('hit');
   });
 
   it('extends tracer lines from the muzzle toward the target direction', () => {

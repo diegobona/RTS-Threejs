@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '@ra2web/game';
 import { gridTerrain } from '@ra2web/game';
-import { capacitySummaryText3D, initialCameraFocus3D, matchOutcomeText3D, PRODUCTION_CATEGORIES_3D, topHudText3D } from './match-view-3d';
+import { bindAudioUnlock, capacitySummaryText3D, initialCameraFocus3D, matchOutcomeText3D, PRODUCTION_CATEGORIES_3D, topHudText3D } from './match-view-3d';
 
 describe('MatchView3D camera defaults', () => {
   it('starts focused on the center of the map instead of the local spawn', () => {
@@ -12,6 +12,35 @@ describe('MatchView3D camera defaults', () => {
 describe('MatchView3D production tabs', () => {
   it('only exposes manual building production; units are produced automatically by buildings', () => {
     expect(PRODUCTION_CATEGORIES_3D).toEqual(['building']);
+  });
+});
+
+describe('MatchView3D audio unlock', () => {
+  it('unlocks audio from HUD/root clicks, not only canvas clicks', () => {
+    const root = new EventTarget();
+    let resumes = 0;
+
+    bindAudioUnlock(root, null, () => {
+      resumes++;
+    });
+    root.dispatchEvent(new Event('pointerdown'));
+    root.dispatchEvent(new Event('pointerdown'));
+
+    expect(resumes).toBe(1);
+  });
+
+  it('unlocks audio from the first keyboard gesture', () => {
+    const root = new EventTarget();
+    const keys = new EventTarget();
+    let resumes = 0;
+
+    bindAudioUnlock(root, keys, () => {
+      resumes++;
+    });
+    keys.dispatchEvent(new Event('keydown'));
+    keys.dispatchEvent(new Event('keydown'));
+
+    expect(resumes).toBe(1);
   });
 });
 

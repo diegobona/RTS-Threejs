@@ -34,7 +34,7 @@ import {
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { WeaponRole, World, UnitType } from '@ra2web/game';
-import { ThreeAudioEventTracker, type ThreeAudioEvent, type ThreeAudioSnapshot } from './three-audio-events';
+import { ThreeAudioEventTracker, type ThreeAudioEvent, type ThreeAudioSnapshot, type ThreeProjectileAudioState } from './three-audio-events';
 import { cellToWorld3D, leptonToWorld3D, THREE_CELL_SIZE } from './three-coords';
 import { WW1_MODEL_SPECS, type Ww1ModelSpec } from './ww1-model-manifest';
 
@@ -434,6 +434,16 @@ export function projectileVisualProfile3D(shooterType: Pick<UnitType, 'domain'> 
   return { kind: 'tracer', color: 0xfff0b0 };
 }
 
+export function projectileImpactKind3D(
+  shooterType: Pick<UnitType, 'domain'> | null | undefined,
+  weaponRole: WeaponRole | undefined,
+  splash: number,
+): ThreeProjectileAudioState['impactKind'] {
+  if (weaponRole === 'bomb') return 'bombImpact';
+  if (splash > 0 || shooterType?.domain === 'aircraft' || shooterType?.domain === 'vehicle') return 'explosion';
+  return 'hit';
+}
+
 function weaponCanTarget3D(weapon: NonNullable<UnitType['weapon']>, targetType: UnitType): boolean {
   return !weapon.targetDomains || weapon.targetDomains.includes(targetType.domain);
 }
@@ -464,6 +474,10 @@ export function combatEffectProfile3D(kind: ThreeAudioEvent['kind']): CombatEffe
       return { visual: 'muzzleFlash', color: 0xff9f32, radius: 0.42, height: 0.9, life: 14, sparkCount: 8, grow: 1.8 };
     case 'bomb':
       return { visual: 'muzzleFlash', color: 0xffd05a, radius: 0.26, height: AIRCRAFT_ALTITUDE - 0.35, life: 16, sparkCount: 4, grow: 1.35 };
+    case 'bombImpact':
+      return { visual: 'blast', color: 0xff9a32, radius: 0.88, height: 0.58, life: 24, sparkCount: 16, grow: 2.35 };
+    case 'scream':
+      return { visual: 'impactSpark', color: 0xfff6c0, radius: 0.2, height: 0.42, life: 10, sparkCount: 5, grow: 1.35 };
     case 'hit':
       return { visual: 'impactSpark', color: 0xfff6c0, radius: 0.24, height: 0.38, life: 12, sparkCount: 7, grow: 1.55 };
     case 'explosion':
@@ -2259,7 +2273,7 @@ export class ThreeWorldRenderer {
       const shooterType = shooter && this.world.rules.units.get(shooter.typeId);
       const target = this.world.entities.get(p.targetId);
       const pos = projectileVisualPoint3D(shooterType, p, shooter, target);
-      const impactKind = p.splash > 0 || shooterType?.domain === 'aircraft' || shooterType?.domain === 'vehicle' ? 'explosion' : 'hit';
+      const impactKind = projectileImpactKind3D(shooterType, p.weaponRole, p.splash);
       projectiles.push({ id: p.id, x: pos.x, z: pos.z, impactKind });
     }
     return { entities, projectiles };
