@@ -359,13 +359,18 @@ describe('放置校验', () => {
     expect(w.canPlace(1, type, 10, 10)).toBe(true);
   });
 
-  it('建造半径：远离基地不能建，毗邻可以', () => {
+  it('allows both sides to build on any empty map location without a build-radius limit', () => {
     const w = baseWorld();
     w.spawnUnit(1, 'conyard', 5, 5);
     w.spawnUnit(1, 'worker', 8, 9);
+    w.addPlayer(2, 'soviet', 5000);
+    w.spawnUnit(2, 'conyard', 34, 34);
+    w.spawnUnit(2, 'worker', 33, 33);
     const type = w.rules.units.get('barracks')!;
-    expect(w.canPlace(1, type, 9, 9)).toBe(true); // 距基地很近
-    expect(w.canPlace(1, type, 30, 30)).toBe(false); // 太远
+    expect(w.canPlace(1, type, 9, 9)).toBe(true);
+    expect(w.canPlace(1, type, 30, 30)).toBe(true);
+    expect(w.canPlace(2, type, 30, 30)).toBe(true);
+    expect(w.canPlace(2, type, 10, 30)).toBe(true);
   });
 });
 

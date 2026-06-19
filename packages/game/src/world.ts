@@ -188,8 +188,6 @@ export const DEFAULT_CAPACITY_LIMITS: Record<keyof CapacitySnapshot, number> = {
   vehicle: 100,
   aircraft: 30,
 };
-/** 建造半径（格）：新建筑须距己方某建筑足迹不超过此距离。 */
-const BUILD_RADIUS = 6;
 /** 单位「警戒」半径（lepton）：空闲单位会主动迎击此范围内的敌人（即便超出武器射程也会上前）。 */
 const GUARD_RANGE = 6 * 256;
 /** 修理：每隔多少 tick 回一次血。 */
@@ -903,10 +901,6 @@ export class World {
       }
     }
     if (this.needsGroundProducerExit(type) && !this.findProducerExit(type, cellX, cellY)) return false;
-    // 建造半径：须毗邻己方已有建筑（首座除外，避免开局无处可放）
-    if (this.ownsAnyBuilding(owner) && !this.withinBuildRadius(owner, cellX, cellY, b.footprintW, b.footprintH)) {
-      return false;
-    }
     return true;
   }
 
@@ -935,26 +929,6 @@ export class World {
     if (x < 0 || y < 0 || x >= this.terrain.width || y >= this.terrain.height) return false;
     const key = y * this.terrain.width + x;
     return this.terrain.passable(x, y) && !this.occupied.has(key) && !this.reservedProducerExits.has(key);
-  }
-
-  private ownsAnyBuilding(owner: number): boolean {
-    for (const e of this.entities.values()) {
-      if (e.owner === owner && this.rules.units.get(e.typeId)?.building) return true;
-    }
-    return false;
-  }
-
-  private withinBuildRadius(owner: number, cellX: number, cellY: number, w: number, h: number): boolean {
-    for (const e of this.entities.values()) {
-      if (e.owner !== owner) continue;
-      const eb = this.rules.units.get(e.typeId)?.building;
-      if (!eb) continue;
-      // 两个矩形足迹间的切比雪夫间隙
-      const gapX = Math.max(0, e.cellX - (cellX + w), cellX - (e.cellX + eb.footprintW));
-      const gapY = Math.max(0, e.cellY - (cellY + h), cellY - (e.cellY + eb.footprintH));
-      if (Math.max(gapX, gapY) <= BUILD_RADIUS) return true;
-    }
-    return false;
   }
 
   placeBuilding(owner: number, typeId: string, cellX: number, cellY: number): Entity | null {
