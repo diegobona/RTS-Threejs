@@ -265,7 +265,7 @@ const UNIT_LIST: UnitType[] = [
     cost: 0,
     hp: 65,
     armor: 'none',
-    buildTime: 30,
+    buildTime: 120,
     builtBy: 'conyard',
     prerequisites: ['conyard'],
     speed: 18,

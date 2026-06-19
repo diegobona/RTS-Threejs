@@ -19,6 +19,7 @@ import {
   isPickableEntityPart3D,
   LOWPOLY_FIGHTER_PART_IDS,
   LOWPOLY_FIGHTER_MODEL_SCALE,
+  LOWPOLY_WORKER_PART_IDS,
   proceduralModelYawOffset3D,
   combatMuzzlePoint3D,
   projectileTracerEnd3D,
@@ -143,6 +144,11 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
       expect.arrayContaining(['fuselage', 'nose', 'cockpit', 'main-wing', 'tail-wing', 'vertical-tail', 'intake', 'hardpoint']),
     );
     expect(LOWPOLY_FIGHTER_PART_IDS.length).toBeGreaterThanOrEqual(12);
+  });
+
+  it('builds workers without rifle-like parts', () => {
+    expect(LOWPOLY_WORKER_PART_IDS).toEqual(expect.arrayContaining(['hardhat', 'toolbox', 'team-patch']));
+    expect(LOWPOLY_WORKER_PART_IDS.some((id) => /rifle|barrel|gun/i.test(id))).toBe(false);
   });
 
   it('scales the procedural fighter large enough for close inspection', () => {

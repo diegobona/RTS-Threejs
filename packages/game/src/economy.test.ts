@@ -128,6 +128,42 @@ describe('map construction placement', () => {
     expect(w.hasBuilding(1, 'barracks')).toBe(true);
     expect(w.buildOptions(1).map((u) => u.id)).toContain('gi');
   });
+
+  it('sends real workers to the placed building site', () => {
+    const w = baseWorld();
+    withConyard(w);
+    const workers = [
+      w.spawnUnit(1, 'worker', 7, 9)!,
+      w.spawnUnit(1, 'worker', 8, 9)!,
+      w.spawnUnit(1, 'worker', 9, 9)!,
+    ];
+
+    expect(w.queueProduction(1, 'barracks')).toBe(true);
+    const placed = w.placeBuilding(1, 'barracks', 12, 10)!;
+
+    for (const worker of workers) {
+      expect((worker as { constructionTargetId?: number | null }).constructionTargetId).toBe(placed.id);
+      expect(worker.goal).not.toBeNull();
+      expect(worker.goal!.x).toBeGreaterThanOrEqual(11);
+      expect(worker.goal!.x).toBeLessThanOrEqual(14);
+      expect(worker.goal!.y).toBeGreaterThanOrEqual(9);
+      expect(worker.goal!.y).toBeLessThanOrEqual(13);
+    }
+  });
+
+  it('assigns newly available workers to an existing construction site', () => {
+    const w = baseWorld();
+    withConyard(w);
+
+    expect(w.queueProduction(1, 'barracks')).toBe(true);
+    const placed = w.placeBuilding(1, 'barracks', 12, 10)!;
+    const worker = w.spawnUnit(1, 'worker', 7, 9)!;
+
+    w.step();
+
+    expect((worker as { constructionTargetId?: number | null }).constructionTargetId).toBe(placed.id);
+    expect(worker.goal).not.toBeNull();
+  });
 });
 
 describe('airbase and fighter production', () => {

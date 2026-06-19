@@ -95,13 +95,16 @@ describe('automatic production buildings', () => {
     expect(countType(w, 'gi')).toBe(2);
   });
 
-  it('automatically produces workers from the construction yard', () => {
+  it('produces workers at one quarter of the soldier production speed', () => {
     const w = baseWorld(10000);
     const conyard = [...w.entities.values()].find((e) => e.typeId === 'conyard')!;
 
     expect(conyard.producer?.typeId).toBe('worker');
 
     runTicks(w, 15);
+    expect(unitsOfType(w, 'worker')).toHaveLength(0);
+
+    runTicks(w, 45);
 
     const workers = unitsOfType(w, 'worker');
     expect(workers).toHaveLength(1);

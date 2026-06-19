@@ -138,6 +138,20 @@ export const LOWPOLY_FIGHTER_PART_IDS = [
   'team-stripe',
 ] as const;
 
+export const LOWPOLY_WORKER_PART_IDS = [
+  'body',
+  'head',
+  'hardhat',
+  'hardhat-brim',
+  'toolpack',
+  'left-arm',
+  'right-arm',
+  'left-leg',
+  'right-leg',
+  'toolbox',
+  'team-patch',
+] as const;
+
 export function entityRootAltitude3D(_type: Pick<UnitType, 'domain'>): number {
   return 0;
 }
@@ -1657,7 +1671,6 @@ export class ThreeWorldRenderer {
     const pantsMat = new MeshLambertMaterial({ color: 0x35433a });
     const skinMat = new MeshLambertMaterial({ color: 0xb08a65 });
     const helmetMat = new MeshLambertMaterial({ color: 0xe0b23c });
-    const toolMat = new MeshLambertMaterial({ color: 0x2e3230 });
     const crateMat = new MeshLambertMaterial({ color: 0x8b6a3d });
     const accentMat = new MeshLambertMaterial({ color: ownerColor });
     const addPart = (name: string, mesh: Mesh): Mesh => {
@@ -1696,12 +1709,9 @@ export class ThreeWorldRenderer {
     rightLeg.position.set(0.1, 0.24, -0.03);
     rightLeg.rotation.x = 0.1;
 
-    const wrenchHandle = addPart('tool-handle', new Mesh(new BoxGeometry(0.05, 0.05, 0.48), toolMat));
-    wrenchHandle.position.set(0.26, 0.75, -0.42);
-    wrenchHandle.rotation.x = -0.35;
-    const wrenchHead = addPart('tool-head', new Mesh(new BoxGeometry(0.18, 0.06, 0.06), toolMat));
-    wrenchHead.position.set(0.25, 0.85, -0.62);
-    wrenchHead.rotation.x = -0.35;
+    const toolbox = addPart('toolbox', new Mesh(new BoxGeometry(0.32, 0.22, 0.2), crateMat));
+    toolbox.position.set(0.34, 0.52, -0.18);
+    toolbox.rotation.z = 0.08;
 
     const patch = addPart('team-patch', new Mesh(new BoxGeometry(0.08, 0.15, 0.035), accentMat));
     patch.position.set(0.23, 0.92, -0.2);

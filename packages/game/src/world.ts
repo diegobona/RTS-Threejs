@@ -102,6 +102,7 @@ export interface Entity {
   patrol: { x: number; y: number } | null;
   /** 工程师前往进入的目标建筑 id（己方=满血修复 / 敌方=占领；进入即消耗）。null=无。 */
   enterTarget: number | null;
+  constructionTargetId: number | null;
   /** 作战姿态（默认 guard 警戒）。 */
   stance: Stance;
   // 采矿
@@ -164,6 +165,7 @@ const SIM_TICKS_PER_SECOND = 5;
 const CONYARD_INCOME_PER_SECOND = 150;
 const REFINERY_INCOME_PER_SECOND = 600;
 const AUTO_PRODUCTION_STEP = 2;
+const CONSTRUCTION_WORKER_COUNT = 3;
 export interface CapacitySlot {
   count: number;
   limit: number;
@@ -285,6 +287,7 @@ export class World {
             const e = this.entities.get(eid);
             if (!e) return;
             const s = slots[i] ?? slots[0]!;
+            this.clearConstructionTarget(e);
             this.setAircraftLoiter(e, s.x, s.y);
             this.orderMove(e, s.x, s.y);
             e.targetId = null;
@@ -304,6 +307,7 @@ export class World {
             const e = this.entities.get(eid);
             if (!e) return;
             const s = slots[i] ?? slots[0]!;
+            this.clearConstructionTarget(e);
             this.setAircraftLoiter(e, s.x, s.y);
             this.orderMove(e, s.x, s.y);
             e.targetId = null;
@@ -320,6 +324,7 @@ export class World {
             // 无武器单位（如矿车）不巡逻。
             const type = e && this.rules.units.get(e.typeId);
             if (!e || !type || !this.hasWeapon(type)) continue;
+            this.clearConstructionTarget(e);
             e.patrol = { x: e.cellX, y: e.cellY };
             this.orderMove(e, cmd.cellX, cmd.cellY);
             e.targetId = null;
@@ -342,6 +347,7 @@ export class World {
           for (const eid of ids) {
             const e = this.entities.get(eid);
             if (e) {
+              this.clearConstructionTarget(e);
               const type = this.rules.units.get(e.typeId);
               e.targetId = cmd.targetId;
               e.attackMove = false;
@@ -367,6 +373,7 @@ export class World {
             for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
               const e = this.entities.get(eid);
               if (!e || !this.rules.units.get(e.typeId)?.engineer) continue;
+              this.clearConstructionTarget(e);
               e.enterTarget = cmd.targetId;
               e.targetId = null;
               e.attackMove = false;
@@ -381,6 +388,7 @@ export class World {
           for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
             const e = this.entities.get(eid);
             if (!e || !e.harvester) continue;
+            this.clearConstructionTarget(e);
             e.targetId = null;
             e.attackMove = false;
             if (this.oreAt(cmd.cellX, cmd.cellY) > 0) {
@@ -439,6 +447,7 @@ export class World {
               e.attackMove = false;
               e.attackDest = null;
               e.patrol = null;
+              this.clearConstructionTarget(e);
             }
           }
           break;
@@ -481,6 +490,7 @@ export class World {
       attackDest: null,
       patrol: null,
       enterTarget: null,
+      constructionTargetId: null,
       stance: 'guard',
       rallyX: -1,
       rallyY: -1,
@@ -719,6 +729,7 @@ export class World {
       if (e.constructionTotal <= 0 || e.constructionProgress >= e.constructionTotal) continue;
       const type = this.rules.units.get(e.typeId);
       if (!type?.building) continue;
+      this.assignConstructionWorkers(e, type);
       e.constructionProgress = Math.min(e.constructionTotal, e.constructionProgress + AUTO_PRODUCTION_STEP);
       if (e.constructionProgress >= e.constructionTotal) this.completeConstruction(e, type);
     }
@@ -978,6 +989,7 @@ export class World {
       e.constructionProgress = 0;
       e.constructionTotal = type.buildTime;
       this.reserveProducerExit(e, type);
+      this.assignConstructionWorkers(e, type);
     } else {
       this.completeConstruction(e, type);
     }
@@ -986,12 +998,79 @@ export class World {
 
   private completeConstruction(e: Entity, type: UnitType): void {
     e.constructionProgress = e.constructionTotal;
+    this.releaseConstructionWorkers(e.id);
     this.initProducer(e, type);
     const b = type.building;
     if (b?.freeHarvester) {
       const hx = Math.min(e.cellX + b.footprintW, this.terrain.width - 1);
       this.makeEntity(e.owner, this.rules.units.get('harvester')!, cellToLepton(hx), cellToLepton(e.cellY + 1));
     }
+  }
+
+  private assignConstructionWorkers(site: Entity, type: UnitType): void {
+    const assignedCount = [...this.entities.values()].filter((e) => e.constructionTargetId === site.id).length;
+    if (assignedCount >= CONSTRUCTION_WORKER_COUNT) return;
+    const slots = this.constructionWorkerSlots(site, type, CONSTRUCTION_WORKER_COUNT).slice(assignedCount);
+    if (slots.length === 0) return;
+    const workers = [...this.entities.values()]
+      .filter((e) => e.owner === site.owner && e.typeId === 'worker' && e.constructionTargetId === null)
+      .sort((a, b) => {
+        const da = dist(a.x - site.x, a.y - site.y);
+        const db = dist(b.x - site.x, b.y - site.y);
+        return da - db || a.id - b.id;
+      })
+      .slice(0, slots.length);
+    workers.forEach((worker, index) => {
+      const slot = slots[index]!;
+      worker.constructionTargetId = site.id;
+      worker.targetId = null;
+      worker.attackMove = false;
+      worker.attackDest = null;
+      worker.patrol = null;
+      worker.enterTarget = null;
+      this.orderMove(worker, slot.x, slot.y);
+    });
+  }
+
+  private constructionWorkerSlots(site: Entity, type: UnitType, count: number): { x: number; y: number }[] {
+    const b = type.building;
+    if (!b || count <= 0) return [];
+    const out: { x: number; y: number }[] = [];
+    const seen = new Set<number>();
+    const tryAdd = (x: number, y: number): void => {
+      if (out.length >= count) return;
+      if (x < 0 || y < 0 || x >= this.terrain.width || y >= this.terrain.height) return;
+      if (this.isCellBlocked(x, y)) return;
+      const key = y * this.terrain.width + x;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ x, y });
+    };
+    const centerX = site.cellX + Math.floor(b.footprintW / 2);
+    tryAdd(centerX, site.cellY + b.footprintH);
+    for (let dx = 0; dx < b.footprintW; dx++) tryAdd(site.cellX + dx, site.cellY + b.footprintH);
+    for (let dy = 0; dy < b.footprintH; dy++) tryAdd(site.cellX + b.footprintW, site.cellY + dy);
+    for (let dy = 0; dy < b.footprintH; dy++) tryAdd(site.cellX - 1, site.cellY + dy);
+    for (let dx = 0; dx < b.footprintW; dx++) tryAdd(site.cellX + dx, site.cellY - 1);
+    for (let r = 2; out.length < count && r <= 6; r++) {
+      for (let dy = -r; dy <= b.footprintH - 1 + r && out.length < count; dy++) {
+        for (let dx = -r; dx <= b.footprintW - 1 + r && out.length < count; dx++) {
+          const onRing = dx === -r || dy === -r || dx === b.footprintW - 1 + r || dy === b.footprintH - 1 + r;
+          if (onRing) tryAdd(site.cellX + dx, site.cellY + dy);
+        }
+      }
+    }
+    return out;
+  }
+
+  private releaseConstructionWorkers(siteId: number): void {
+    for (const e of this.entities.values()) {
+      if (e.constructionTargetId === siteId) e.constructionTargetId = null;
+    }
+  }
+
+  private clearConstructionTarget(e: Entity): void {
+    e.constructionTargetId = null;
   }
 
   private reserveProducerExit(e: Entity, type: UnitType): void {
@@ -1014,6 +1093,7 @@ export class World {
   private removeBuildingOccupancy(e: Entity): void {
     const type = this.rules.units.get(e.typeId);
     if (!type?.building) return;
+    this.releaseConstructionWorkers(e.id);
     for (let dy = 0; dy < type.building.footprintH; dy++) {
       for (let dx = 0; dx < type.building.footprintW; dx++) {
         const key = (e.cellY + dy) * this.terrain.width + (e.cellX + dx);
@@ -1712,6 +1792,7 @@ export class World {
       h.addInt(e.constructionProgress).addInt(e.constructionTotal);
       h.addInt(e.harvester ? e.harvester.load : -1);
       h.addInt(e.repairing ? 1 : 0).addInt(e.rallyX).addInt(e.rallyY).addInt(e.airLoiterX).addInt(e.airLoiterY).addInt(e.enterTarget ?? -1);
+      h.addInt(e.constructionTargetId ?? -1);
       h.addInt(e.producer ? 1 : 0)
         .addInt(e.producer?.enabled ? 1 : 0)
         .addInt(e.producer?.progress ?? -1);
