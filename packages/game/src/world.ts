@@ -171,10 +171,17 @@ export interface CapacitySlot {
   limit: number;
 }
 
-export type CapacitySnapshot = Record<Domain, CapacitySlot>;
+export interface CapacitySnapshot {
+  building: CapacitySlot;
+  worker: CapacitySlot;
+  infantry: CapacitySlot;
+  vehicle: CapacitySlot;
+  aircraft: CapacitySlot;
+}
 
-export const DEFAULT_CAPACITY_LIMITS: Record<Domain, number> = {
+export const DEFAULT_CAPACITY_LIMITS: Record<keyof CapacitySnapshot, number> = {
   building: 20,
+  worker: 60,
   infantry: 500,
   vehicle: 100,
   aircraft: 30,
@@ -572,6 +579,7 @@ export class World {
   capacityFor(owner: number): CapacitySnapshot {
     const snapshot: CapacitySnapshot = {
       building: { count: 0, limit: DEFAULT_CAPACITY_LIMITS.building },
+      worker: { count: 0, limit: DEFAULT_CAPACITY_LIMITS.worker },
       infantry: { count: 0, limit: DEFAULT_CAPACITY_LIMITS.infantry },
       vehicle: { count: 0, limit: DEFAULT_CAPACITY_LIMITS.vehicle },
       aircraft: { count: 0, limit: DEFAULT_CAPACITY_LIMITS.aircraft },
@@ -579,7 +587,10 @@ export class World {
     for (const e of this.entities.values()) {
       if (e.owner !== owner) continue;
       const type = this.rules.units.get(e.typeId);
-      if (type) snapshot[type.domain].count++;
+      if (type) {
+        const key = type.id === 'worker' ? 'worker' : type.domain;
+        snapshot[key].count++;
+      }
     }
     return snapshot;
   }
@@ -589,9 +600,30 @@ export class World {
     return slot.count >= slot.limit;
   }
 
+  private isTypeCapacityFull(owner: number, type: UnitType): boolean {
+    const capacity = this.capacityFor(owner);
+    const slot = type.id === 'worker' ? capacity.worker : capacity[type.domain];
+    return slot.count >= slot.limit;
+  }
+
+  private hasWorker(owner: number): boolean {
+    for (const e of this.entities.values()) {
+      if (e.owner === owner && e.typeId === 'worker') return true;
+    }
+    return false;
+  }
+
   canBuild(owner: number, type: UnitType): boolean {
     if (type.builtBy === '') return false;
-    if (type.domain === 'building' && this.isCapacityFull(owner, 'building')) return false;
+    if (this.isTypeCapacityFull(owner, type)) return false;
+    if (type.domain === 'building') {
+      if (!this.hasWorker(owner)) return false;
+      for (const pre of type.prerequisites) {
+        if (pre === 'conyard') continue;
+        if (!this.hasBuilding(owner, pre)) return false;
+      }
+      return true;
+    }
     if (!this.hasBuilding(owner, type.builtBy)) return false;
     for (const pre of type.prerequisites) {
       if (!this.hasBuilding(owner, pre)) return false;
@@ -736,7 +768,7 @@ export class World {
       producer.paidTypeId = null;
       type = this.rules.units.get(fallback)!;
     }
-    if (this.isCapacityFull(building.owner, type.domain)) return;
+    if (this.isTypeCapacityFull(building.owner, type)) return;
 
     if (!producer.paidTypeId) {
       producer.paidTypeId = type.id;
@@ -754,7 +786,7 @@ export class World {
   }
 
   private spawnFromProducer(building: Entity, type: UnitType): boolean {
-    if (this.isCapacityFull(building.owner, type.domain)) return false;
+    if (this.isTypeCapacityFull(building.owner, type)) return false;
     const exit = building.producerExit;
     const aircraftAnchor = type.domain === 'aircraft' ? this.airProducerAnchor(building) : null;
     let spawn: { x: number; y: number } | null;
@@ -859,6 +891,7 @@ export class World {
     const b = type.building;
     if (!b) return false;
     if (this.isCapacityFull(owner, 'building')) return false;
+    if (!this.hasWorker(owner)) return false;
     for (let dy = 0; dy < b.footprintH; dy++) {
       for (let dx = 0; dx < b.footprintW; dx++) {
         const cx = cellX + dx;

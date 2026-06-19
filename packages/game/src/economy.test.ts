@@ -188,6 +188,7 @@ describe('map construction placement', () => {
   it('assigns newly available workers to an existing construction site', () => {
     const w = baseWorld();
     withConyard(w);
+    w.spawnUnit(1, 'worker', 1, 1);
 
     expect(w.queueProduction(1, 'barracks')).toBe(true);
     const placed = w.placeBuilding(1, 'barracks', 12, 10)!;
@@ -204,6 +205,7 @@ describe('airbase and fighter production', () => {
   it('airbase unlocks fighter production and fighters spawn from the airbase queue', () => {
     const w = baseWorld();
     withConyard(w, 5, 5);
+    w.spawnUnit(1, 'worker', 8, 9);
     w.spawnUnit(1, 'refinery', 16, 5);
     w.spawnUnit(1, 'warfactory', 20, 5);
     expect(w.buildOptions(1).map((u) => u.id)).toContain('airbase');
@@ -220,9 +222,29 @@ describe('airbase and fighter production', () => {
 });
 
 describe('前置科技与建造清单', () => {
+  it('requires at least one worker to build even if the conyard still exists', () => {
+    const w = baseWorld();
+    withConyard(w);
+
+    expect(w.buildOptions(1).map((u) => u.id)).not.toContain('barracks');
+    expect(w.queueProduction(1, 'barracks')).toBe(false);
+  });
+
+  it('allows construction with workers even after the conyard is gone', () => {
+    const w = baseWorld();
+    const conyard = w.spawnUnit(1, 'conyard', 5, 5)!;
+    w.spawnUnit(1, 'worker', 11, 12);
+    w.applyCommands([{ kind: 'sell', owner: 1, entityId: conyard.id }]);
+
+    const ids = w.buildOptions(1).map((u) => u.id);
+    expect(ids).toEqual(expect.arrayContaining(['refinery', 'barracks', 'warfactory', 'airbase']));
+    expect(w.queueProduction(1, 'barracks')).toBe(true);
+  });
+
   it('只有建造场 → 只能造发电厂/兵营/精炼厂等 conyard 项的子集', () => {
     const w = baseWorld();
     withConyard(w);
+    w.spawnUnit(1, 'worker', 8, 9);
     const ids = w.buildOptions(1).map((u) => u.id);
     expect(ids).not.toContain('powerplant');
     expect(ids).toEqual(expect.arrayContaining(['refinery', 'barracks', 'warfactory', 'airbase']));
@@ -234,6 +256,7 @@ describe('前置科技与建造清单', () => {
   it('科技链逐级解锁', () => {
     const w = baseWorld();
     withConyard(w);
+    w.spawnUnit(1, 'worker', 8, 9);
     expect(w.buildOptions(1).map((u) => u.id)).toContain('barracks');
     w.spawnUnit(1, 'barracks', 14, 10);
     expect(w.buildOptions(1).map((u) => u.id)).toContain('gi');
@@ -270,6 +293,7 @@ describe('生产队列', () => {
     const w = new World(gridTerrain(40, 40), 7);
     w.addPlayer(1, 'allied', 0);
     withConyard(w);
+    w.spawnUnit(1, 'worker', 11, 12);
     w.queueProduction(1, 'barracks');
     expect(w.queueFor(1, 'building')!.readyToPlace).toBe(true);
     expect(w.placeBuilding(1, 'barracks', 10, 10)).not.toBeNull();
@@ -279,6 +303,7 @@ describe('生产队列', () => {
   it('取消生产退还已花费', () => {
     const w = baseWorld();
     withConyard(w);
+    w.spawnUnit(1, 'worker', 11, 12);
     expect(w.queueProduction(1, 'barracks')).toBe(true);
     for (let i = 0; i < 4; i++) w.step();
     const mid = w.players.get(1)!.credits;
@@ -321,6 +346,7 @@ describe('放置校验', () => {
   it('不能压在已有建筑上', () => {
     const w = baseWorld();
     w.spawnUnit(1, 'conyard', 5, 5); // 占 5..7 × 5..7
+    w.spawnUnit(1, 'worker', 8, 9);
     const type = w.rules.units.get('barracks')!;
     expect(w.canPlace(1, type, 6, 6)).toBe(false);
     expect(w.canPlace(1, type, 10, 10)).toBe(true);
@@ -329,6 +355,7 @@ describe('放置校验', () => {
   it('建造半径：远离基地不能建，毗邻可以', () => {
     const w = baseWorld();
     w.spawnUnit(1, 'conyard', 5, 5);
+    w.spawnUnit(1, 'worker', 8, 9);
     const type = w.rules.units.get('barracks')!;
     expect(w.canPlace(1, type, 9, 9)).toBe(true); // 距基地很近
     expect(w.canPlace(1, type, 30, 30)).toBe(false); // 太远
@@ -393,6 +420,7 @@ describe('战斗（M5 雏形）', () => {
   it('出售建筑：移除但不回款', () => {
     const w = baseWorld();
     const cy = w.spawnUnit(1, 'conyard', 5, 5)!;
+    w.spawnUnit(1, 'worker', 8, 9);
     w.spawnUnit(1, 'barracks', 9, 5); // 第二座建筑，避免卖完即判负
     const before = w.players.get(1)!.credits;
     w.applyCommands([{ kind: 'sell', owner: 1, entityId: cy.id }]);

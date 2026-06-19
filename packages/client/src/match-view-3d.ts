@@ -17,7 +17,7 @@ export function initialCameraFocus3D(mapW: number, mapH: number): { x: number; z
 export const PRODUCTION_CATEGORIES_3D = ['building'] as const satisfies readonly ProdCategory[];
 
 export function capacitySummaryText3D(capacity: CapacitySnapshot): string {
-  return `建筑 ${capacity.building.count}/${capacity.building.limit} | 士兵 ${capacity.infantry.count}/${capacity.infantry.limit} | 坦克 ${capacity.vehicle.count}/${capacity.vehicle.limit} | 飞机 ${capacity.aircraft.count}/${capacity.aircraft.limit}`;
+  return `建筑 ${capacity.building.count}/${capacity.building.limit} | 工人 ${capacity.worker.count}/${capacity.worker.limit} | 士兵 ${capacity.infantry.count}/${capacity.infantry.limit} | 坦克 ${capacity.vehicle.count}/${capacity.vehicle.limit} | 飞机 ${capacity.aircraft.count}/${capacity.aircraft.limit}`;
 }
 
 export function topHudText3D(capacity: CapacitySnapshot): string {

@@ -83,6 +83,7 @@ describe('SimpleAI', () => {
     const world = new World(gridTerrain(40, 40), 91);
     world.addPlayer(1, 'allied', 5000);
     world.spawnUnit(1, 'conyard', 5, 5);
+    world.spawnUnit(1, 'worker', 8, 9);
     const ai = new SimpleAI(1, 'normal', 1);
 
     ai.emit(world);

@@ -38,6 +38,7 @@ describe('automatic production buildings', () => {
   it('reports per-player capacity counts with the default swarm limits', () => {
     const w = baseWorld(50000);
     w.spawnUnit(1, 'barracks', 10, 10);
+    w.spawnUnit(1, 'worker', 11, 12);
     w.spawnUnit(1, 'gi', 12, 12);
     w.spawnUnit(1, 'grizzly', 14, 12);
     w.spawnUnit(1, 'fighter', 16, 12);
@@ -45,14 +46,31 @@ describe('automatic production buildings', () => {
     expect(w.capacityFor(1)).toMatchObject({
       building: { count: 2, limit: 20 },
       infantry: { count: 1, limit: 500 },
+      worker: { count: 1, limit: 60 },
       vehicle: { count: 1, limit: 100 },
       aircraft: { count: 1, limit: 30 },
     });
   });
 
+  it('caps workers separately from soldiers', () => {
+    const w = baseWorld(50000);
+    for (let i = 0; i < 60; i++) w.spawnUnit(1, 'worker', 10 + (i % 10), 20 + Math.floor(i / 10));
+
+    runTicks(w, 240);
+
+    expect(countType(w, 'worker')).toBe(60);
+    expect(w.capacityFor(1)).toMatchObject({
+      infantry: { count: 0, limit: 500 },
+      worker: { count: 60, limit: 60 },
+    });
+    const conyard = [...w.entities.values()].find((e) => e.typeId === 'conyard')!;
+    expect(conyard.producer?.paidTypeId).toBeNull();
+  });
+
   it('blocks additional building placement once the building cap is reached', () => {
     const w = new World(gridTerrain(80, 80), 7);
     w.addPlayer(1, 'allied', 50000);
+    w.spawnUnit(1, 'worker', 4, 4);
     const pillbox = w.rules.units.get('pillbox')!;
     for (let i = 0; i < 19; i++) w.spawnUnit(1, 'pillbox', 5 + i, 5);
 
@@ -301,6 +319,7 @@ describe('simplified combat economy and tech tree', () => {
 
   it('removes powerplant from build options and unlocks airbase directly from the conyard', () => {
     const w = baseWorld();
+    w.spawnUnit(1, 'worker', 8, 9);
     const ids = w.buildOptions(1).map((u) => u.id);
 
     expect(ids).not.toContain('powerplant');
@@ -311,6 +330,7 @@ describe('simplified combat economy and tech tree', () => {
 describe('producer exits', () => {
   it('reserves production exits so later buildings cannot block them', () => {
     const w = baseWorld();
+    w.spawnUnit(1, 'worker', 8, 9);
     const barracks = w.spawnUnit(1, 'barracks', 10, 10)!;
     const exit = barracks.producerExit!;
     const pillbox = w.rules.units.get('pillbox')!;
