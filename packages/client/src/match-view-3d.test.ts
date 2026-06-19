@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { capacitySummaryText3D, initialCameraFocus3D, PRODUCTION_CATEGORIES_3D, topHudText3D } from './match-view-3d';
+import { World } from '@ra2web/game';
+import { gridTerrain } from '@ra2web/game';
+import { capacitySummaryText3D, initialCameraFocus3D, matchOutcomeText3D, PRODUCTION_CATEGORIES_3D, topHudText3D } from './match-view-3d';
 
 describe('MatchView3D camera defaults', () => {
   it('starts focused on the center of the map instead of the local spawn', () => {
@@ -38,5 +40,21 @@ describe('MatchView3D capacity HUD', () => {
     expect(text).toBe('建筑 4/20 | 工人 8/60 | 士兵 117/500 | 坦克 48/100 | 飞机 23/30');
     expect(text).not.toContain('Credits');
     expect(text).not.toContain('$');
+  });
+});
+
+describe('MatchView3D match outcome', () => {
+  it('reports defeat for the local player and victory when all enemies are defeated', () => {
+    const world = new World(gridTerrain(20, 20), 7);
+    world.addPlayer(1, 'allied', 0);
+    world.addPlayer(2, 'soviet', 0);
+
+    expect(matchOutcomeText3D(world, 1)).toBeNull();
+    world.players.get(1)!.defeated = true;
+    expect(matchOutcomeText3D(world, 1)).toBe('Defeat');
+
+    world.players.get(1)!.defeated = false;
+    world.players.get(2)!.defeated = true;
+    expect(matchOutcomeText3D(world, 1)).toBe('Victory');
   });
 });

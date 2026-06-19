@@ -1750,7 +1750,7 @@ export class World {
         this.entities.delete(id);
       }
     }
-    // 胜负：曾建过基地却失去全部建筑即判负
+    // 胜负：工人可以重建基地，因此失去全部建筑但仍有工人时不判负。
     for (const player of this.players.values()) {
       if (player.defeated || !player.everBuilt) continue;
       let hasBuilding = false;
@@ -1760,7 +1760,7 @@ export class World {
           break;
         }
       }
-      if (!hasBuilding) player.defeated = true;
+      if (!hasBuilding && !this.hasWorker(player.id)) player.defeated = true;
     }
   }
 

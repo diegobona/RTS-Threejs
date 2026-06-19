@@ -13,6 +13,10 @@ function withConyard(w: World, cellX = 5, cellY = 5): void {
   w.spawnUnit(1, 'conyard', cellX, cellY);
 }
 
+function countType(w: World, typeId: string): number {
+  return [...w.entities.values()].filter((e) => e.typeId === typeId).length;
+}
+
 describe('电力结算', () => {
   it('发电厂 +100，兵营 -20', () => {
     const w = baseWorld();
@@ -363,7 +367,7 @@ describe('放置校验', () => {
 });
 
 describe('胜负判定', () => {
-  it('失去全部建筑 → 判负', () => {
+  it('失去全部建筑且没有工人 → 判负', () => {
     const w = baseWorld();
     const cy = w.spawnUnit(1, 'conyard', 5, 5)!;
     w.step();
@@ -371,6 +375,27 @@ describe('胜负判定', () => {
     cy.hp = 0;
     w.step();
     expect(w.players.get(1)!.defeated).toBe(true);
+  });
+
+  it('工人存活时失去全部建筑不判负，重建生产建筑后继续自动产兵', () => {
+    const w = baseWorld();
+    const cy = w.spawnUnit(1, 'conyard', 5, 5)!;
+    w.spawnUnit(1, 'worker', 10, 10);
+    w.spawnUnit(1, 'worker', 11, 10);
+    w.spawnUnit(1, 'worker', 12, 10);
+
+    cy.hp = 0;
+    w.step();
+
+    expect(w.players.get(1)!.defeated).toBe(false);
+    expect(w.queueProduction(1, 'warfactory')).toBe(true);
+    expect(w.placeBuilding(1, 'warfactory', 15, 15)).not.toBeNull();
+
+    for (let i = 0; i < 600 && !w.hasBuilding(1, 'warfactory'); i++) w.step();
+    expect(w.hasBuilding(1, 'warfactory')).toBe(true);
+
+    for (let i = 0; i < 120 && countType(w, 'grizzly') === 0; i++) w.step();
+    expect(countType(w, 'grizzly')).toBeGreaterThan(0);
   });
 });
 

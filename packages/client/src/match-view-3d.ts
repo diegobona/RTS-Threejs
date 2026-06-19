@@ -24,6 +24,16 @@ export function topHudText3D(capacity: CapacitySnapshot): string {
   return capacitySummaryText3D(capacity);
 }
 
+export function matchOutcomeText3D(world: World, localPlayerId: number): 'Defeat' | 'Victory' | null {
+  const me = world.players.get(localPlayerId);
+  if (!me) return null;
+  const others = [...world.players.values()].filter((p) => p.id !== localPlayerId);
+  const win = others.length > 0 && others.every((p) => p.defeated);
+  if (me.defeated && !win) return 'Defeat';
+  if (win) return 'Victory';
+  return null;
+}
+
 export const MATCH_3D_STYLE = `
 .mv3-root { position: fixed; inset: 0; overflow: hidden; background: #070b0d;
   font: 13px/1.4 system-ui, 'PingFang SC', sans-serif; color: #d8e0e6; touch-action: none; }
@@ -64,6 +74,13 @@ export const MATCH_3D_STYLE = `
   background: rgba(8,12,16,.82); border: 1px solid rgba(120,150,170,.18); border-radius: 8px; color: #aeb9c2; }
 .mv3-selbox { position: fixed; z-index: 9; display: none; pointer-events: none;
   border: 1px solid #72f085; background: rgba(114,240,133,.14); }
+.mv3-banner { position: fixed; left: 50%; top: 50%; z-index: 30; transform: translate(-50%, -50%);
+  min-width: 280px; padding: 24px 30px; border-radius: 10px; text-align: center;
+  background: rgba(7, 10, 13, .9); border: 1px solid rgba(180, 205, 220, .28);
+  box-shadow: 0 18px 60px rgba(0,0,0,.36); font-size: 42px; font-weight: 800; letter-spacing: 0; }
+.mv3-banner.defeat { color: #ff6363; }
+.mv3-banner.victory { color: #68e887; }
+.mv3-banner small { display: block; margin-top: 8px; color: #aeb9c2; font-size: 14px; font-weight: 500; }
 `;
 
 export class MatchView3D {
@@ -83,6 +100,7 @@ export class MatchView3D {
   private readonly announcedCompletedBuildings = new Set<number>();
   private producerPanelKey = '';
   private groundMoveMode: GroundMoveMode = 'move';
+  private over = false;
 
   constructor(
     private readonly root: HTMLElement,
@@ -202,6 +220,20 @@ export class MatchView3D {
     this.refreshBuildPanel();
     this.refreshProducerPanel();
     this.updateProductionAudio();
+    this.checkVictory();
+  }
+
+  private checkVictory(): void {
+    if (this.over) return;
+    const outcome = matchOutcomeText3D(this.world, this.localPlayerId);
+    if (!outcome) return;
+    this.over = true;
+    const banner = document.createElement('div');
+    banner.className = `mv3-banner ${outcome === 'Defeat' ? 'defeat' : 'victory'}`;
+    const seconds = Math.floor(this.world.tick / 15);
+    const time = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    banner.innerHTML = `${outcome}<small>Time ${time}</small>`;
+    this.root.appendChild(banner);
   }
 
   private buildProductionTabs(): void {
