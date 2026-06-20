@@ -29,6 +29,7 @@ import {
   projectileImpactKind3D,
   projectileVisualProfile3D,
   projectileVisualPoint3D,
+  shouldUseInstancedUnitModel3D,
 } from './three-world-renderer';
 
 describe('ThreeWorldRenderer aircraft altitude', () => {
@@ -196,6 +197,15 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(proceduralModelYawOffset3D({ domain: 'infantry' }, false)).toBeCloseTo(-Math.PI / 2);
     expect(proceduralModelYawOffset3D({ domain: 'aircraft' }, false)).toBe(0);
     expect(proceduralModelYawOffset3D({ domain: 'vehicle' }, true)).toBe(0);
+  });
+
+  it('uses instanced rendering only for repeated procedural combat units', () => {
+    expect(shouldUseInstancedUnitModel3D({ id: 'gi', domain: 'infantry' })).toBe(true);
+    expect(shouldUseInstancedUnitModel3D({ id: 'grizzly', domain: 'vehicle' })).toBe(true);
+    expect(shouldUseInstancedUnitModel3D({ id: 'fighter', domain: 'aircraft' })).toBe(true);
+    expect(shouldUseInstancedUnitModel3D({ id: 'worker', domain: 'infantry' })).toBe(false);
+    expect(shouldUseInstancedUnitModel3D({ id: 'barracks', domain: 'building' })).toBe(false);
+    expect(shouldUseInstancedUnitModel3D({ id: 'fighter', domain: 'aircraft' }, true)).toBe(false);
   });
 
   it('sends idle aircraft into a large orbit over the home base instead of circling in place', () => {

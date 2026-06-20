@@ -13,10 +13,12 @@ import {
   Fog,
   Group,
   HemisphereLight,
+  InstancedMesh,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
   MeshStandardMaterial,
+  Matrix4,
   Object3D,
   OctahedronGeometry,
   PlaneGeometry,
@@ -51,6 +53,20 @@ interface CombatEffect {
   life: number;
   maxLife: number;
   grow: number;
+}
+
+interface InstancedModelPart {
+  mesh: InstancedMesh;
+  localMatrix: Matrix4;
+}
+
+interface InstancedModelBatch {
+  root: Group;
+  typeId: string;
+  owner: number;
+  capacity: number;
+  ids: number[];
+  parts: InstancedModelPart[];
 }
 
 export type CommandIndicatorKind3D = 'move' | 'attack';
@@ -285,6 +301,11 @@ export function entityYawForFacing3D(facing: number): number {
 export function proceduralModelYawOffset3D(type: Pick<UnitType, 'domain'>, hasExternalModel: boolean): number {
   if (hasExternalModel) return 0;
   return type.domain === 'vehicle' || type.domain === 'infantry' ? -Math.PI / 2 : 0;
+}
+
+export function shouldUseInstancedUnitModel3D(type: Pick<UnitType, 'id' | 'domain'>, hasExternalModel = false): boolean {
+  if (hasExternalModel || type.domain === 'building') return false;
+  return type.id === 'gi' || type.id === 'grizzly' || type.id === 'fighter';
 }
 
 export function isPickableEntityPart3D(userData: { pickable?: boolean }): boolean {
@@ -583,6 +604,7 @@ export class ThreeWorldRenderer {
   private readonly previewLayer = new Group();
   private readonly views = new Map<number, EntityView>();
   private readonly combatEffects: CombatEffect[] = [];
+  private readonly instancedBatches = new Map<string, InstancedModelBatch>();
   private readonly modelTemplates = new Map<string, Object3D>();
   private readonly gltfLoader = new GLTFLoader();
   private readonly audioEvents = new ThreeAudioEventTracker();
@@ -764,7 +786,7 @@ export class ThreeWorldRenderer {
     this.raycaster.setFromCamera(this.pointer, camera);
     const hits = this.raycaster.intersectObjects(this.entityLayer.children, true);
     for (const hit of hits) {
-      const id = this.entityIdOf(hit.object);
+      const id = this.entityIdOfHit(hit);
       if (id === null) continue;
       const e = this.world.entities.get(id);
       const type = e && this.world.rules.units.get(e.typeId);
@@ -778,7 +800,7 @@ export class ThreeWorldRenderer {
     this.raycaster.setFromCamera(this.pointer, camera);
     const hits = this.raycaster.intersectObjects(this.entityLayer.children, true);
     for (const hit of hits) {
-      const id = this.entityIdOf(hit.object);
+      const id = this.entityIdOfHit(hit);
       if (id !== null && this.world.entities.has(id)) return id;
     }
     return null;
@@ -832,6 +854,8 @@ export class ThreeWorldRenderer {
   dispose(): void {
     for (const view of this.views.values()) this.disposeObject(view.root);
     this.views.clear();
+    for (const batch of this.instancedBatches.values()) this.disposeObject(batch.root);
+    this.instancedBatches.clear();
     for (const template of this.modelTemplates.values()) this.disposeObject(template);
     this.modelTemplates.clear();
     for (const mat of this.hpOwnerMats.values()) mat.mat.dispose();
@@ -1055,6 +1079,7 @@ export class ThreeWorldRenderer {
 
   private syncEntities(alpha: number, selected: ReadonlySet<number>, nearbyHpIds: ReadonlySet<number>): void {
     const seen = new Set<number>();
+    const instanced = new Map<string, { type: UnitType; owner: number; ids: number[] }>();
     const combatIds = this.combatEntityIds();
     const nowSeconds = performance.now() / 1000;
     const airOrbitCenters = this.aircraftOrbitCenters();
@@ -1062,6 +1087,14 @@ export class ThreeWorldRenderer {
       seen.add(e.id);
       const type = this.world.rules.units.get(e.typeId);
       if (!type) continue;
+      const hasExternalModel = this.modelTemplates.has(type.id);
+      const useInstancedModel = shouldUseInstancedUnitModel3D(type, hasExternalModel);
+      if (useInstancedModel) {
+        const key = this.instancedModelKey(type.id, e.owner);
+        const batch = instanced.get(key) ?? { type, owner: e.owner, ids: [] };
+        batch.ids.push(e.id);
+        instanced.set(key, batch);
+      }
       let view = this.views.get(e.id);
       if (!view) {
         view = this.createEntityView(type, e.owner, e.id);
@@ -1141,6 +1174,91 @@ export class ThreeWorldRenderer {
         this.views.delete(id);
       }
     }
+    this.syncInstancedUnitModels(instanced);
+  }
+
+  private syncInstancedUnitModels(groups: Map<string, { type: UnitType; owner: number; ids: number[] }>): void {
+    for (const [key, batch] of this.instancedBatches) {
+      if (groups.has(key)) continue;
+      this.disposeObject(batch.root);
+      this.instancedBatches.delete(key);
+    }
+
+    for (const [key, group] of groups) {
+      let batch = this.instancedBatches.get(key);
+      if (!batch || batch.capacity < group.ids.length) {
+        if (batch) {
+          this.disposeObject(batch.root);
+          this.instancedBatches.delete(key);
+        }
+        batch = this.createInstancedModelBatch(group.type, group.owner, this.nextInstancedCapacity(group.ids.length));
+        this.instancedBatches.set(key, batch);
+        this.entityLayer.add(batch.root);
+      }
+
+      batch.ids = [...group.ids];
+      for (const part of batch.parts) {
+        part.mesh.count = batch.ids.length;
+        part.mesh.userData.instancedEntityIds = batch.ids;
+      }
+
+      for (let i = 0; i < batch.ids.length; i++) {
+        const view = this.views.get(batch.ids[i]!);
+        if (!view) continue;
+        view.root.updateMatrixWorld(true);
+        view.visualRoot.updateMatrixWorld(true);
+        const base = view.visualRoot.matrixWorld;
+        for (const part of batch.parts) {
+          const matrix = base.clone().multiply(part.localMatrix);
+          part.mesh.setMatrixAt(i, matrix);
+        }
+      }
+
+      for (const part of batch.parts) part.mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  private createInstancedModelBatch(type: UnitType, owner: number, capacity: number): InstancedModelBatch {
+    const root = new Group();
+    root.name = `instanced-${type.id}-${owner}`;
+    const prototype = this.createInstancedModelPrototype(type, playerColorForOwner(owner));
+    prototype.updateMatrixWorld(true);
+    const parts: InstancedModelPart[] = [];
+    prototype.traverse((child) => {
+      const mesh = child as Mesh;
+      if (!mesh.isMesh) return;
+      const geometry = (mesh.geometry as BufferGeometry).clone();
+      const material = this.cloneMaterial(mesh.material as Material | Material[]);
+      const instanced = new InstancedMesh(geometry, material, capacity);
+      instanced.name = `instanced-${type.id}-${mesh.name || 'part'}`;
+      instanced.count = 0;
+      instanced.userData.instancedEntityIds = [];
+      instanced.userData.typeId = type.id;
+      parts.push({ mesh: instanced, localMatrix: mesh.matrixWorld.clone() });
+      root.add(instanced);
+    });
+    return { root, typeId: type.id, owner, capacity, ids: [], parts };
+  }
+
+  private createInstancedModelPrototype(type: UnitType, ownerColor: number): Object3D {
+    if (type.id === 'gi') return this.createInfantry(ownerColor);
+    if (type.id === 'grizzly') return this.createTank(ownerColor);
+    if (type.id === 'fighter') return this.createAircraft(ownerColor);
+    return this.createVehiclePlaceholder(ownerColor, !!type.weapon);
+  }
+
+  private cloneMaterial(material: Material | Material[]): Material | Material[] {
+    return Array.isArray(material) ? material.map((m) => m.clone()) : material.clone();
+  }
+
+  private instancedModelKey(typeId: string, owner: number): string {
+    return `${owner}:${typeId}`;
+  }
+
+  private nextInstancedCapacity(count: number): number {
+    let capacity = 16;
+    while (capacity < count) capacity *= 2;
+    return capacity;
   }
 
   private createEntityView(type: UnitType, owner: number, entityId: number): EntityView {
@@ -1151,10 +1269,13 @@ export class ThreeWorldRenderer {
     root.userData.typeId = type.id;
     const ownerColor = playerColorForOwner(owner);
     const model = this.createModelInstance(type, entityId);
+    const useInstancedModel = shouldUseInstancedUnitModel3D(type, !!model);
     visualRoot.rotation.y = proceduralModelYawOffset3D(type, !!model);
 
     if (model) {
       visualRoot.add(model);
+    } else if (useInstancedModel) {
+      if (type.domain === 'aircraft') root.add(this.createAircraftShadow());
     } else if (type.building) {
       visualRoot.add(this.createBuilding(type, ownerColor));
     } else if (type.domain === 'vehicle') {
@@ -2433,6 +2554,12 @@ export class ThreeWorldRenderer {
       cur = cur.parent;
     }
     return null;
+  }
+
+  private entityIdOfHit(hit: { object: Object3D; instanceId?: number }): number | null {
+    const ids = hit.object.userData.instancedEntityIds as number[] | undefined;
+    if (ids && typeof hit.instanceId === 'number') return ids[hit.instanceId] ?? null;
+    return this.entityIdOf(hit.object);
   }
 }
 
