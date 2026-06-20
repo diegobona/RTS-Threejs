@@ -316,6 +316,7 @@ export class World {
     for (const cmd of commands) {
       switch (cmd.kind) {
         case 'spawn':
+          if (cmd.typeId === 'worker' && !this.hasBuilding(cmd.owner, 'conyard')) break;
           this.spawnUnit(cmd.owner, cmd.typeId, cmd.cellX, cmd.cellY);
           break;
         case 'produce':
@@ -604,7 +605,7 @@ export class World {
   /** 玩家是否拥有某 typeId 的建筑（前置科技判断）。 */
   hasBuilding(owner: number, buildingId: string): boolean {
     for (const e of this.entities.values()) {
-      if (e.owner === owner && e.typeId === buildingId && this.rules.units.get(e.typeId)?.domain === 'building' && this.isConstructionComplete(e)) {
+      if (e.owner === owner && e.typeId === buildingId && e.hp > 0 && this.rules.units.get(e.typeId)?.domain === 'building' && this.isConstructionComplete(e)) {
         return true;
       }
     }

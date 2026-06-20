@@ -185,6 +185,54 @@ describe('automatic production buildings', () => {
     expect([...w.entities.values()].some((e) => e.typeId === 'conyard')).toBe(false);
   });
 
+  it('does not produce workers from surviving factories after the conyard and all workers are gone', () => {
+    const w = baseWorld(10000);
+    w.spawnUnit(1, 'barracks', 10, 10);
+    w.spawnUnit(1, 'warfactory', 16, 10);
+    w.spawnUnit(1, 'airbase', 23, 10);
+    runTicks(w, 80);
+
+    for (const e of w.entities.values()) {
+      if (e.owner === 1 && (e.typeId === 'conyard' || e.typeId === 'worker')) e.hp = 0;
+    }
+    runTicks(w, 1);
+
+    expect([...w.entities.values()].some((e) => e.owner === 1 && e.typeId === 'conyard')).toBe(false);
+    expect(countType(w, 'worker')).toBe(0);
+
+    runTicks(w, 360);
+
+    expect(countType(w, 'worker')).toBe(0);
+  });
+
+  it('rejects stale worker producer state on non-conyard buildings', () => {
+    const w = baseWorld(10000);
+    const conyard = [...w.entities.values()].find((e) => e.typeId === 'conyard')!;
+    const factory = w.spawnUnit(1, 'warfactory', 16, 10)!;
+    const worker = w.rules.units.get('worker')!;
+    factory.producer = { enabled: true, typeId: 'worker', progress: worker.buildTime - 1, paidTypeId: 'worker' };
+    conyard.hp = 0;
+    runTicks(w, 1);
+
+    expect([...w.entities.values()].some((e) => e.owner === 1 && e.typeId === 'conyard')).toBe(false);
+
+    runTicks(w, 2);
+
+    expect(countType(w, 'worker')).toBe(0);
+    expect(factory.producer?.paidTypeId).not.toBe('worker');
+  });
+
+  it('rejects worker spawn commands after the conyard is gone', () => {
+    const w = baseWorld(10000);
+    const conyard = [...w.entities.values()].find((e) => e.typeId === 'conyard')!;
+    conyard.hp = 0;
+    runTicks(w, 1);
+
+    w.applyCommands([{ kind: 'spawn', owner: 1, typeId: 'worker', cellX: 8, cellY: 9 }]);
+
+    expect(countType(w, 'worker')).toBe(0);
+  });
+
   it('produces tanks and aircraft from their own factories', () => {
     const w = baseWorld(20000);
     w.spawnUnit(1, 'warfactory', 10, 10);
