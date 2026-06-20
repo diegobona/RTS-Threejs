@@ -97,6 +97,24 @@ describe('SimpleAI', () => {
     expect(buildingQueue?.items ?? []).not.toContain('refinery');
   });
 
+  it('continues expanding production buildings after the first core set is built', () => {
+    const world = new World(gridTerrain(64, 64), 20260620);
+    world.addPlayer(1, 'allied', 5000);
+    world.spawnUnit(1, 'conyard', 8, 8);
+    for (let i = 0; i < 8; i++) world.spawnUnit(1, 'worker', 10 + (i % 4), 12 + Math.floor(i / 4));
+    const ai = new SimpleAI(1, 'normal', 1);
+
+    for (let t = 0; t < 4500; t++) {
+      if (t % 15 === 0) world.applyCommands(ai.emit(world));
+      world.step();
+    }
+
+    const count = (typeId: string): number => [...world.entities.values()].filter((e) => e.owner === 1 && e.typeId === typeId).length;
+    expect(count('barracks')).toBeGreaterThan(1);
+    expect(count('warfactory')).toBeGreaterThan(1);
+    expect(count('airbase')).toBeGreaterThan(1);
+  });
+
   it('stages each unit type into separate formations before proactive attacks', () => {
     const world = aiAttackWorld();
     world.tick = 1500;

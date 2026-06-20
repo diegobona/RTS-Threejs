@@ -1,6 +1,6 @@
-import type { Command, Entity, Player, World } from '@ra2web/game';
+import type { Command, Entity, Player, UnitType, World } from '@ra2web/game';
 
-const BUILD_ORDER = ['barracks', 'warfactory', 'airbase'];
+const BUILD_ORDER = ['barracks', 'warfactory', 'airbase'] as const;
 const SIM_TICKS_PER_SECOND = 5;
 const AI_ATTACK_COOLDOWN_TICKS = 5 * 60 * SIM_TICKS_PER_SECOND;
 const FORMATION_TIMEOUT_TICKS = 18 * SIM_TICKS_PER_SECOND;
@@ -8,6 +8,7 @@ const FORMATION_REISSUE_TICKS = 6 * SIM_TICKS_PER_SECOND;
 const FORMATION_STAGING_DISTANCE = 8;
 const FORMATION_GROUP_SPACING = 5;
 const AI_MAX_ATTACK_WAVE = 120;
+type CoreProductionBuilding = (typeof BUILD_ORDER)[number];
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 
@@ -25,6 +26,12 @@ const MODE: Record<Mode, ModeParams> = {
   defensive: { defenseTarget: 3, waveSize: 10, homeReserve: 1 },
   balanced: { defenseTarget: 2, waveSize: 8, homeReserve: 1 },
   aggressive: { defenseTarget: 1, waveSize: 6, homeReserve: 0 },
+};
+
+const PRODUCTION_BUILDING_TARGETS: Record<Mode, Record<CoreProductionBuilding, number>> = {
+  defensive: { barracks: 3, warfactory: 2, airbase: 2 },
+  balanced: { barracks: 3, warfactory: 3, airbase: 2 },
+  aggressive: { barracks: 4, warfactory: 3, airbase: 3 },
 };
 
 interface DiffParams {
@@ -386,9 +393,31 @@ export class SimpleAI {
     return n;
   }
 
+  private hasIncompleteBuilding(world: World, typeId: string): boolean {
+    for (const e of world.entities.values()) {
+      if (e.owner !== this.playerId || e.typeId !== typeId) continue;
+      if (world.rules.units.get(e.typeId)?.domain !== 'building') continue;
+      if (e.constructionTotal > 0 && e.constructionProgress < e.constructionTotal) return true;
+    }
+    return false;
+  }
+
   private nextBuilding(world: World, _player: Player): string | null {
     const has = (id: string): boolean => this.countBuildings(world, id) > 0;
     for (const id of BUILD_ORDER) if (!has(id)) return id;
+
+    const targets = PRODUCTION_BUILDING_TARGETS[this.mode];
+    let waitingForProductionExpansion = false;
+    for (const id of BUILD_ORDER) {
+      if (this.countBuildings(world, id) >= targets[id]) continue;
+      if (this.hasIncompleteBuilding(world, id)) {
+        waitingForProductionExpansion = true;
+        continue;
+      }
+      return id;
+    }
+    if (waitingForProductionExpansion) return null;
+
     if (this.countBuildings(world, 'tesla') + this.countBuildings(world, 'pillbox') < this.m.defenseTarget) return 'pillbox';
     return null;
   }
@@ -412,10 +441,30 @@ export class SimpleAI {
           if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
           const x = anchor.x + dx;
           const y = anchor.y + dy;
-          if (world.canPlace(this.playerId, type, x, y)) return { x, y };
+          if (this.canUseBuildSpot(world, type, x, y)) return { x, y };
         }
       }
     }
     return null;
+  }
+
+  private canUseBuildSpot(world: World, type: UnitType, cellX: number, cellY: number): boolean {
+    if (!world.canPlace(this.playerId, type, cellX, cellY)) return false;
+    const footprint = type.building;
+    if (!footprint) return true;
+    const margin = 1;
+    for (const e of world.entities.values()) {
+      if (e.owner !== this.playerId) continue;
+      const other = world.rules.units.get(e.typeId)?.building;
+      if (!other) continue;
+      if (this.rectsOverlapWithMargin(cellX, cellY, footprint.footprintW, footprint.footprintH, e.cellX, e.cellY, other.footprintW, other.footprintH, margin)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private rectsOverlapWithMargin(ax: number, ay: number, aw: number, ah: number, bx: number, by: number, bw: number, bh: number, margin: number): boolean {
+    return ax < bx + bw + margin && ax + aw + margin > bx && ay < by + bh + margin && ay + ah + margin > by;
   }
 }
