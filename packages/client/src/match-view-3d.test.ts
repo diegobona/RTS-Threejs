@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '@ra2web/game';
 import { gridTerrain } from '@ra2web/game';
-import { bindAudioUnlock, capacitySummaryText3D, initialCameraFocus3D, matchOutcomeText3D, PRODUCTION_CATEGORIES_3D, topHudText3D } from './match-view-3d';
+import {
+  allOwnedUnitIdsInCapacityGroup3D,
+  bindAudioUnlock,
+  capacitySummarySegments3D,
+  capacitySummaryText3D,
+  initialCameraFocus3D,
+  matchOutcomeText3D,
+  PRODUCTION_CATEGORIES_3D,
+  sameTypeVisibleSelectionIds3D,
+  topHudText3D,
+} from './match-view-3d';
 
 describe('MatchView3D camera defaults', () => {
   it('starts focused on the center of the map instead of the local spawn', () => {
@@ -69,6 +79,67 @@ describe('MatchView3D capacity HUD', () => {
     expect(text).toBe('建筑 4/20 | 工人 8/20 | 士兵 117/300 | 坦克 48/100 | 飞机 23/30');
     expect(text).not.toContain('Credits');
     expect(text).not.toContain('$');
+  });
+
+  it('marks unit capacity segments as selectable while keeping buildings informational', () => {
+    const segments = capacitySummarySegments3D({
+      building: { count: 4, limit: 20 },
+      infantry: { count: 117, limit: 300 },
+      worker: { count: 8, limit: 20 },
+      vehicle: { count: 48, limit: 100 },
+      aircraft: { count: 23, limit: 30 },
+    });
+
+    expect(segments.map((segment) => segment.text).join(' | ')).toBe('建筑 4/20 | 工人 8/20 | 士兵 117/300 | 坦克 48/100 | 飞机 23/30');
+    expect(segments.map((segment) => segment.selectGroup ?? null)).toEqual([null, 'worker', 'infantry', 'vehicle', 'aircraft']);
+  });
+});
+
+describe('MatchView3D unit selection helpers', () => {
+  it('selects same-type owned units that are currently inside the screen', () => {
+    const world = new World(gridTerrain(20, 20), 7);
+    world.addPlayer(1, 'allied', 0);
+    world.addPlayer(2, 'soviet', 0);
+    const clicked = world.spawnUnit(1, 'gi', 3, 3)!;
+    const sameVisible = world.spawnUnit(1, 'gi', 4, 3)!;
+    const sameOffscreen = world.spawnUnit(1, 'gi', 5, 3)!;
+    const worker = world.spawnUnit(1, 'worker', 6, 3)!;
+    const tank = world.spawnUnit(1, 'grizzly', 7, 3)!;
+    const enemy = world.spawnUnit(2, 'gi', 8, 3)!;
+
+    const ids = sameTypeVisibleSelectionIds3D(
+      world,
+      1,
+      clicked.id,
+      [
+        { id: clicked.id, x: 120, y: 160 },
+        { id: sameVisible.id, x: 300, y: 220 },
+        { id: sameOffscreen.id, x: 900, y: 220 },
+        { id: worker.id, x: 180, y: 180 },
+        { id: tank.id, x: 240, y: 180 },
+        { id: enemy.id, x: 260, y: 180 },
+      ],
+      { left: 0, top: 0, width: 800, height: 600 },
+    );
+
+    expect(ids).toEqual([clicked.id, sameVisible.id]);
+  });
+
+  it('selects all owned units for a clicked top capacity group', () => {
+    const world = new World(gridTerrain(20, 20), 7);
+    world.addPlayer(1, 'allied', 0);
+    world.addPlayer(2, 'soviet', 0);
+    const worker = world.spawnUnit(1, 'worker', 3, 3)!;
+    const gi = world.spawnUnit(1, 'gi', 4, 3)!;
+    const tank = world.spawnUnit(1, 'grizzly', 5, 3)!;
+    const fighter = world.spawnUnit(1, 'fighter', 6, 3)!;
+    world.spawnUnit(1, 'conyard', 7, 3);
+    world.spawnUnit(2, 'gi', 8, 3);
+
+    expect(allOwnedUnitIdsInCapacityGroup3D(world, 1, 'worker')).toEqual([worker.id]);
+    expect(allOwnedUnitIdsInCapacityGroup3D(world, 1, 'infantry')).toEqual([gi.id]);
+    expect(allOwnedUnitIdsInCapacityGroup3D(world, 1, 'vehicle')).toEqual([tank.id]);
+    expect(allOwnedUnitIdsInCapacityGroup3D(world, 1, 'aircraft')).toEqual([fighter.id]);
   });
 });
 

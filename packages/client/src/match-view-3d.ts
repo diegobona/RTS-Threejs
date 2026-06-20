@@ -16,12 +16,67 @@ export function initialCameraFocus3D(mapW: number, mapH: number): { x: number; z
 
 export const PRODUCTION_CATEGORIES_3D = ['building'] as const satisfies readonly ProdCategory[];
 
+export type CapacitySelectionGroup3D = 'worker' | 'infantry' | 'vehicle' | 'aircraft';
+
+export interface CapacitySummarySegment3D {
+  text: string;
+  selectGroup?: CapacitySelectionGroup3D;
+}
+
+export function capacitySummarySegments3D(capacity: CapacitySnapshot): CapacitySummarySegment3D[] {
+  return [
+    { text: `建筑 ${capacity.building.count}/${capacity.building.limit}` },
+    { text: `工人 ${capacity.worker.count}/${capacity.worker.limit}`, selectGroup: 'worker' },
+    { text: `士兵 ${capacity.infantry.count}/${capacity.infantry.limit}`, selectGroup: 'infantry' },
+    { text: `坦克 ${capacity.vehicle.count}/${capacity.vehicle.limit}`, selectGroup: 'vehicle' },
+    { text: `飞机 ${capacity.aircraft.count}/${capacity.aircraft.limit}`, selectGroup: 'aircraft' },
+  ];
+}
+
 export function capacitySummaryText3D(capacity: CapacitySnapshot): string {
-  return `建筑 ${capacity.building.count}/${capacity.building.limit} | 工人 ${capacity.worker.count}/${capacity.worker.limit} | 士兵 ${capacity.infantry.count}/${capacity.infantry.limit} | 坦克 ${capacity.vehicle.count}/${capacity.vehicle.limit} | 飞机 ${capacity.aircraft.count}/${capacity.aircraft.limit}`;
+  return capacitySummarySegments3D(capacity).map((segment) => segment.text).join(' | ');
 }
 
 export function topHudText3D(capacity: CapacitySnapshot): string {
   return capacitySummaryText3D(capacity);
+}
+
+export function allOwnedUnitIdsInCapacityGroup3D(world: World, localPlayerId: number, group: CapacitySelectionGroup3D): number[] {
+  const ids: number[] = [];
+  for (const e of world.entities.values()) {
+    if (e.owner !== localPlayerId) continue;
+    const type = world.rules.units.get(e.typeId);
+    if (!type || type.domain === 'building') continue;
+    if (group === 'worker') {
+      if (e.typeId === 'worker') ids.push(e.id);
+      continue;
+    }
+    if (type.domain === group && e.typeId !== 'worker') ids.push(e.id);
+  }
+  return ids.sort((a, b) => a - b);
+}
+
+export function sameTypeVisibleSelectionIds3D(
+  world: World,
+  localPlayerId: number,
+  clickedId: number,
+  points: readonly { id: number; x: number; y: number }[],
+  viewport: { left: number; top: number; width: number; height: number },
+): number[] {
+  const clicked = world.entities.get(clickedId);
+  const clickedType = clicked && world.rules.units.get(clicked.typeId);
+  if (!clicked || clicked.owner !== localPlayerId || !clickedType || clickedType.domain === 'building') return [];
+  const right = viewport.left + viewport.width;
+  const bottom = viewport.top + viewport.height;
+  const ids: number[] = [];
+  for (const point of points) {
+    if (point.x < viewport.left || point.x > right || point.y < viewport.top || point.y > bottom) continue;
+    const e = world.entities.get(point.id);
+    const type = e && world.rules.units.get(e.typeId);
+    if (!e || !type || e.owner !== localPlayerId || type.domain === 'building') continue;
+    if (e.typeId === clicked.typeId) ids.push(e.id);
+  }
+  return ids.sort((a, b) => a - b);
 }
 
 export function matchOutcomeText3D(world: World, localPlayerId: number): 'Defeat' | 'Victory' | null {
@@ -48,6 +103,9 @@ export const MATCH_3D_STYLE = `
 .mv3-top b { color: #f0d040; font-variant-numeric: tabular-nums; }
 .mv3-top a { color: #6db3e8; text-decoration: none; }
 .mv3-capacity { color: #b9c9d2; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mv3-capacity button { border: 0; background: none; color: inherit; padding: 0; cursor: pointer;
+  font: inherit; font-variant-numeric: inherit; }
+.mv3-capacity button:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
 .mv3-orders { position: fixed; left: 12px; top: 58px; z-index: 10; display: flex; gap: 6px;
   padding: 6px; background: rgba(8,12,16,.76); border: 1px solid rgba(120,150,170,.18); border-radius: 8px; }
 .mv3-orders button { height: 30px; padding: 0 10px; border: 1px solid rgba(125,150,165,.22); border-radius: 6px;
@@ -105,6 +163,7 @@ export class MatchView3D {
   private readonly buildButtons: { button: HTMLButtonElement; state: HTMLElement; type: UnitType }[] = [];
   private readonly announcedCompletedBuildings = new Set<number>();
   private producerPanelKey = '';
+  private capacityHudKey = '';
   private groundMoveMode: GroundMoveMode = 'move';
   private over = false;
 
@@ -192,6 +251,11 @@ export class MatchView3D {
     this.tabsEl = this.root.querySelector('#mv3-tabs')!;
     this.buildEl = this.root.querySelector('#mv3-prod-list')!;
     this.producerEl = this.root.querySelector('#mv3-producer')!;
+    this.capacityEl.addEventListener('click', (e) => {
+      const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-capacity-group]');
+      const group = button?.dataset.capacityGroup as CapacitySelectionGroup3D | undefined;
+      if (group === 'worker' || group === 'infantry' || group === 'vehicle' || group === 'aircraft') this.selectAllCapacityGroup(group);
+    });
     this.buildProductionTabs();
     this.rebuildProductionPanel();
     this.refreshGroundMoveModeButtons();
@@ -220,13 +284,36 @@ export class MatchView3D {
   }
 
   private updateHud(): void {
-    this.capacityEl.textContent = topHudText3D(this.world.capacityFor(this.localPlayerId));
+    this.updateCapacityHud();
     const sel = this.root.querySelector('#mv3-selected');
     if (sel) sel.textContent = this.selected.size > 0 ? `Selected ${this.selected.size}` : '';
     this.refreshBuildPanel();
     this.refreshProducerPanel();
     this.updateProductionAudio();
     this.checkVictory();
+  }
+
+  private updateCapacityHud(): void {
+    const segments = capacitySummarySegments3D(this.world.capacityFor(this.localPlayerId));
+    const key = segments.map((segment) => `${segment.selectGroup ?? '-'}:${segment.text}`).join('|');
+    if (key === this.capacityHudKey) return;
+    this.capacityHudKey = key;
+    const nodes: Node[] = [];
+    segments.forEach((segment, index) => {
+      if (index > 0) nodes.push(document.createTextNode(' | '));
+      if (!segment.selectGroup) {
+        const span = document.createElement('span');
+        span.textContent = segment.text;
+        nodes.push(span);
+        return;
+      }
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.capacityGroup = segment.selectGroup;
+      button.textContent = segment.text;
+      nodes.push(button);
+    });
+    this.capacityEl.replaceChildren(...nodes);
   }
 
   private checkVictory(): void {
@@ -380,6 +467,11 @@ export class MatchView3D {
     };
     canvas.addEventListener('pointerup', stop);
     canvas.addEventListener('pointercancel', stop);
+    canvas.addEventListener('dblclick', (e: MouseEvent) => {
+      if (e.button !== 0 || this.placingType) return;
+      e.preventDefault();
+      this.selectVisibleSameTypeAt(e.clientX, e.clientY);
+    });
     canvas.addEventListener('wheel', (e: WheelEvent) => {
       e.preventDefault();
       this.camera.zoomAt(e.deltaY);
@@ -409,19 +501,43 @@ export class MatchView3D {
   private finishSelection(startX: number, startY: number, endX: number, endY: number): void {
     const w = Math.abs(endX - startX);
     const h = Math.abs(endY - startY);
-    this.selected.clear();
     if (w < 6 && h < 6) {
       const id =
         this.renderer.pickOwnUnit(this.camera.camera, endX, endY) ??
         nearestIdWithinRadius({ x: endX, y: endY }, this.renderer.ownUnitScreenPoints(this.camera.camera), 54);
-      if (id !== null) this.selected.add(id);
-      if (this.selected.size > 0) audioBus.play('select');
+      this.replaceSelection(id !== null ? [id] : []);
       return;
     }
     const ids = idsInScreenRect(
       { x0: startX, y0: startY, x1: endX, y1: endY },
       this.renderer.ownUnitScreenPoints(this.camera.camera),
     );
+    this.replaceSelection(ids);
+  }
+
+  private selectVisibleSameTypeAt(clientX: number, clientY: number): void {
+    const clickedId =
+      this.renderer.pickOwnUnit(this.camera.camera, clientX, clientY) ??
+      nearestIdWithinRadius({ x: clientX, y: clientY }, this.renderer.ownUnitScreenPoints(this.camera.camera), 54);
+    if (clickedId === null) return;
+    const viewport = this.renderer.renderer.domElement.getBoundingClientRect();
+    const ids = sameTypeVisibleSelectionIds3D(
+      this.world,
+      this.localPlayerId,
+      clickedId,
+      this.renderer.ownUnitScreenPoints(this.camera.camera),
+      viewport,
+    );
+    if (ids.length > 0) this.replaceSelection(ids);
+  }
+
+  private selectAllCapacityGroup(group: CapacitySelectionGroup3D): void {
+    this.cancelPlacement();
+    this.replaceSelection(allOwnedUnitIdsInCapacityGroup3D(this.world, this.localPlayerId, group));
+  }
+
+  private replaceSelection(ids: readonly number[]): void {
+    this.selected.clear();
     for (const id of ids) this.selected.add(id);
     if (this.selected.size > 0) audioBus.play('select');
   }
