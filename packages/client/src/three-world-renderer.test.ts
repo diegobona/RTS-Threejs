@@ -23,6 +23,8 @@ import {
   LOWPOLY_WORKER_PART_IDS,
   proceduralModelYawOffset3D,
   combatMuzzlePoint3D,
+  consumeFrameVisualBudget3D,
+  createFrameVisualBudget3D,
   projectileTracerEnd3D,
   projectileImpactKind3D,
   projectileVisualProfile3D,
@@ -333,6 +335,24 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(bomb.height).toBeGreaterThan(fire.height);
     expect(explosion.visual).toBe('blast');
     expect(explosion.sparkCount).toBeGreaterThan(cannon.sparkCount);
+  });
+
+  it('limits per-frame projectile, tracer, and combat burst visuals independently', () => {
+    const budget = createFrameVisualBudget3D({
+      projectile: 2,
+      tracer: 1,
+      combatEffect: 2,
+      activeCombatEffect: 99,
+    });
+
+    expect(consumeFrameVisualBudget3D(budget, 'projectile')).toBe(true);
+    expect(consumeFrameVisualBudget3D(budget, 'projectile')).toBe(true);
+    expect(consumeFrameVisualBudget3D(budget, 'projectile')).toBe(false);
+    expect(consumeFrameVisualBudget3D(budget, 'tracer')).toBe(true);
+    expect(consumeFrameVisualBudget3D(budget, 'tracer')).toBe(false);
+    expect(consumeFrameVisualBudget3D(budget, 'combatEffect')).toBe(true);
+    expect(consumeFrameVisualBudget3D(budget, 'combatEffect')).toBe(true);
+    expect(consumeFrameVisualBudget3D(budget, 'combatEffect')).toBe(false);
   });
 
   it('uses green command markers for movement and red sword markers for attacks', () => {

@@ -88,6 +88,34 @@ export interface ProjectileVisualProfile3D {
   color: number;
 }
 
+export type FrameVisualKind3D = 'projectile' | 'tracer' | 'combatEffect';
+
+export interface FrameVisualLimits3D {
+  projectile: number;
+  tracer: number;
+  combatEffect: number;
+  activeCombatEffect: number;
+}
+
+export type FrameVisualBudget3D = FrameVisualLimits3D;
+
+export const DEFAULT_FRAME_VISUAL_LIMITS_3D: FrameVisualLimits3D = {
+  projectile: 120,
+  tracer: 64,
+  combatEffect: 48,
+  activeCombatEffect: 220,
+};
+
+export function createFrameVisualBudget3D(limits: FrameVisualLimits3D = DEFAULT_FRAME_VISUAL_LIMITS_3D): FrameVisualBudget3D {
+  return { ...limits };
+}
+
+export function consumeFrameVisualBudget3D(budget: FrameVisualBudget3D, kind: FrameVisualKind3D): boolean {
+  if (budget[kind] <= 0) return false;
+  budget[kind]--;
+  return true;
+}
+
 export interface EntityConstructionBarProfile3D {
   widthScale: number;
   heightScale: number;
@@ -558,6 +586,7 @@ export class ThreeWorldRenderer {
   private readonly modelTemplates = new Map<string, Object3D>();
   private readonly gltfLoader = new GLTFLoader();
   private readonly audioEvents = new ThreeAudioEventTracker();
+  private frameVisualBudget = createFrameVisualBudget3D();
   private readonly tileGeo = new PlaneGeometry(THREE_CELL_SIZE, THREE_CELL_SIZE);
   private readonly oreGeo = new OctahedronGeometry(0.18, 0);
   private readonly projectileGeo = new SphereGeometry(0.12, 8, 8);
@@ -652,6 +681,7 @@ export class ThreeWorldRenderer {
   }
 
   render(camera: Camera, alpha: number, selected: ReadonlySet<number>, nearbyHpIds: ReadonlySet<number> = new Set()): void {
+    this.frameVisualBudget = createFrameVisualBudget3D();
     this.syncEntities(alpha, selected, nearbyHpIds);
     this.syncProjectiles();
     this.processCombatEvents();
@@ -2163,6 +2193,7 @@ export class ThreeWorldRenderer {
   private syncProjectiles(): void {
     this.projectileLayer.clear();
     for (const p of this.world.projectiles) {
+      if (!consumeFrameVisualBudget3D(this.frameVisualBudget, 'projectile')) continue;
       const shooter = this.world.entities.get(p.shooterId);
       const shooterType = shooter && this.world.rules.units.get(shooter.typeId);
       const target = this.world.entities.get(p.targetId);
@@ -2227,14 +2258,19 @@ export class ThreeWorldRenderer {
     for (const event of this.audioEvents.update(this.audioSnapshot())) {
       const target = event.targetX !== undefined && event.targetZ !== undefined ? { x: event.targetX, z: event.targetZ } : null;
       const effectPoint = combatMuzzlePoint3D(event.kind, event, target);
-      if (event.kind === 'fire' || event.kind === 'cannon') this.spawnTracerEffect(event, effectPoint);
-      this.spawnCombatEffect(event.kind, effectPoint.x, effectPoint.z);
+      if ((event.kind === 'fire' || event.kind === 'cannon') && consumeFrameVisualBudget3D(this.frameVisualBudget, 'tracer')) {
+        this.spawnTracerEffect(event, effectPoint);
+      }
+      if (consumeFrameVisualBudget3D(this.frameVisualBudget, 'combatEffect')) {
+        this.spawnCombatEffect(event.kind, effectPoint.x, effectPoint.z);
+      }
       this.onEvent?.(event.kind, effectPoint.x, effectPoint.z);
     }
   }
 
   private spawnTracerEffect(event: ThreeAudioEvent, start: Vector3): void {
     if (event.targetX === undefined || event.targetZ === undefined) return;
+    if (this.combatEffects.length >= DEFAULT_FRAME_VISUAL_LIMITS_3D.activeCombatEffect) return;
     const profile = combatEffectProfile3D(event.kind);
     const end = new Vector3(event.targetX, profile.height, event.targetZ);
     const tracerMat = new MeshBasicMaterial({
@@ -2253,6 +2289,7 @@ export class ThreeWorldRenderer {
   }
 
   private spawnCombatEffect(kind: ThreeAudioEvent['kind'], x: number, z: number): void {
+    if (this.combatEffects.length >= DEFAULT_FRAME_VISUAL_LIMITS_3D.activeCombatEffect) return;
     const profile = combatEffectProfile3D(kind);
     const root = new Group();
     root.position.set(x, profile.height, z);
