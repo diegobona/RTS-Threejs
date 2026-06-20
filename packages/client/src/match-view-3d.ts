@@ -79,6 +79,71 @@ export function sameTypeVisibleSelectionIds3D(
   return ids.sort((a, b) => a - b);
 }
 
+export interface ControlGroupHudItem3D {
+  group: number;
+  ids: number[];
+  label: string;
+}
+
+const CONTROL_GROUP_KIND_ORDER: CapacitySelectionGroup3D[] = ['worker', 'infantry', 'vehicle', 'aircraft'];
+const CONTROL_GROUP_KIND_LABEL: Record<CapacitySelectionGroup3D, string> = {
+  worker: '工人',
+  infantry: '士兵',
+  vehicle: '坦克',
+  aircraft: '飞机',
+};
+
+function controlGroupKindOf(typeId: string, type: UnitType): CapacitySelectionGroup3D | null {
+  if (type.domain === 'building') return null;
+  if (typeId === 'worker') return 'worker';
+  if (type.domain === 'infantry') return 'infantry';
+  if (type.domain === 'vehicle') return 'vehicle';
+  if (type.domain === 'aircraft') return 'aircraft';
+  return null;
+}
+
+export function controlGroupIdsForSelection3D(world: World, localPlayerId: number, selectedIds: readonly number[]): number[] {
+  const ids: number[] = [];
+  for (const id of selectedIds) {
+    const e = world.entities.get(id);
+    if (!e || e.owner !== localPlayerId) continue;
+    const type = world.rules.units.get(e.typeId);
+    if (!type || controlGroupKindOf(e.typeId, type) === null) continue;
+    ids.push(id);
+  }
+  return ids.sort((a, b) => a - b);
+}
+
+export function controlGroupButtonLabel3D(world: World, group: number, ids: readonly number[]): string {
+  const counts: Record<CapacitySelectionGroup3D, number> = {
+    worker: 0,
+    infantry: 0,
+    vehicle: 0,
+    aircraft: 0,
+  };
+  for (const id of ids) {
+    const e = world.entities.get(id);
+    const type = e && world.rules.units.get(e.typeId);
+    if (!e || !type) continue;
+    const kind = controlGroupKindOf(e.typeId, type);
+    if (kind) counts[kind]++;
+  }
+  const parts = CONTROL_GROUP_KIND_ORDER
+    .filter((kind) => counts[kind] > 0)
+    .map((kind) => `${CONTROL_GROUP_KIND_LABEL[kind]} ${counts[kind]}`);
+  return parts.length > 0 ? `${group} ${parts.join(' · ')}` : `${group}`;
+}
+
+export function controlGroupHudItems3D(world: World, groups: ReadonlyMap<number, readonly number[]>): ControlGroupHudItem3D[] {
+  const out: ControlGroupHudItem3D[] = [];
+  for (const [group, ids] of [...groups.entries()].sort((a, b) => a[0] - b[0])) {
+    const alive = ids.filter((id) => world.entities.has(id)).sort((a, b) => a - b);
+    if (alive.length === 0) continue;
+    out.push({ group, ids: alive, label: controlGroupButtonLabel3D(world, group, alive) });
+  }
+  return out;
+}
+
 export function matchOutcomeText3D(world: World, localPlayerId: number): 'Defeat' | 'Victory' | null {
   const me = world.players.get(localPlayerId);
   if (!me) return null;
@@ -106,6 +171,12 @@ export const MATCH_3D_STYLE = `
 .mv3-capacity button { border: 0; background: none; color: inherit; padding: 0; cursor: pointer;
   font: inherit; font-variant-numeric: inherit; }
 .mv3-capacity button:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.mv3-groups { display: flex; gap: 5px; align-items: center; white-space: nowrap; }
+.mv3-groups:empty { display: none; }
+.mv3-group { height: 24px; max-width: 180px; padding: 0 7px; border: 1px solid rgba(88,167,216,.46);
+  border-radius: 5px; background: rgba(23,48,70,.72); color: #dce6ed; cursor: pointer;
+  font: inherit; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mv3-group:hover { border-color: #8fd4ff; color: #fff; }
 .mv3-orders { position: fixed; left: 12px; top: 58px; z-index: 10; display: flex; gap: 6px;
   padding: 6px; background: rgba(8,12,16,.76); border: 1px solid rgba(120,150,170,.18); border-radius: 8px; }
 .mv3-orders button { height: 30px; padding: 0 10px; border: 1px solid rgba(125,150,165,.22); border-radius: 6px;
@@ -150,6 +221,7 @@ export class MatchView3D {
   private renderer!: ThreeWorldRenderer;
   private camera!: ThreeCameraController;
   private capacityEl!: HTMLElement;
+  private groupsEl!: HTMLElement;
   private selBox!: HTMLElement;
   private tabsEl!: HTMLElement;
   private buildEl!: HTMLElement;
@@ -160,10 +232,12 @@ export class MatchView3D {
   private readonly selected = new Set<number>();
   private readonly nearbyHpIds = new Set<number>();
   private readonly localCommands: Command[] = [];
+  private readonly controlGroups = new Map<number, number[]>();
   private readonly buildButtons: { button: HTMLButtonElement; state: HTMLElement; type: UnitType }[] = [];
   private readonly announcedCompletedBuildings = new Set<number>();
   private producerPanelKey = '';
   private capacityHudKey = '';
+  private controlGroupsHudKey = '';
   private groundMoveMode: GroundMoveMode = 'move';
   private over = false;
 
@@ -231,6 +305,7 @@ export class MatchView3D {
         <span>3D RTS Preview</span>
         <span id="mv3-capacity" class="mv3-capacity"></span>
         <span id="mv3-selected"></span>
+        <span id="mv3-groups" class="mv3-groups"></span>
         <button id="mv3-mute" type="button" style="background:none;border:none;color:#9aa7b0;cursor:pointer;font-size:15px">Sound</button>
         <a href="#">Exit</a>
       </div>
@@ -247,6 +322,7 @@ export class MatchView3D {
       <div class="mv3-chip">Build, rally, command the swarm</div>`,
     );
     this.capacityEl = this.root.querySelector('#mv3-capacity')!;
+    this.groupsEl = this.root.querySelector('#mv3-groups')!;
     this.selBox = this.root.querySelector('#mv3-selbox')!;
     this.tabsEl = this.root.querySelector('#mv3-tabs')!;
     this.buildEl = this.root.querySelector('#mv3-prod-list')!;
@@ -255,6 +331,11 @@ export class MatchView3D {
       const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-capacity-group]');
       const group = button?.dataset.capacityGroup as CapacitySelectionGroup3D | undefined;
       if (group === 'worker' || group === 'infantry' || group === 'vehicle' || group === 'aircraft') this.selectAllCapacityGroup(group);
+    });
+    this.groupsEl.addEventListener('click', (e) => {
+      const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-control-group]');
+      const group = Number(button?.dataset.controlGroup);
+      if (Number.isInteger(group)) this.recallControlGroup(group);
     });
     this.buildProductionTabs();
     this.rebuildProductionPanel();
@@ -285,6 +366,7 @@ export class MatchView3D {
 
   private updateHud(): void {
     this.updateCapacityHud();
+    this.updateControlGroupsHud();
     const sel = this.root.querySelector('#mv3-selected');
     if (sel) sel.textContent = this.selected.size > 0 ? `Selected ${this.selected.size}` : '';
     this.refreshBuildPanel();
@@ -314,6 +396,28 @@ export class MatchView3D {
       nodes.push(button);
     });
     this.capacityEl.replaceChildren(...nodes);
+  }
+
+  private updateControlGroupsHud(): void {
+    for (const [group, stored] of this.controlGroups) {
+      const alive = stored.filter((id) => this.world.entities.has(id)).sort((a, b) => a - b);
+      if (alive.length === 0) this.controlGroups.delete(group);
+      else if (alive.length !== stored.length) this.controlGroups.set(group, alive);
+    }
+    const items = controlGroupHudItems3D(this.world, this.controlGroups);
+    const key = items.map((item) => `${item.group}:${item.ids.join(',')}:${item.label}`).join('|');
+    if (key === this.controlGroupsHudKey) return;
+    this.controlGroupsHudKey = key;
+    const nodes = items.map((item) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'mv3-group';
+      button.dataset.controlGroup = String(item.group);
+      button.textContent = item.label;
+      button.title = `Recall group ${item.group}`;
+      return button;
+    });
+    this.groupsEl.replaceChildren(...nodes);
   }
 
   private checkVictory(): void {
@@ -481,8 +585,20 @@ export class MatchView3D {
       this.renderer.resize(this.camera.camera);
     });
     window.addEventListener('keydown', (e) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      const group = this.controlGroupNumberFromKey(e.key);
+      if (group !== null) {
+        if (e.ctrlKey || e.metaKey) this.assignControlGroup(group);
+        else this.recallControlGroup(group);
+        e.preventDefault();
+        return;
+      }
       if (e.key === 'Escape') this.cancelPlacement();
     });
+  }
+
+  private controlGroupNumberFromKey(key: string): number | null {
+    return key >= '1' && key <= '9' ? Number(key) : null;
   }
 
   private updateNearbyHpTarget(clientX: number, clientY: number): void {
@@ -534,6 +650,26 @@ export class MatchView3D {
   private selectAllCapacityGroup(group: CapacitySelectionGroup3D): void {
     this.cancelPlacement();
     this.replaceSelection(allOwnedUnitIdsInCapacityGroup3D(this.world, this.localPlayerId, group));
+  }
+
+  private assignControlGroup(group: number): void {
+    const ids = controlGroupIdsForSelection3D(this.world, this.localPlayerId, [...this.selected]);
+    if (ids.length === 0) return;
+    this.controlGroups.set(group, ids);
+    this.controlGroupsHudKey = '';
+    audioBus.play('select');
+  }
+
+  private recallControlGroup(group: number): void {
+    const ids = (this.controlGroups.get(group) ?? []).filter((id) => this.world.entities.has(id)).sort((a, b) => a - b);
+    if (ids.length === 0) {
+      this.controlGroups.delete(group);
+      this.controlGroupsHudKey = '';
+      return;
+    }
+    this.controlGroups.set(group, ids);
+    this.replaceSelection(ids);
+    this.controlGroupsHudKey = '';
   }
 
   private replaceSelection(ids: readonly number[]): void {

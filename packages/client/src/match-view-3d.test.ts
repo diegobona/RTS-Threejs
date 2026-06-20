@@ -6,6 +6,9 @@ import {
   bindAudioUnlock,
   capacitySummarySegments3D,
   capacitySummaryText3D,
+  controlGroupButtonLabel3D,
+  controlGroupIdsForSelection3D,
+  controlGroupHudItems3D,
   initialCameraFocus3D,
   matchOutcomeText3D,
   PRODUCTION_CATEGORIES_3D,
@@ -140,6 +143,56 @@ describe('MatchView3D unit selection helpers', () => {
     expect(allOwnedUnitIdsInCapacityGroup3D(world, 1, 'infantry')).toEqual([gi.id]);
     expect(allOwnedUnitIdsInCapacityGroup3D(world, 1, 'vehicle')).toEqual([tank.id]);
     expect(allOwnedUnitIdsInCapacityGroup3D(world, 1, 'aircraft')).toEqual([fighter.id]);
+  });
+});
+
+describe('MatchView3D control groups', () => {
+  it('stores only live owned non-building units when assigning a control group', () => {
+    const world = new World(gridTerrain(20, 20), 7);
+    world.addPlayer(1, 'allied', 0);
+    world.addPlayer(2, 'soviet', 0);
+    const worker = world.spawnUnit(1, 'worker', 3, 3)!;
+    const gi = world.spawnUnit(1, 'gi', 4, 3)!;
+    const tank = world.spawnUnit(1, 'grizzly', 5, 3)!;
+    const conyard = world.spawnUnit(1, 'conyard', 7, 3)!;
+    const enemy = world.spawnUnit(2, 'gi', 8, 3)!;
+
+    expect(controlGroupIdsForSelection3D(world, 1, [enemy.id, tank.id, conyard.id, gi.id, 9999, worker.id])).toEqual([
+      worker.id,
+      gi.id,
+      tank.id,
+    ]);
+  });
+
+  it('summarizes a group by group number, unit kind, and count', () => {
+    const world = new World(gridTerrain(20, 20), 7);
+    world.addPlayer(1, 'allied', 0);
+    const worker = world.spawnUnit(1, 'worker', 3, 3)!;
+    const giA = world.spawnUnit(1, 'gi', 4, 3)!;
+    const giB = world.spawnUnit(1, 'gi', 5, 3)!;
+    const tank = world.spawnUnit(1, 'grizzly', 6, 3)!;
+    const fighter = world.spawnUnit(1, 'fighter', 7, 3)!;
+
+    expect(controlGroupButtonLabel3D(world, 2, [fighter.id, tank.id, giA.id, worker.id, giB.id])).toBe(
+      '2 工人 1 · 士兵 2 · 坦克 1 · 飞机 1',
+    );
+  });
+
+  it('omits empty or dead control groups from the HUD items', () => {
+    const world = new World(gridTerrain(20, 20), 7);
+    world.addPlayer(1, 'allied', 0);
+    const gi = world.spawnUnit(1, 'gi', 4, 3)!;
+    const tank = world.spawnUnit(1, 'grizzly', 5, 3)!;
+    const groups = new Map<number, number[]>([
+      [1, [gi.id]],
+      [2, [9999]],
+      [3, [tank.id]],
+    ]);
+
+    expect(controlGroupHudItems3D(world, groups)).toEqual([
+      { group: 1, ids: [gi.id], label: '1 士兵 1' },
+      { group: 3, ids: [tank.id], label: '3 坦克 1' },
+    ]);
   });
 });
 
