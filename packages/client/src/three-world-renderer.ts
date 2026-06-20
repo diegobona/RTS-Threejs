@@ -164,6 +164,7 @@ interface AircraftActivity3D {
   goal?: unknown | null;
   waypoint?: unknown | null;
   attackMove?: boolean;
+  bombing?: boolean;
   loiterCenter?: { x: number; z: number } | null;
 }
 
@@ -324,7 +325,8 @@ export function aircraftIdleOrbitOffset3D(
   if ((activity.pathLength ?? 0) > 0 || activity.goal || activity.waypoint || activity.attackMove) return new Vector3();
   if (activity.targetId !== null && activity.targetId !== undefined && !activity.loiterCenter) return new Vector3();
   const center = activity.loiterCenter ?? homeBaseCenter ?? aircraftPosition;
-  const loiter = activity.targetId !== null && activity.targetId !== undefined && activity.loiterCenter
+  const attackingAtStation = activity.targetId !== null && activity.targetId !== undefined && activity.loiterCenter;
+  const loiter = attackingAtStation && !activity.bombing
     ? aircraftCombatLoiterPoint3D(timeSeconds, entityId, center)
     : aircraftIdleLoiterPoint3D(timeSeconds, entityId, center);
   return new Vector3(loiter.x - aircraftPosition.x, 0, loiter.z - aircraftPosition.z);
@@ -349,6 +351,7 @@ export function aircraftLoiterYaw3D(
   if ((activity.pathLength ?? 0) > 0 || activity.goal || activity.waypoint || activity.attackMove) return null;
   if (activity.targetId !== null && activity.targetId !== undefined && !activity.loiterCenter) return null;
   if (activity.targetId !== null && activity.targetId !== undefined && activity.loiterCenter) {
+    if (activity.bombing) return aircraftIdleOrbitYaw3D(timeSeconds, entityId);
     return aircraftCombatOrbitYaw3D(timeSeconds, entityId);
   }
   return aircraftIdleOrbitYaw3D(timeSeconds, entityId);
@@ -1115,7 +1118,17 @@ export class ThreeWorldRenderer {
           type.domain === 'aircraft' && e.airLoiterX >= 0 && e.airLoiterY >= 0
             ? cellToWorld3D(e.airLoiterX, e.airLoiterY)
             : null;
-        const aircraftActivity = { targetId: e.targetId, pathLength: e.path.length, goal: e.goal, waypoint: e.waypoint, attackMove: e.attackMove, loiterCenter };
+        const attackTarget = e.targetId !== null ? this.world.entities.get(e.targetId) : undefined;
+        const attackTargetType = attackTarget ? this.world.rules.units.get(attackTarget.typeId) : undefined;
+        const aircraftActivity = {
+          targetId: e.targetId,
+          pathLength: e.path.length,
+          goal: e.goal,
+          waypoint: e.waypoint,
+          attackMove: e.attackMove,
+          bombing: type.domain === 'aircraft' && !!attackTargetType && attackTargetType.domain !== 'aircraft',
+          loiterCenter,
+        };
         const orbit = aircraftIdleOrbitOffset3D(
           type,
           aircraftActivity,

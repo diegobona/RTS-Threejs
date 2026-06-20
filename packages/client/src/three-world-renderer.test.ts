@@ -238,6 +238,29 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(Math.hypot(ground.x, ground.z)).toBe(0);
   });
 
+  it('keeps bombing aircraft in wide loiter lanes instead of compact dogfight orbits', () => {
+    const station = new Vector3(40, 0, 42);
+    const compactDogfight = aircraftIdleOrbitOffset3D(
+      { domain: 'aircraft' },
+      { targetId: 42, pathLength: 0, loiterCenter: station },
+      station,
+      undefined,
+      1.25,
+      11,
+    );
+    const bombingOrbit = aircraftIdleOrbitOffset3D(
+      { domain: 'aircraft' },
+      { targetId: 42, pathLength: 0, loiterCenter: station, bombing: true },
+      station,
+      undefined,
+      1.25,
+      11,
+    );
+
+    expect(Math.hypot(compactDogfight.x, compactDogfight.z)).toBeLessThan(6.5);
+    expect(Math.hypot(bombingOrbit.x, bombingOrbit.z)).toBeGreaterThan(8);
+  });
+
   it('stages idle aircraft into staggered loiter lanes instead of one cramped ring', () => {
     const aircraftPos = new Vector3(10, 0, 10);
     const baseCenter = new Vector3(40, 0, 42);

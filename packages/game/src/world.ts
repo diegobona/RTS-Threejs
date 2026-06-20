@@ -166,8 +166,6 @@ const CONYARD_INCOME_PER_SECOND = 150;
 const REFINERY_INCOME_PER_SECOND = 600;
 const AUTO_PRODUCTION_STEP = 2;
 const CONSTRUCTION_WORKER_COUNT = 1;
-const AIR_BOMB_RUN_FIRST_DISTANCE = 6;
-const AIR_BOMB_RUN_SPACING = 4;
 export interface CapacitySlot {
   count: number;
   limit: number;
@@ -1190,7 +1188,7 @@ export class World {
   private aircraftAttackDestinations(target: Entity, attackerType: UnitType, attackers: Entity[]): { x: number; y: number }[] {
     const targetType = this.rules.units.get(target.typeId);
     const weapon = targetType ? this.weaponForTarget(attackerType, targetType) : null;
-    if (weapon && this.usesAircraftBombRun(attackerType, target, weapon)) return this.aircraftBombingRunDestinations(target, attackers);
+    if (weapon && this.usesAircraftBombRun(attackerType, target, weapon)) return this.aircraftBombOrbitDestinations(target, attackers);
     const count = attackers.length;
     const range = weapon?.range ?? 2 * 256;
     const missile = weapon?.role === 'missile';
@@ -1247,52 +1245,50 @@ export class World {
     return selected;
   }
 
-  private aircraftBombingRunDestinations(target: Entity, attackers: Entity[]): { x: number; y: number }[] {
+  private aircraftBombOrbitDestinations(target: Entity, attackers: Entity[]): { x: number; y: number }[] {
     if (attackers.length === 0) return [];
     const center = { x: leptonToCell(target.x), y: leptonToCell(target.y) };
-    let sx = 0;
-    let sy = 0;
-    for (const e of attackers) {
-      sx += e.cellX;
-      sy += e.cellY;
-    }
-    const avgX = sx / attackers.length;
-    const avgY = sy / attackers.length;
-    let vx = center.x - avgX;
-    let vy = center.y - avgY;
-    const len = Math.hypot(vx, vy) || 1;
-    vx /= len;
-    vy /= len;
-    const px = -vy;
-    const py = vx;
-    const out: { x: number; y: number }[] = [];
+    const candidates: { x: number; y: number }[] = [];
     const seen = new Set<number>();
-    const laneLength = Math.min(5, Math.max(4, Math.ceil(Math.sqrt(attackers.length))));
+    const maxRadius = 4;
+    const tryAdd = (x: number, y: number): void => {
+      const slot = this.passableAirNear(x, y, 2);
+      if (!slot) return;
+      const key = slot.y * this.terrain.width + slot.x;
+      if (seen.has(key)) return;
+      if (Math.hypot(slot.x - center.x, slot.y - center.y) > maxRadius) return;
+      seen.add(key);
+      candidates.push(slot);
+    };
 
-    for (let i = 0; i < attackers.length; i++) {
-      const lane = Math.floor(i / laneLength);
-      const laneOffset = lane === 0 ? 0 : Math.ceil(lane / 2) * (lane % 2 === 0 ? -1 : 1) * AIR_BOMB_RUN_SPACING;
-      const distance = AIR_BOMB_RUN_FIRST_DISTANCE + (i % laneLength) * AIR_BOMB_RUN_SPACING;
-      let placed = false;
-      for (let attempt = 0; attempt < 17 && !placed; attempt++) {
-        const nudge = attempt === 0 ? 0 : Math.ceil(attempt / 2) * (attempt % 2 === 0 ? -1 : 1);
-        const side = laneOffset + nudge;
-        const x = Math.round(center.x - vx * distance + px * side);
-        const y = Math.round(center.y - vy * distance + py * side);
-        const slot = this.passableAirNear(x, y, 3);
-        if (!slot) continue;
-        const key = slot.y * this.terrain.width + slot.x;
-        if (seen.has(key)) continue;
-        if (out.some((s) => Math.hypot(s.x - slot.x, s.y - slot.y) < AIR_BOMB_RUN_SPACING)) continue;
-        seen.add(key);
-        out.push(slot);
-        placed = true;
+    for (let r = maxRadius; r >= 0; r--) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (r > 0 && Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          tryAdd(center.x + dx, center.y + dy);
+        }
       }
     }
 
-    const fallback = out[0] ?? center;
-    while (out.length < attackers.length) out.push(fallback);
-    return out;
+    const selected: { x: number; y: number }[] = [];
+    const selectedKeys = new Set<number>();
+    const addSpaced = (minSpacing: number): void => {
+      for (const c of candidates) {
+        if (selected.length >= attackers.length) return;
+        const key = c.y * this.terrain.width + c.x;
+        if (selectedKeys.has(key)) continue;
+        if (selected.some((s) => Math.hypot(s.x - c.x, s.y - c.y) < minSpacing)) continue;
+        selected.push(c);
+        selectedKeys.add(key);
+      }
+    };
+
+    addSpaced(3);
+    addSpaced(2);
+    addSpaced(1);
+    const fallback = selected[0] ?? center;
+    while (selected.length < attackers.length) selected.push(fallback);
+    return selected;
   }
 
   private aircraftMissileAttackDestinations(cx: number, cy: number, count: number, radius: number): { x: number; y: number }[] {
@@ -1613,7 +1609,7 @@ export class World {
   }
 
   private effectiveWeaponRange(type: UnitType, e: Entity, target: Entity, weapon: WeaponSpec): number {
-    void type;
+    if (this.isAircraftBombWeapon(type, weapon)) return Math.max(weapon.range, 4 * 256);
     void e;
     void target;
     return weapon.range;

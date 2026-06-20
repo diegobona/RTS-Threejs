@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cellToLepton } from './coords';
+import { cellToLepton, leptonToCell } from './coords';
 import { gridTerrain } from './replay';
 import { World } from './world';
 
@@ -317,7 +317,7 @@ describe('automatic production buildings', () => {
     expect(fighters.every((e) => e.targetId === target.id)).toBe(true);
   });
 
-  it('queues aircraft bombing runs along an ingress lane instead of crowding over a ground target', () => {
+  it('anchors bombers in target-area orbit stations instead of distant ingress lanes', () => {
     const w = baseWorld(50000);
     w.addPlayer(2, 'soviet', 0);
     const target = w.spawnUnit(2, 'warfactory', 28, 28)!;
@@ -340,19 +340,19 @@ describe('automatic production buildings', () => {
         minDistance = Math.min(minDistance, Math.hypot(a.x - b.x, a.y - b.y));
       }
     }
-    const targetDistances = stations.map((s) => Math.hypot(s.x - target.cellX, s.y - target.cellY));
+    const targetCenter = { x: leptonToCell(target.x), y: leptonToCell(target.y) };
+    const targetDistances = stations.map((s) => Math.hypot(s.x - targetCenter.x, s.y - targetCenter.y));
 
-    expect(new Set(stations.map((s) => `${s.x},${s.y}`)).size).toBe(stations.length);
-    expect(minDistance).toBeGreaterThanOrEqual(4);
-    expect(Math.min(...targetDistances)).toBeGreaterThanOrEqual(4);
-    expect(Math.max(...targetDistances)).toBeGreaterThanOrEqual(16);
+    expect(minDistance).toBeGreaterThanOrEqual(2);
+    expect(Math.max(...targetDistances)).toBeLessThanOrEqual(4);
   });
 
-  it('keeps bombers moving from the ingress lane to the target before releasing bombs', () => {
+  it('moves bombers into a target-area orbit before releasing bombs', () => {
     const w = new World(gridTerrain(56, 56), 7);
     w.addPlayer(1, 'allied', 50000);
     w.addPlayer(2, 'soviet', 0);
     const target = w.spawnUnit(2, 'warfactory', 38, 38)!;
+    const targetCenter = { x: leptonToCell(target.x), y: leptonToCell(target.y) };
     const fighter = w.spawnUnit(1, 'fighter', 8, 12)!;
 
     w.applyCommands([{ kind: 'attack', entityIds: [fighter.id], targetId: target.id }]);
@@ -360,20 +360,42 @@ describe('automatic production buildings', () => {
     const station = airLoiterOf(fighter);
     expect(station.airLoiterX).toBeDefined();
     expect(station.airLoiterY).toBeDefined();
-    expect(Math.hypot(station.airLoiterX! - target.cellX, station.airLoiterY! - target.cellY)).toBeGreaterThanOrEqual(4);
+    expect(Math.hypot(station.airLoiterX! - targetCenter.x, station.airLoiterY! - targetCenter.y)).toBeLessThanOrEqual(4);
     for (let i = 0; i < 900 && fighter.goal; i++) w.step();
 
     expect(fighter.goal).toBeNull();
-    expect(Math.hypot(fighter.cellX - target.cellX, fighter.cellY - target.cellY)).toBeGreaterThan(2);
+    expect(Math.hypot(fighter.cellX - targetCenter.x, fighter.cellY - targetCenter.y)).toBeLessThanOrEqual(4);
 
-    w.step();
+    for (let i = 0; i < 40 && w.projectiles.filter((p) => p.shooterId === fighter.id).length === 0; i++) w.step();
 
-    expect(w.projectiles.filter((p) => p.shooterId === fighter.id)).toHaveLength(0);
-    expect(fighter.goal).not.toBeNull();
-    expect(fighter.goal && Math.hypot(fighter.goal.x - target.cellX, fighter.goal.y - target.cellY)).toBeLessThanOrEqual(2);
+    expect(w.projectiles.filter((p) => p.shooterId === fighter.id)).toHaveLength(1);
+    expect(fighter.goal).toBeNull();
   });
 
-  it('keeps large bomber groups in queued lanes without duplicate attack stations', () => {
+  it('keeps bombers in the target orbit after dropping bombs', () => {
+    const w = new World(gridTerrain(56, 56), 7);
+    w.addPlayer(1, 'allied', 50000);
+    w.addPlayer(2, 'soviet', 0);
+    const target = w.spawnUnit(2, 'warfactory', 32, 32)!;
+    const fighter = w.spawnUnit(1, 'fighter', 8, 12)!;
+    fighter.targetId = target.id;
+    const targetCenter = { x: leptonToCell(target.x), y: leptonToCell(target.y) };
+    fighter.x = target.x - 256;
+    fighter.y = target.y;
+    fighter.cellX = leptonToCell(fighter.x);
+    fighter.cellY = leptonToCell(fighter.y);
+    fighter.airLoiterX = fighter.cellX;
+    fighter.airLoiterY = fighter.cellY;
+    fighter.cooldown = 0;
+
+    for (let i = 0; i < 20 && w.projectiles.filter((p) => p.shooterId === fighter.id).length === 0; i++) w.step();
+
+    expect(w.projectiles.filter((p) => p.shooterId === fighter.id)).toHaveLength(1);
+    expect(fighter.goal).toBeNull();
+    expect(Math.hypot(fighter.airLoiterX - targetCenter.x, fighter.airLoiterY - targetCenter.y)).toBeLessThanOrEqual(4);
+  });
+
+  it('keeps large bomber groups in target-area orbit slots without duplicate attack stations', () => {
     const w = new World(gridTerrain(56, 56), 7);
     w.addPlayer(1, 'allied', 50000);
     w.addPlayer(2, 'soviet', 0);
