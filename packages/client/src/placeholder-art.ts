@@ -8,7 +8,7 @@ import { TILE_H, TILE_W } from './iso';
 import { WW1_BUILDING_ART, WW1_UNIT_ART, ww1ArtSrc } from './ww1-art-manifest';
 
 /** 玩家色（红警2 经典）。 */
-export const PLAYER_COLORS = [0xf8d020, 0x3a7fe0, 0x30c040, 0xe04030, 0xd060d0, 0xe08020, 0x40c0c0, 0xc0c0c0];
+export { PLAYER_COLORS, playerColorForOwner } from './player-colors';
 
 /** 每种建筑/单位的占位主色与简称。 */
 const APPEARANCE: Record<string, { color: number; short: string }> = {

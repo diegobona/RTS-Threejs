@@ -6,7 +6,7 @@
 import { Application, Container, Graphics, Sprite, type Texture } from 'pixi.js';
 import type { World, Side } from '@ra2web/game';
 import { cornerX, cornerY, leptonToScreenX, leptonToScreenY, TILE_H, TILE_W } from './iso';
-import { PLAYER_COLORS, appearanceOf, type ArtAssets } from './placeholder-art';
+import { appearanceOf, playerColorForOwner, type ArtAssets } from './placeholder-art';
 import type { RealArtProvider } from './real-art';
 
 interface UnitView {
@@ -155,7 +155,7 @@ export class WorldRenderer {
   }
 
   private playerColor(owner: number): number {
-    return PLAYER_COLORS[(owner - 1) % PLAYER_COLORS.length]!;
+    return playerColorForOwner(owner);
   }
 
   private drawTerrain(): void {
@@ -286,7 +286,7 @@ export class WorldRenderer {
         const bar = new Graphics();
         const w = fw * 10;
         bar.rect(-w / 2, 0, w, 3).fill(0x000000);
-        bar.rect(-w / 2, 0, (w * e.hp) / e.maxHp, 3).fill(0x40e040);
+        bar.rect(-w / 2, 0, (w * e.hp) / e.maxHp, 3).fill(this.playerColor(e.owner));
         const cx = (cornerX(e.cellX, e.cellY) + cornerX(e.cellX + fw, e.cellY + fh)) / 2;
         const cy = (cornerY(e.cellX, e.cellY) + cornerY(e.cellX + fw, e.cellY + fh)) / 2;
         bar.position.set(cx, cy - TILE_H);
@@ -422,7 +422,7 @@ export class WorldRenderer {
       }
       if (e.hp < e.maxHp) {
         fx.rect(sx - 12, sy - 16, 24, 3).fill(0x000000);
-        fx.rect(sx - 12, sy - 16, (24 * e.hp) / e.maxHp, 3).fill(0x40e040);
+        fx.rect(sx - 12, sy - 16, (24 * e.hp) / e.maxHp, 3).fill(this.playerColor(e.owner));
       }
       // 老兵等级山形标记：老兵 1 个、精英 2 个（与 world.ts vetMul 阈值一致）
       const rank = e.kills >= 5 ? 2 : e.kills >= 2 ? 1 : 0;

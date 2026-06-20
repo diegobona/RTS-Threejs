@@ -36,6 +36,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { WeaponRole, World, UnitType } from '@ra2web/game';
 import { ThreeAudioEventTracker, type ThreeAudioEvent, type ThreeAudioSnapshot, type ThreeProjectileAudioState } from './three-audio-events';
 import { cellToWorld3D, leptonToWorld3D, THREE_CELL_SIZE } from './three-coords';
+import { playerColorForOwner } from './player-colors';
 import { WW1_MODEL_SPECS, type Ww1ModelSpec } from './ww1-model-manifest';
 
 interface EntityView {
@@ -94,7 +95,11 @@ export interface EntityConstructionBarProfile3D {
   y: number;
 }
 
-const PLAYER_COLORS = [0xf8d020, 0x3a7fe0, 0x30c040, 0xe04030, 0xd060d0, 0xe08020, 0x40c0c0, 0xc0c0c0];
+export interface EntityHpBarProfile3D {
+  width: number;
+  y: number;
+}
+
 const AIRCRAFT_ALTITUDE = 8;
 const AIRCRAFT_IDLE_ORBIT_RADIUS = 11.5;
 const AIRCRAFT_IDLE_ORBIT_LANE_SPACING = 4;
@@ -188,6 +193,27 @@ export function entitySelectionRingScale3D(type: Pick<UnitType, 'domain'>): numb
   if (type.domain === 'vehicle') return 1.8;
   if (type.domain === 'aircraft') return 1.7;
   return 1;
+}
+
+export function entityHpBarProfile3D(type: Pick<UnitType, 'domain' | 'building'>): EntityHpBarProfile3D {
+  if (type.domain === 'building' && type.building) {
+    const footprint = Math.max(1, type.building.footprintW, type.building.footprintH);
+    return {
+      width: Math.max(1.8, footprint * 0.7),
+      y: 3.1 + Math.min(0.75, footprint * 0.16),
+    };
+  }
+  if (type.domain === 'aircraft') return { width: 1.25, y: entityVisualAltitude3D(type) + 2.05 };
+  if (type.domain === 'vehicle') return { width: 1.25, y: 2.08 };
+  return { width: 0.95, y: 2.05 };
+}
+
+export function entityHpBarVisible3D(pct: number, forceVisible = false): boolean {
+  return forceVisible || Number.isFinite(pct);
+}
+
+export function entityHpBarYaw3D(entityYaw: number): number {
+  return -entityYaw;
 }
 
 export function entityConstructionProgress3D(entity: { constructionProgress: number; constructionTotal: number }): number {
@@ -560,6 +586,7 @@ export class ThreeWorldRenderer {
   private readonly hpBackMat = new MeshBasicLike(0x101010);
   private readonly hpGoodMat = new MeshBasicLike(0x42d66d);
   private readonly hpConstructionMat = new MeshBasicLike(0xffd43b);
+  private readonly hpOwnerMats = new Map<number, MeshBasicLike>();
   private readonly projectileMat = new MeshLambertMaterial({ color: 0x111111 });
   private readonly projectileTracerMat = new MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.92, depthWrite: false });
   private readonly projectileMissileTracerMat = new MeshBasicMaterial({ color: 0xaedfff, transparent: true, opacity: 0.9, depthWrite: false });
@@ -756,6 +783,8 @@ export class ThreeWorldRenderer {
     this.views.clear();
     for (const template of this.modelTemplates.values()) this.disposeObject(template);
     this.modelTemplates.clear();
+    for (const mat of this.hpOwnerMats.values()) mat.mat.dispose();
+    this.hpOwnerMats.clear();
     this.disposeObject(this.scene);
     this.renderer.dispose();
     this.renderer.domElement.remove();
@@ -1037,10 +1066,11 @@ export class ThreeWorldRenderer {
       this.setVisualOpacity(view.visualRoot, constructing ? entityConstructionOpacity3D(e) : 1);
       view.selectionRing.visible = selected.has(e.id);
       this.applyHpBarProfile(view.hpBar, constructing ? entityConstructionBarProfile3D(type) : null);
+      view.hpBar.rotation.y = entityHpBarYaw3D(view.root.rotation.y);
       this.updateHpBar(
         view.hpBar,
         constructing ? constructionPct : e.hp / e.maxHp,
-        constructing ? this.hpConstructionMat.mat : this.hpGoodMat.mat,
+        constructing ? this.hpConstructionMat.mat : this.hpMaterialForOwner(e.owner),
         constructing,
       );
     }
@@ -1059,7 +1089,7 @@ export class ThreeWorldRenderer {
     visualRoot.position.y = entityVisualAltitude3D(type);
     root.userData.entityId = entityId;
     root.userData.typeId = type.id;
-    const ownerColor = PLAYER_COLORS[(owner - 1) % PLAYER_COLORS.length] ?? 0xcccccc;
+    const ownerColor = playerColorForOwner(owner);
     const model = this.createModelInstance(type, entityId);
     visualRoot.rotation.y = proceduralModelYawOffset3D(type, !!model);
 
@@ -1086,7 +1116,8 @@ export class ThreeWorldRenderer {
 
     root.add(visualRoot);
 
-    const hpBar = this.createHpBar(type.building ? 1.6 : 0.9, type.building ? 1.6 : entityVisualAltitude3D(type) + 1.35);
+    const hpProfile = entityHpBarProfile3D(type);
+    const hpBar = this.createHpBar(hpProfile.width, hpProfile.y);
     const selectionRing = new Mesh(this.selectionRingGeo, this.selectionRingMat);
     selectionRing.rotation.x = -Math.PI / 2;
     selectionRing.position.y = entitySelectionRingAltitude3D(type);
@@ -2047,13 +2078,24 @@ export class ThreeWorldRenderer {
   private updateHpBar(bar: Group, pct: number, material: Material = this.hpGoodMat.mat, forceVisible = false): void {
     const fill = bar.getObjectByName('fill') as Mesh | null;
     if (!fill) return;
-    const clampedPct = Math.max(0.02, Math.min(1, pct));
+    const normalizedPct = Number.isFinite(pct) ? pct : 0;
+    const clampedPct = Math.max(0.02, Math.min(1, normalizedPct));
     const baseWidth = typeof bar.userData.baseWidth === 'number' ? bar.userData.baseWidth : 1;
     fill.material = material;
     fill.scale.x = clampedPct;
     fill.position.x = -(baseWidth * (1 - clampedPct)) / 2;
-    fill.visible = forceVisible || pct < 0.999;
-    bar.visible = forceVisible || pct < 0.999;
+    const visible = entityHpBarVisible3D(pct, forceVisible);
+    fill.visible = visible;
+    bar.visible = visible;
+  }
+
+  private hpMaterialForOwner(owner: number): Material {
+    let material = this.hpOwnerMats.get(owner);
+    if (!material) {
+      material = new MeshBasicLike(playerColorForOwner(owner));
+      this.hpOwnerMats.set(owner, material);
+    }
+    return material.mat;
   }
 
   private setVisualOpacity(root: Object3D, opacity: number): void {

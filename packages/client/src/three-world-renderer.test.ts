@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
+import * as renderer3D from './three-world-renderer';
 import {
   combatEffectProfile3D,
   commandIndicatorProfile3D,
@@ -70,6 +71,23 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(entitySelectionRingScale3D({ domain: 'infantry' })).toBe(1);
     expect(entitySelectionRingScale3D({ domain: 'vehicle' })).toBeGreaterThanOrEqual(1.7);
     expect(entitySelectionRingScale3D({ domain: 'aircraft' })).toBeGreaterThanOrEqual(1.7);
+  });
+
+  it('keeps health bars visible at full health so faction status is consistent', () => {
+    expect(renderer3D.entityHpBarVisible3D(1)).toBe(true);
+    expect(renderer3D.entityHpBarVisible3D(0.5)).toBe(true);
+  });
+
+  it('raises health bars above low-poly unit silhouettes', () => {
+    expect(renderer3D.entityHpBarProfile3D({ domain: 'infantry' }).y).toBeGreaterThan(1.85);
+    expect(renderer3D.entityHpBarProfile3D({ domain: 'vehicle' }).y).toBeGreaterThan(1.95);
+    expect(renderer3D.entityHpBarProfile3D({ domain: 'aircraft' }).y).toBeGreaterThan(entityVisualAltitude3D({ domain: 'aircraft' }) + 1.8);
+    expect(renderer3D.entityHpBarProfile3D({ domain: 'building', building: { footprintW: 3, footprintH: 2, power: 0 } }).y).toBeGreaterThan(2.2);
+  });
+
+  it('counter-rotates health bars so unit facing cannot turn them edge-on', () => {
+    expect(renderer3D.entityHpBarYaw3D(Math.PI / 2)).toBeCloseTo(-Math.PI / 2);
+    expect(renderer3D.entityHpBarYaw3D(-Math.PI / 4)).toBeCloseTo(Math.PI / 4);
   });
 
   it('keeps aircraft shadows out of raycast picking', () => {
