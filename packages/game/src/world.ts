@@ -165,7 +165,7 @@ const SIM_TICKS_PER_SECOND = 5;
 const CONYARD_INCOME_PER_SECOND = 150;
 const REFINERY_INCOME_PER_SECOND = 600;
 const AUTO_PRODUCTION_STEP = 2;
-const CONSTRUCTION_WORKER_COUNT = 3;
+const CONSTRUCTION_WORKER_COUNT = 1;
 const AIR_BOMB_RUN_FIRST_DISTANCE = 6;
 const AIR_BOMB_RUN_SPACING = 4;
 export interface CapacitySlot {
@@ -183,8 +183,8 @@ export interface CapacitySnapshot {
 
 export const DEFAULT_CAPACITY_LIMITS: Record<keyof CapacitySnapshot, number> = {
   building: 20,
-  worker: 60,
-  infantry: 500,
+  worker: 20,
+  infantry: 300,
   vehicle: 100,
   aircraft: 30,
 };

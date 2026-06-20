@@ -45,8 +45,8 @@ describe('automatic production buildings', () => {
 
     expect(w.capacityFor(1)).toMatchObject({
       building: { count: 2, limit: 20 },
-      infantry: { count: 1, limit: 500 },
-      worker: { count: 1, limit: 60 },
+      infantry: { count: 1, limit: 300 },
+      worker: { count: 1, limit: 20 },
       vehicle: { count: 1, limit: 100 },
       aircraft: { count: 1, limit: 30 },
     });
@@ -54,14 +54,14 @@ describe('automatic production buildings', () => {
 
   it('caps workers separately from soldiers', () => {
     const w = baseWorld(50000);
-    for (let i = 0; i < 60; i++) w.spawnUnit(1, 'worker', 10 + (i % 10), 20 + Math.floor(i / 10));
+    for (let i = 0; i < 20; i++) w.spawnUnit(1, 'worker', 10 + (i % 10), 20 + Math.floor(i / 10));
 
     runTicks(w, 240);
 
-    expect(countType(w, 'worker')).toBe(60);
+    expect(countType(w, 'worker')).toBe(20);
     expect(w.capacityFor(1)).toMatchObject({
-      infantry: { count: 0, limit: 500 },
-      worker: { count: 60, limit: 60 },
+      infantry: { count: 0, limit: 300 },
+      worker: { count: 20, limit: 20 },
     });
     const conyard = [...w.entities.values()].find((e) => e.typeId === 'conyard')!;
     expect(conyard.producer?.paidTypeId).toBeNull();
@@ -86,19 +86,19 @@ describe('automatic production buildings', () => {
     const w = new World(gridTerrain(80, 80), 7);
     w.addPlayer(1, 'allied', 50000);
     const barracks = w.spawnUnit(1, 'barracks', 10, 10)!;
-    for (let i = 0; i < 500; i++) w.spawnUnit(1, 'gi', 20 + (i % 20), 20 + Math.floor(i / 20));
+    for (let i = 0; i < 300; i++) w.spawnUnit(1, 'gi', 20 + (i % 20), 20 + Math.floor(i / 20));
     const creditsAtCap = w.players.get(1)!.credits;
 
     w.step();
 
-    expect(w.capacityFor(1).infantry).toMatchObject({ count: 500, limit: 500 });
+    expect(w.capacityFor(1).infantry).toMatchObject({ count: 300, limit: 300 });
     expect(w.players.get(1)!.credits).toBe(creditsAtCap);
     expect(barracks.producer?.paidTypeId).toBeNull();
     unitsOfType(w, 'gi')[0]!.hp = 0;
     w.step();
     w.step();
 
-    expect(w.capacityFor(1).infantry.count).toBe(499);
+    expect(w.capacityFor(1).infantry.count).toBe(299);
     expect(barracks.producer?.paidTypeId).toBe('gi');
     expect(w.players.get(1)!.credits).toBe(creditsAtCap);
   });

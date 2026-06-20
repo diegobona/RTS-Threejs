@@ -49,24 +49,24 @@ describe('MatchView3D capacity HUD', () => {
     expect(
       capacitySummaryText3D({
         building: { count: 12, limit: 20 },
-        infantry: { count: 340, limit: 500 },
-        worker: { count: 12, limit: 60 },
+        infantry: { count: 340, limit: 300 },
+        worker: { count: 12, limit: 20 },
         vehicle: { count: 76, limit: 100 },
         aircraft: { count: 31, limit: 30 },
       }),
-    ).toBe('建筑 12/20 | 工人 12/60 | 士兵 340/500 | 坦克 76/100 | 飞机 31/30');
+    ).toBe('建筑 12/20 | 工人 12/20 | 士兵 340/300 | 坦克 76/100 | 飞机 31/30');
   });
 
   it('does not expose credits in the top HUD summary', () => {
     const text = topHudText3D({
       building: { count: 4, limit: 20 },
-      infantry: { count: 117, limit: 500 },
-      worker: { count: 8, limit: 60 },
+      infantry: { count: 117, limit: 300 },
+      worker: { count: 8, limit: 20 },
       vehicle: { count: 48, limit: 100 },
       aircraft: { count: 23, limit: 30 },
     });
 
-    expect(text).toBe('建筑 4/20 | 工人 8/60 | 士兵 117/500 | 坦克 48/100 | 飞机 23/30');
+    expect(text).toBe('建筑 4/20 | 工人 8/20 | 士兵 117/300 | 坦克 48/100 | 飞机 23/30');
     expect(text).not.toContain('Credits');
     expect(text).not.toContain('$');
   });

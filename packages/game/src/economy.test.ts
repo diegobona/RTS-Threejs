@@ -165,7 +165,7 @@ describe('map construction placement', () => {
     expect(w.buildOptions(1).map((u) => u.id)).toContain('gi');
   });
 
-  it('sends real workers to the placed building site', () => {
+  it('assigns exactly one real worker to each placed building site', () => {
     const w = baseWorld();
     withConyard(w);
     const workers = [
@@ -177,14 +177,15 @@ describe('map construction placement', () => {
     expect(w.queueProduction(1, 'barracks')).toBe(true);
     const placed = w.placeBuilding(1, 'barracks', 12, 10)!;
 
-    for (const worker of workers) {
-      expect((worker as { constructionTargetId?: number | null }).constructionTargetId).toBe(placed.id);
-      expect(worker.goal).not.toBeNull();
-      expect(worker.goal!.x).toBeGreaterThanOrEqual(11);
-      expect(worker.goal!.x).toBeLessThanOrEqual(14);
-      expect(worker.goal!.y).toBeGreaterThanOrEqual(9);
-      expect(worker.goal!.y).toBeLessThanOrEqual(13);
-    }
+    const assigned = workers.filter((worker) => (worker as { constructionTargetId?: number | null }).constructionTargetId === placed.id);
+    const idle = workers.filter((worker) => (worker as { constructionTargetId?: number | null }).constructionTargetId !== placed.id);
+    expect(assigned).toHaveLength(1);
+    expect(idle).toHaveLength(2);
+    expect(assigned[0]!.goal).not.toBeNull();
+    expect(assigned[0]!.goal!.x).toBeGreaterThanOrEqual(11);
+    expect(assigned[0]!.goal!.x).toBeLessThanOrEqual(14);
+    expect(assigned[0]!.goal!.y).toBeGreaterThanOrEqual(9);
+    expect(assigned[0]!.goal!.y).toBeLessThanOrEqual(13);
   });
 
   it('waits for assigned workers to reach the site before construction progresses', () => {
@@ -204,7 +205,7 @@ describe('map construction placement', () => {
     expect(placed.constructionProgress).toBeGreaterThan(0);
   });
 
-  it('waits for every assigned worker when some workers are still travelling', () => {
+  it('does not wait for unassigned workers from the same base', () => {
     const w = baseWorld();
     withConyard(w);
     w.spawnUnit(1, 'worker', 11, 12);
@@ -215,10 +216,10 @@ describe('map construction placement', () => {
     const placed = w.placeBuilding(1, 'barracks', 10, 10)!;
 
     for (let i = 0; i < 8; i++) w.step();
-    expect(placed.constructionProgress).toBe(0);
+    expect(placed.constructionProgress).toBeGreaterThan(0);
   });
 
-  it('assigns newly available workers to an existing construction site', () => {
+  it('does not assign extra workers to an existing construction site that already has one worker', () => {
     const w = baseWorld();
     withConyard(w);
     w.spawnUnit(1, 'worker', 1, 1);
@@ -229,8 +230,8 @@ describe('map construction placement', () => {
 
     w.step();
 
-    expect((worker as { constructionTargetId?: number | null }).constructionTargetId).toBe(placed.id);
-    expect(worker.goal).not.toBeNull();
+    expect((worker as { constructionTargetId?: number | null }).constructionTargetId).not.toBe(placed.id);
+    expect(worker.goal).toBeNull();
   });
 });
 
