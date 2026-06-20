@@ -41,6 +41,32 @@ export function topHudText3D(capacity: CapacitySnapshot): string {
   return capacitySummaryText3D(capacity);
 }
 
+export interface RulesAndControlsSection3D {
+  title: string;
+  items: string[];
+}
+
+export function rulesAndControlsSections3D(): RulesAndControlsSection3D[] {
+  return [
+    {
+      title: '胜利条件',
+      items: ['消灭敌方全部建筑和战斗单位（不包括工人）。'],
+    },
+    {
+      title: '建造',
+      items: ['有工人才能新建建筑。'],
+    },
+    {
+      title: '选择',
+      items: ['拖框：多选单位。', '双击单位：选中屏幕内同类型单位。', '点击顶部兵种数量：全选该兵种。'],
+    },
+    {
+      title: '编队',
+      items: ['Ctrl+数字：保存当前选中单位。', '数字键：选中对应编队。', '顶部显示编队号、兵种和数量。'],
+    },
+  ];
+}
+
 export function allOwnedUnitIdsInCapacityGroup3D(world: World, localPlayerId: number, group: CapacitySelectionGroup3D): number[] {
   const ids: number[] = [];
   for (const e of world.entities.values()) {
@@ -204,8 +230,18 @@ export const MATCH_3D_STYLE = `
   background: #0d151c; color: #dce6ed; }
 .mv3-producer button { cursor: pointer; padding: 0 9px; }
 .mv3-producer select { min-width: 118px; }
-.mv3-chip { position: fixed; left: 12px; bottom: 12px; z-index: 10; padding: 7px 12px;
-  background: rgba(8,12,16,.82); border: 1px solid rgba(120,150,170,.18); border-radius: 8px; color: #aeb9c2; }
+.mv3-help { position: fixed; left: 12px; bottom: 12px; z-index: 10; display: grid; gap: 8px; justify-items: start; max-width: min(340px, calc(100vw - 24px)); }
+.mv3-help-toggle { height: 34px; padding: 0 12px; border: 1px solid rgba(120,150,170,.28); border-radius: 8px;
+  background: rgba(8,12,16,.86); color: #d8e0e6; cursor: pointer; font: inherit; font-weight: 700; }
+.mv3-help-toggle:hover, .mv3-help-toggle.on { border-color: #58a7d8; color: #fff; background: rgba(23,48,70,.9); }
+.mv3-help-panel { width: min(340px, calc(100vw - 24px)); padding: 12px 14px; border: 1px solid rgba(120,150,170,.24);
+  border-radius: 10px; background: rgba(8,12,16,.88); box-shadow: 0 16px 45px rgba(0,0,0,.28); color: #cbd6dc; }
+.mv3-help-panel h3 { margin: 0 0 8px; font-size: 15px; color: #fff; letter-spacing: 0; }
+.mv3-help-section { display: grid; gap: 4px; padding-top: 8px; margin-top: 8px; border-top: 1px solid rgba(120,150,170,.14); }
+.mv3-help-section:first-of-type { padding-top: 0; margin-top: 0; border-top: 0; }
+.mv3-help-title { color: #72c5ff; font-weight: 800; }
+.mv3-help-list { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+.mv3-help-list li { padding-left: 1px; }
 .mv3-selbox { position: fixed; z-index: 9; display: none; pointer-events: none;
   border: 1px solid #72f085; background: rgba(114,240,133,.14); }
 .mv3-banner { position: fixed; left: 50%; top: 50%; z-index: 30; transform: translate(-50%, -50%);
@@ -319,7 +355,10 @@ export class MatchView3D {
         <div class="mv3-producer" id="mv3-producer"></div>
       </div>
       <div class="mv3-selbox" id="mv3-selbox"></div>
-      <div class="mv3-chip">Build, rally, command the swarm</div>`,
+      <div class="mv3-help" id="mv3-help">
+        <button class="mv3-help-toggle" id="mv3-help-toggle" type="button" aria-expanded="false" aria-controls="mv3-help-panel">规则和控制</button>
+        <div class="mv3-help-panel" id="mv3-help-panel" hidden></div>
+      </div>`,
     );
     this.capacityEl = this.root.querySelector('#mv3-capacity')!;
     this.groupsEl = this.root.querySelector('#mv3-groups')!;
@@ -339,6 +378,7 @@ export class MatchView3D {
     });
     this.buildProductionTabs();
     this.rebuildProductionPanel();
+    this.buildRulesAndControlsPanel();
     this.refreshGroundMoveModeButtons();
     this.root.querySelector('#mv3-orders')?.addEventListener('click', (e) => {
       const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-ground-mode]');
@@ -351,6 +391,43 @@ export class MatchView3D {
       const button = this.root.querySelector('#mv3-mute');
       if (button) button.textContent = muted ? 'Muted' : 'Sound';
     });
+    const help = this.root.querySelector('#mv3-help');
+    help?.addEventListener('pointerdown', (e) => e.stopPropagation());
+    this.root.querySelector('#mv3-help-toggle')?.addEventListener('click', () => this.toggleRulesAndControlsPanel());
+  }
+
+  private buildRulesAndControlsPanel(): void {
+    const panel = this.root.querySelector('#mv3-help-panel');
+    if (!panel) return;
+    const heading = document.createElement('h3');
+    heading.textContent = '规则和控制';
+    const sections = rulesAndControlsSections3D().map((section) => {
+      const block = document.createElement('section');
+      block.className = 'mv3-help-section';
+      const title = document.createElement('div');
+      title.className = 'mv3-help-title';
+      title.textContent = section.title;
+      const list = document.createElement('ul');
+      list.className = 'mv3-help-list';
+      for (const item of section.items) {
+        const li = document.createElement('li');
+        li.textContent = item;
+        list.appendChild(li);
+      }
+      block.append(title, list);
+      return block;
+    });
+    panel.replaceChildren(heading, ...sections);
+  }
+
+  private toggleRulesAndControlsPanel(): void {
+    const panel = this.root.querySelector<HTMLElement>('#mv3-help-panel');
+    const button = this.root.querySelector<HTMLButtonElement>('#mv3-help-toggle');
+    if (!panel || !button) return;
+    const open = panel.hidden;
+    panel.hidden = !open;
+    button.classList.toggle('on', open);
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
 
   private setGroundMoveMode(mode: GroundMoveMode): void {

@@ -12,6 +12,7 @@ import {
   initialCameraFocus3D,
   matchOutcomeText3D,
   PRODUCTION_CATEGORIES_3D,
+  rulesAndControlsSections3D,
   sameTypeVisibleSelectionIds3D,
   topHudText3D,
 } from './match-view-3d';
@@ -54,6 +55,24 @@ describe('MatchView3D audio unlock', () => {
     keys.dispatchEvent(new Event('keydown'));
 
     expect(resumes).toBe(1);
+  });
+});
+
+describe('MatchView3D rules and controls help', () => {
+  it('keeps the help panel concise and grouped by player task', () => {
+    const sections = rulesAndControlsSections3D();
+
+    expect(sections.map((section) => section.title)).toEqual(['胜利条件', '建造', '选择', '编队']);
+    expect(sections.flatMap((section) => section.items)).toEqual([
+      '消灭敌方全部建筑和战斗单位（不包括工人）。',
+      '有工人才能新建建筑。',
+      '拖框：多选单位。',
+      '双击单位：选中屏幕内同类型单位。',
+      '点击顶部兵种数量：全选该兵种。',
+      'Ctrl+数字：保存当前选中单位。',
+      '数字键：选中对应编队。',
+      '顶部显示编队号、兵种和数量。',
+    ]);
   });
 });
 
