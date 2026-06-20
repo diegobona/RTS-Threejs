@@ -395,6 +395,36 @@ describe('automatic production buildings', () => {
     expect(Math.max(...targetDistances)).toBeLessThanOrEqual(4);
   });
 
+  it('uses the same target-area bombing orbit for mobile ground targets', () => {
+    const w = baseWorld(50000);
+    w.addPlayer(2, 'soviet', 0);
+    const target = w.spawnUnit(2, 'grizzly', 28, 28)!;
+    const ids: number[] = [];
+    for (let i = 0; i < 8; i++) ids.push(w.spawnUnit(1, 'fighter', 4 + (i % 4), 8 + Math.floor(i / 4))!.id);
+
+    w.applyCommands([{ kind: 'attack', entityIds: ids, targetId: target.id }]);
+
+    const stations = ids.map((id) => {
+      const station = airLoiterOf(w.entities.get(id)!);
+      expect(station.airLoiterX).toBeDefined();
+      expect(station.airLoiterY).toBeDefined();
+      return { x: station.airLoiterX!, y: station.airLoiterY! };
+    });
+    let minDistance = Infinity;
+    for (let i = 0; i < stations.length; i++) {
+      for (let j = i + 1; j < stations.length; j++) {
+        const a = stations[i]!;
+        const b = stations[j]!;
+        minDistance = Math.min(minDistance, Math.hypot(a.x - b.x, a.y - b.y));
+      }
+    }
+    const targetCenter = { x: leptonToCell(target.x), y: leptonToCell(target.y) };
+    const targetDistances = stations.map((s) => Math.hypot(s.x - targetCenter.x, s.y - targetCenter.y));
+
+    expect(minDistance).toBeGreaterThanOrEqual(2);
+    expect(Math.max(...targetDistances)).toBeLessThanOrEqual(4);
+  });
+
   it('moves bombers into a target-area orbit before releasing bombs', () => {
     const w = new World(gridTerrain(56, 56), 7);
     w.addPlayer(1, 'allied', 50000);

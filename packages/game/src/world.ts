@@ -1606,7 +1606,8 @@ export class World {
   }
 
   private usesAircraftBombRun(type: UnitType, target: Entity, weapon: WeaponSpec): boolean {
-    return this.isAircraftBombWeapon(type, weapon) && this.rules.units.get(target.typeId)?.domain === 'building';
+    const targetDomain = this.rules.units.get(target.typeId)?.domain;
+    return this.isAircraftBombWeapon(type, weapon) && targetDomain !== undefined && targetDomain !== 'aircraft';
   }
 
   private effectiveWeaponRange(type: UnitType, e: Entity, target: Entity, weapon: WeaponSpec): number {

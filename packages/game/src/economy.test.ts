@@ -128,7 +128,7 @@ describe('fighter dual-role combat', () => {
     w.applyCommands([{ kind: 'stance', entityIds: [tank.id], stance: 'holdfire' }]);
     w.applyCommands([{ kind: 'attack', entityIds: [fighter.id], targetId: tank.id }]);
 
-    for (let i = 0; i < 20 && w.projectiles.length === 0; i++) w.step();
+    for (let i = 0; i < 900 && w.projectiles.length === 0; i++) w.step();
 
     expect(w.projectiles[0]).toMatchObject({
       shooterId: fighter.id,
