@@ -190,10 +190,53 @@ export const DEFAULT_CAPACITY_LIMITS: Record<keyof CapacitySnapshot, number> = {
 };
 /** 单位「警戒」半径（lepton）：空闲单位会主动迎击此范围内的敌人（即便超出武器射程也会上前）。 */
 const GUARD_RANGE = 6 * 256;
+const COMBAT_SPATIAL_BUCKET_SIZE = GUARD_RANGE;
 /** 修理：每隔多少 tick 回一次血。 */
 const REPAIR_INTERVAL = 5;
 /** 修理花费相对造价比例（修满约花造价的此比例）。 */
 const REPAIR_COST_RATIO = 0.5;
+
+export interface CombatSpatialIndex {
+  nearby(x: number, y: number, radius: number): Entity[];
+}
+
+export function buildCombatSpatialIndex(
+  entities: Iterable<Entity>,
+  bucketSize = COMBAT_SPATIAL_BUCKET_SIZE,
+): CombatSpatialIndex {
+  const buckets = new Map<string, Entity[]>();
+  const keyOf = (bucketX: number, bucketY: number): string => `${bucketX}:${bucketY}`;
+  const bucketOf = (value: number): number => Math.floor(value / bucketSize);
+
+  for (const e of entities) {
+    const bucketX = bucketOf(e.x);
+    const bucketY = bucketOf(e.y);
+    const key = keyOf(bucketX, bucketY);
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(e);
+    else buckets.set(key, [e]);
+  }
+
+  return {
+    nearby(x: number, y: number, radius: number): Entity[] {
+      const out: Entity[] = [];
+      const minX = bucketOf(x - radius);
+      const maxX = bucketOf(x + radius);
+      const minY = bucketOf(y - radius);
+      const maxY = bucketOf(y + radius);
+      for (let by = minY; by <= maxY; by++) {
+        for (let bx = minX; bx <= maxX; bx++) {
+          const bucket = buckets.get(keyOf(bx, by));
+          if (!bucket) continue;
+          for (const e of bucket) {
+            if (dist(e.x - x, e.y - y) <= radius) out.push(e);
+          }
+        }
+      }
+      return out;
+    },
+  };
+}
 
 export function categoryOf(u: UnitType): ProdCategory {
   return u.domain === 'building' ? 'building' : u.domain;
@@ -234,6 +277,7 @@ export class World {
   /** 建筑占用的格 → entityId，用于放置校验与寻路阻挡。 */
   private readonly occupied = new Map<number, number>();
   private readonly reservedProducerExits = new Map<number, number>();
+  private combatSpatialIndex: CombatSpatialIndex | null = null;
 
   constructor(
     readonly terrain: TerrainInfo,
@@ -1583,6 +1627,25 @@ export class World {
     return Math.max(weapon.range, GUARD_RANGE);
   }
 
+  private maxAcquireRange(type: UnitType, e: Entity, onMission: boolean): number {
+    let maxRange = 0;
+    const weapons = [type.antiAirWeapon, type.weapon].filter((weapon): weapon is WeaponSpec => !!weapon);
+    for (const weapon of weapons) {
+      maxRange = Math.max(
+        maxRange,
+        this.acquireRangeForWeapon(type, e, weapon, false, onMission),
+        this.acquireRangeForWeapon(type, e, weapon, true, onMission),
+      );
+    }
+    return maxRange;
+  }
+
+  private combatCandidatesNear(e: Entity, type: UnitType, onMission: boolean): Iterable<Entity> {
+    const radius = this.maxAcquireRange(type, e, onMission);
+    if (radius <= 0) return [];
+    return this.combatSpatialIndex?.nearby(e.x, e.y, radius) ?? this.entities.values();
+  }
+
   private acquireEnemy(e: Entity, type: UnitType): Entity | null {
     const onMission = e.attackMove; // 攻击移动/巡逻：无视姿态，强制按警戒半径交战
     if (!onMission && e.stance === 'holdfire') return null; // 不还火：不自动索敌
@@ -1592,7 +1655,8 @@ export class World {
     let bestRank = 0;
     let bestHp = 0;
     let bestD = 0;
-    for (const o of this.entities.values()) {
+    for (const o of this.combatCandidatesNear(e, type, onMission)) {
+      if (!this.entities.has(o.id)) continue;
       if (o.owner === e.owner || this.players.get(o.owner)?.defeated) continue;
       const ot = this.rules.units.get(o.typeId);
       if (!ot) continue;
@@ -1841,6 +1905,7 @@ export class World {
     this.stepProduction();
     this.stepConstruction();
     this.stepRepair();
+    this.combatSpatialIndex = buildCombatSpatialIndex(this.entities.values());
     for (const e of this.entities.values()) {
       const type = this.rules.units.get(e.typeId);
       if (!type) continue;
@@ -1849,6 +1914,7 @@ export class World {
       const engaging = this.stepCombat(e, type);
       if (!engaging) this.stepMovement(e, type);
     }
+    this.combatSpatialIndex = null;
     this.stepProjectiles();
     this.reapDead();
     this.stepAutoProduction();
