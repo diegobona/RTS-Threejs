@@ -29,6 +29,7 @@ import {
   projectileImpactKind3D,
   projectileVisualProfile3D,
   projectileVisualPoint3D,
+  RALLY_VISUAL_STYLE_3D,
   shouldUseInstancedUnitModel3D,
 } from './three-world-renderer';
 
@@ -399,6 +400,14 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(moveTransform.ringScale).toBeGreaterThan(1.3);
     expect(attack.color).toBe(0xff4b4b);
     expect(attack.showSwords).toBe(true);
+  });
+
+  it('uses high-contrast amber lines and red flags for rally point markers', () => {
+    expect(RALLY_VISUAL_STYLE_3D.lineColor).toBe(0xffc247);
+    expect(RALLY_VISUAL_STYLE_3D.flagColor).toBe(0xff3d3d);
+    expect(RALLY_VISUAL_STYLE_3D.lineOpacity).toBeGreaterThan(0.85);
+    expect(RALLY_VISUAL_STYLE_3D.lineColor).not.toBe(0x6fe0a0);
+    expect(RALLY_VISUAL_STYLE_3D.flagColor).not.toBe(0x6fe0a0);
   });
 
   it('scales and lifts attack markers for large building targets so they are not hidden under the model', () => {

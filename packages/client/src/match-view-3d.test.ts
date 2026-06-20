@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '@ra2web/game';
 import { gridTerrain } from '@ra2web/game';
+import * as matchView3D from './match-view-3d';
 import {
   allOwnedUnitIdsInCapacityGroup3D,
   bindAudioUnlock,
@@ -9,6 +10,8 @@ import {
   controlGroupButtonLabel3D,
   controlGroupIdsForSelection3D,
   controlGroupHudItems3D,
+  DEFAULT_GROUND_MOVE_MODE_3D,
+  GROUND_MOVE_MODE_BUTTONS_3D,
   initialCameraFocus3D,
   matchOutcomeText3D,
   PRODUCTION_CATEGORIES_3D,
@@ -26,6 +29,19 @@ describe('MatchView3D camera defaults', () => {
 describe('MatchView3D production tabs', () => {
   it('only exposes manual building production; units are produced automatically by buildings', () => {
     expect(PRODUCTION_CATEGORIES_3D).toEqual(['building']);
+  });
+});
+
+describe('MatchView3D ground order mode HUD', () => {
+  it('uses persistent button modes without a keyboard shortcut', () => {
+    expect(DEFAULT_GROUND_MOVE_MODE_3D).toBe('move');
+    expect(GROUND_MOVE_MODE_BUTTONS_3D).toEqual([
+      { mode: 'move', label: '途中遇敌不攻击', title: '默认：右键移动，不主动攻击沿途敌人' },
+      { mode: 'attackMove', label: '途中遇敌攻击', title: '选择后，右键移动会边走边攻击' },
+    ]);
+    expect(JSON.stringify(GROUND_MOVE_MODE_BUTTONS_3D)).not.toContain('A');
+    expect('isAttackMoveModifierKey3D' in matchView3D).toBe(false);
+    expect('groundMoveModeForOrder3D' in matchView3D).toBe(false);
   });
 });
 

@@ -69,6 +69,10 @@ const UNIT_HINT: Record<string, string> = {
   apocalypse: '天启坦克·重甲猛兽',
 };
 
+const RALLY_LINE_COLOR = 0xffc247;
+const RALLY_FLAG_COLOR = 0xff3d3d;
+const RALLY_POLE_COLOR = 0x202934;
+
 export const MATCH_STYLE = `
 .mv-root { position: fixed; inset: 0; overflow: hidden; background: #06090c;
   font: 13px/1.4 system-ui, 'PingFang SC', sans-serif; color: #d8e0e6; touch-action: none; }
@@ -622,8 +626,11 @@ export class MatchView {
         const to = this.renderer.cellTopScreen(b.rallyX, b.rallyY);
         const fy = from.y + TILE_H / 2;
         const ty = to.y + TILE_H / 2;
-        this.pingG.moveTo(from.x, fy).lineTo(to.x, ty).stroke({ color: 0x6fe0a0, width: 2, alpha: 0.6 });
-        this.pingG.circle(to.x, ty, 6).stroke({ color: 0x6fe0a0, width: 2, alpha: 0.85 });
+        this.pingG.moveTo(from.x, fy).lineTo(to.x, ty).stroke({ color: RALLY_POLE_COLOR, width: 4, alpha: 0.45 });
+        this.pingG.moveTo(from.x, fy).lineTo(to.x, ty).stroke({ color: RALLY_LINE_COLOR, width: 2.5, alpha: 0.95 });
+        this.pingG.circle(to.x, ty, 7).stroke({ color: RALLY_LINE_COLOR, width: 2.5, alpha: 0.95 });
+        this.pingG.moveTo(to.x, ty).lineTo(to.x, ty - 20).stroke({ color: RALLY_POLE_COLOR, width: 2.5, alpha: 0.95 });
+        this.pingG.poly([to.x, ty - 20, to.x + 18, ty - 15, to.x, ty - 10]).fill({ color: RALLY_FLAG_COLOR, alpha: 0.95 });
       }
     }
   }

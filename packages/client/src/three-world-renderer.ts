@@ -89,6 +89,18 @@ export interface CommandIndicatorTransform3D {
   swordHeight: number;
 }
 
+export interface RallyVisualStyle3D {
+  lineColor: number;
+  lineShadowColor: number;
+  flagColor: number;
+  poleColor: number;
+  baseColor: number;
+  lineOpacity: number;
+  flagOpacity: number;
+  lineWidth: number;
+  flagHeight: number;
+}
+
 export interface CombatEffectProfile3D {
   visual: 'muzzleFlash' | 'impactSpark' | 'blast';
   color: number;
@@ -234,6 +246,18 @@ export function commandIndicatorTransform3D(
     swordHeight: kind === 'attack' ? 0.78 + Math.max(0, footprint - 1) * 0.65 : 0.78,
   };
 }
+
+export const RALLY_VISUAL_STYLE_3D: RallyVisualStyle3D = {
+  lineColor: 0xffc247,
+  lineShadowColor: 0x141414,
+  flagColor: 0xff3d3d,
+  poleColor: 0x202934,
+  baseColor: 0xffd65c,
+  lineOpacity: 0.94,
+  flagOpacity: 0.96,
+  lineWidth: 0.16,
+  flagHeight: 1.18,
+};
 
 export function entityVisualAltitude3D(type: Pick<UnitType, 'domain'>): number {
   return type.domain === 'aircraft' ? AIRCRAFT_ALTITUDE : 0;
@@ -605,10 +629,12 @@ export class ThreeWorldRenderer {
   private readonly projectileLayer = new Group();
   private readonly effectLayer = new Group();
   private readonly previewLayer = new Group();
+  private readonly rallyLayer = new Group();
   private readonly views = new Map<number, EntityView>();
   private readonly combatEffects: CombatEffect[] = [];
   private readonly instancedBatches = new Map<string, InstancedModelBatch>();
   private readonly modelTemplates = new Map<string, Object3D>();
+  private rallyVisualKey = '';
   private readonly gltfLoader = new GLTFLoader();
   private readonly audioEvents = new ThreeAudioEventTracker();
   private frameVisualBudget = createFrameVisualBudget3D();
@@ -675,7 +701,7 @@ export class ThreeWorldRenderer {
     this.scene.add(new AmbientLight(0xd8edf2, 1.55));
     const sun = new DirectionalLight(0xfff4d7, 3.1);
     sun.position.set(-20, 42, 28);
-    this.scene.add(sun, this.entityLayer, this.projectileLayer, this.effectLayer, this.previewLayer);
+    this.scene.add(sun, this.rallyLayer, this.entityLayer, this.projectileLayer, this.effectLayer, this.previewLayer);
 
     this.drawTerrain();
     this.drawOre();
@@ -708,6 +734,7 @@ export class ThreeWorldRenderer {
   render(camera: Camera, alpha: number, selected: ReadonlySet<number>, nearbyHpIds: ReadonlySet<number> = new Set()): void {
     this.frameVisualBudget = createFrameVisualBudget3D();
     this.syncEntities(alpha, selected, nearbyHpIds);
+    this.syncRallyVisuals(selected);
     this.syncProjectiles();
     this.processCombatEvents();
     this.stepCombatEffects();
@@ -852,6 +879,98 @@ export class ThreeWorldRenderer {
     const pos = cellToWorld3D(cell.x + (b.footprintW - 1) / 2, cell.y + (b.footprintH - 1) / 2);
     mesh.position.set(pos.x, 0.12, pos.z);
     this.previewLayer.add(mesh);
+  }
+
+  private syncRallyVisuals(selected: ReadonlySet<number>): void {
+    const entries: { id: number; from: { x: number; z: number }; to: { x: number; z: number } }[] = [];
+    for (const id of [...selected].sort((a, b) => a - b)) {
+      const e = this.world.entities.get(id);
+      const type = e && this.world.rules.units.get(e.typeId);
+      if (!e || !type?.building || !e.producer || e.rallyX < 0 || e.rallyY < 0) continue;
+      const from = cellToWorld3D(e.cellX + (type.building.footprintW - 1) / 2, e.cellY + (type.building.footprintH - 1) / 2);
+      const to = cellToWorld3D(e.rallyX, e.rallyY);
+      entries.push({ id, from, to });
+    }
+
+    const key = entries
+      .map((entry) => `${entry.id}:${entry.from.x.toFixed(2)},${entry.from.z.toFixed(2)}>${entry.to.x.toFixed(2)},${entry.to.z.toFixed(2)}`)
+      .join('|');
+    if (key === this.rallyVisualKey) return;
+    this.rallyVisualKey = key;
+    this.clearRallyVisuals();
+    for (const entry of entries) this.rallyLayer.add(this.createRallyVisual(entry.from, entry.to));
+  }
+
+  private createRallyVisual(from: { x: number; z: number }, to: { x: number; z: number }): Group {
+    const root = new Group();
+    root.name = 'rally-point-visual';
+    const style = RALLY_VISUAL_STYLE_3D;
+    const dx = to.x - from.x;
+    const dz = to.z - from.z;
+    const length = Math.hypot(dx, dz);
+    if (length > 0.2) {
+      const shadowMat = new MeshBasicMaterial({
+        color: style.lineShadowColor,
+        transparent: true,
+        opacity: 0.5,
+        depthWrite: false,
+        depthTest: false,
+      });
+      const lineMat = new MeshBasicMaterial({
+        color: style.lineColor,
+        transparent: true,
+        opacity: style.lineOpacity,
+        depthWrite: false,
+        depthTest: false,
+      });
+      const yaw = Math.atan2(-dz, dx);
+      const shadow = new Mesh(new BoxGeometry(length, 0.04, style.lineWidth * 1.95), shadowMat);
+      shadow.position.set((from.x + to.x) / 2, 0.135, (from.z + to.z) / 2);
+      shadow.rotation.y = yaw;
+      const line = new Mesh(new BoxGeometry(length, 0.05, style.lineWidth), lineMat);
+      line.position.set((from.x + to.x) / 2, 0.17, (from.z + to.z) / 2);
+      line.rotation.y = yaw;
+      root.add(shadow, line);
+    }
+
+    const ringMat = new MeshBasicMaterial({
+      color: style.baseColor,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+      depthTest: false,
+      side: DoubleSide,
+    });
+    const ring = new Mesh(new RingGeometry(0.52, 0.72, 28), ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(to.x, 0.2, to.z);
+
+    const poleMat = new MeshBasicMaterial({
+      color: style.poleColor,
+      transparent: true,
+      opacity: 0.98,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const flagMat = new MeshBasicMaterial({
+      color: style.flagColor,
+      transparent: true,
+      opacity: style.flagOpacity,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const pole = new Mesh(new BoxGeometry(0.09, style.flagHeight, 0.09), poleMat);
+    pole.position.set(to.x, 0.2 + style.flagHeight / 2, to.z);
+    const flagA = new Mesh(new BoxGeometry(0.72, 0.4, 0.08), flagMat);
+    flagA.position.set(to.x + 0.34, 0.2 + style.flagHeight - 0.18, to.z);
+    const flagB = new Mesh(new BoxGeometry(0.08, 0.4, 0.72), flagMat);
+    flagB.position.set(to.x, 0.2 + style.flagHeight - 0.18, to.z + 0.34);
+    root.add(ring, pole, flagA, flagB);
+    return root;
+  }
+
+  private clearRallyVisuals(): void {
+    for (const child of [...this.rallyLayer.children]) this.disposeObject(child);
   }
 
   dispose(): void {

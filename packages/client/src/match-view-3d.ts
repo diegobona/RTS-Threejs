@@ -16,6 +16,13 @@ export function initialCameraFocus3D(mapW: number, mapH: number): { x: number; z
 
 export const PRODUCTION_CATEGORIES_3D = ['building'] as const satisfies readonly ProdCategory[];
 
+export const DEFAULT_GROUND_MOVE_MODE_3D: GroundMoveMode = 'move';
+
+export const GROUND_MOVE_MODE_BUTTONS_3D = [
+  { mode: 'move', label: '途中遇敌不攻击', title: '默认：右键移动，不主动攻击沿途敌人' },
+  { mode: 'attackMove', label: '途中遇敌攻击', title: '选择后，右键移动会边走边攻击' },
+] as const satisfies readonly { mode: GroundMoveMode; label: string; title: string }[];
+
 export type CapacitySelectionGroup3D = 'worker' | 'infantry' | 'vehicle' | 'aircraft';
 
 export interface CapacitySummarySegment3D {
@@ -274,7 +281,7 @@ export class MatchView3D {
   private producerPanelKey = '';
   private capacityHudKey = '';
   private controlGroupsHudKey = '';
-  private groundMoveMode: GroundMoveMode = 'move';
+  private groundMoveMode: GroundMoveMode = DEFAULT_GROUND_MOVE_MODE_3D;
   private over = false;
 
   constructor(
@@ -335,6 +342,10 @@ export class MatchView3D {
   }
 
   private buildDom(): void {
+    const groundModeButtons = GROUND_MOVE_MODE_BUTTONS_3D.map(
+      (button) =>
+        `<button type="button" data-ground-mode="${button.mode}" title="${button.title}">${button.label}</button>`,
+    ).join('');
     this.root.insertAdjacentHTML(
       'beforeend',
       `<div class="mv3-top">
@@ -346,8 +357,7 @@ export class MatchView3D {
         <a href="#">Exit</a>
       </div>
       <div class="mv3-orders" id="mv3-orders">
-        <button type="button" data-ground-mode="move">途中遇敌不攻击</button>
-        <button type="button" data-ground-mode="attackMove">途中遇敌攻击</button>
+        ${groundModeButtons}
       </div>
       <div class="mv3-build">
         <div class="mv3-tabs" id="mv3-tabs"></div>
