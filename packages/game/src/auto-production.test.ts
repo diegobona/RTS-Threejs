@@ -131,6 +131,60 @@ describe('automatic production buildings', () => {
     expect(workers[0]!.cellY).toBe(conyard.producerExit!.y);
   });
 
+  it('stops producing workers after the conyard is destroyed', () => {
+    const w = baseWorld(10000);
+    const conyard = [...w.entities.values()].find((e) => e.typeId === 'conyard')!;
+    conyard.hp = 0;
+    runTicks(w, 1);
+
+    expect([...w.entities.values()].some((e) => e.typeId === 'conyard')).toBe(false);
+    const workersAfterDestroy = countType(w, 'worker');
+
+    runTicks(w, 240);
+
+    expect(countType(w, 'worker')).toBe(workersAfterDestroy);
+  });
+
+  it('does not finish a worker from a dead conyard waiting to be reaped', () => {
+    const w = baseWorld(10000);
+    const conyard = [...w.entities.values()].find((e) => e.typeId === 'conyard')!;
+    const worker = w.rules.units.get('worker')!;
+    conyard.producer = { enabled: true, typeId: 'worker', progress: worker.buildTime - 1, paidTypeId: 'worker' };
+    conyard.hp = 0;
+
+    runTicks(w, 1);
+
+    expect(countType(w, 'worker')).toBe(0);
+    expect([...w.entities.values()].some((e) => e.typeId === 'conyard')).toBe(false);
+  });
+
+  it('resolves lethal projectiles before a conyard can complete worker production in the same tick', () => {
+    const w = baseWorld(10000);
+    const conyard = [...w.entities.values()].find((e) => e.typeId === 'conyard')!;
+    const worker = w.rules.units.get('worker')!;
+    conyard.producer = { enabled: true, typeId: 'worker', progress: worker.buildTime - 1, paidTypeId: 'worker' };
+    w.addPlayer(2, 'soviet', 0);
+    w.projectiles.push({
+      id: 999,
+      x: conyard.x,
+      y: conyard.y,
+      targetId: conyard.id,
+      speed: 999,
+      damage: conyard.hp,
+      warheadId: JSON.stringify({ none: 100, flak: 100, plate: 100, light: 100, heavy: 100, concrete: 100 }),
+      splash: 0,
+      owner: 2,
+      shooterId: -1,
+      weaponRole: 'bomb',
+      targetDomains: ['building'],
+    });
+
+    runTicks(w, 1);
+
+    expect(countType(w, 'worker')).toBe(0);
+    expect([...w.entities.values()].some((e) => e.typeId === 'conyard')).toBe(false);
+  });
+
   it('produces tanks and aircraft from their own factories', () => {
     const w = baseWorld(20000);
     w.spawnUnit(1, 'warfactory', 10, 10);

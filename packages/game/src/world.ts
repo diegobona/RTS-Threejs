@@ -754,7 +754,7 @@ export class World {
   private stepProducer(building: Entity): void {
     const producer = building.producer;
     const player = this.players.get(building.owner);
-    if (!producer || !producer.enabled || !player || player.defeated) return;
+    if (!producer || !producer.enabled || !player || player.defeated || building.hp <= 0 || !this.isConstructionComplete(building)) return;
 
     const activeTypeId = producer.paidTypeId ?? producer.typeId;
     let type = this.rules.units.get(activeTypeId);
@@ -1849,9 +1849,9 @@ export class World {
       const engaging = this.stepCombat(e, type);
       if (!engaging) this.stepMovement(e, type);
     }
-    this.stepAutoProduction();
     this.stepProjectiles();
     this.reapDead();
+    this.stepAutoProduction();
     this.tick++;
   }
 
