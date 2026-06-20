@@ -100,6 +100,15 @@ export interface EntityHpBarProfile3D {
   y: number;
 }
 
+export interface EntityHpBarVisibility3D {
+  hp: number;
+  maxHp: number;
+  selected?: boolean;
+  nearby?: boolean;
+  combat?: boolean;
+  constructing?: boolean;
+}
+
 const AIRCRAFT_ALTITUDE = 8;
 const AIRCRAFT_IDLE_ORBIT_RADIUS = 11.5;
 const AIRCRAFT_IDLE_ORBIT_LANE_SPACING = 4;
@@ -208,8 +217,10 @@ export function entityHpBarProfile3D(type: Pick<UnitType, 'domain' | 'building'>
   return { width: 0.95, y: 2.05 };
 }
 
-export function entityHpBarVisible3D(pct: number, forceVisible = false): boolean {
-  return forceVisible || Number.isFinite(pct);
+export function entityHpBarVisible3D(state: EntityHpBarVisibility3D): boolean {
+  if (state.constructing || state.selected || state.nearby || state.combat) return true;
+  if (!Number.isFinite(state.hp) || !Number.isFinite(state.maxHp) || state.maxHp <= 0) return false;
+  return state.hp < state.maxHp;
 }
 
 export function entityHpBarYaw3D(entityYaw: number): number {
@@ -640,8 +651,8 @@ export class ThreeWorldRenderer {
     camera.updateProjectionMatrix();
   }
 
-  render(camera: Camera, alpha: number, selected: ReadonlySet<number>): void {
-    this.syncEntities(alpha, selected);
+  render(camera: Camera, alpha: number, selected: ReadonlySet<number>, nearbyHpIds: ReadonlySet<number> = new Set()): void {
+    this.syncEntities(alpha, selected, nearbyHpIds);
     this.syncProjectiles();
     this.processCombatEvents();
     this.stepCombatEffects();
@@ -744,12 +755,22 @@ export class ThreeWorldRenderer {
   }
 
   ownUnitScreenPoints(camera: Camera): { id: number; x: number; y: number }[] {
+    const out: { id: number; x: number; y: number }[] = [];
+    for (const point of this.entityScreenPoints(camera)) {
+      const e = this.world.entities.get(point.id);
+      const type = e && this.world.rules.units.get(e.typeId);
+      if (e?.owner === this.localPlayerId && type && type.domain !== 'building') out.push(point);
+    }
+    return out;
+  }
+
+  entityScreenPoints(camera: Camera): { id: number; x: number; y: number }[] {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const out: { id: number; x: number; y: number }[] = [];
     for (const [id, view] of this.views) {
       const e = this.world.entities.get(id);
       const type = e && this.world.rules.units.get(e.typeId);
-      if (!e || e.owner !== this.localPlayerId || !type || type.domain === 'building') continue;
+      if (!e || !type) continue;
       const p = view.root.position.clone();
       p.y += entityVisualAltitude3D(type);
       p.project(camera);
@@ -1002,8 +1023,9 @@ export class ThreeWorldRenderer {
     }
   }
 
-  private syncEntities(alpha: number, selected: ReadonlySet<number>): void {
+  private syncEntities(alpha: number, selected: ReadonlySet<number>, nearbyHpIds: ReadonlySet<number>): void {
     const seen = new Set<number>();
+    const combatIds = this.combatEntityIds();
     const nowSeconds = performance.now() / 1000;
     const airOrbitCenters = this.aircraftOrbitCenters();
     for (const e of this.world.entities.values()) {
@@ -1067,11 +1089,19 @@ export class ThreeWorldRenderer {
       view.selectionRing.visible = selected.has(e.id);
       this.applyHpBarProfile(view.hpBar, constructing ? entityConstructionBarProfile3D(type) : null);
       view.hpBar.rotation.y = entityHpBarYaw3D(view.root.rotation.y);
+      const showHpBar = entityHpBarVisible3D({
+        hp: e.hp,
+        maxHp: e.maxHp,
+        selected: selected.has(e.id),
+        nearby: nearbyHpIds.has(e.id),
+        combat: combatIds.has(e.id),
+        constructing,
+      });
       this.updateHpBar(
         view.hpBar,
         constructing ? constructionPct : e.hp / e.maxHp,
         constructing ? this.hpConstructionMat.mat : this.hpMaterialForOwner(e.owner),
-        constructing,
+        showHpBar,
       );
     }
 
@@ -2075,7 +2105,7 @@ export class ThreeWorldRenderer {
     bar.scale.set(profile.widthScale, profile.heightScale, profile.depthScale);
   }
 
-  private updateHpBar(bar: Group, pct: number, material: Material = this.hpGoodMat.mat, forceVisible = false): void {
+  private updateHpBar(bar: Group, pct: number, material: Material = this.hpGoodMat.mat, visible = false): void {
     const fill = bar.getObjectByName('fill') as Mesh | null;
     if (!fill) return;
     const normalizedPct = Number.isFinite(pct) ? pct : 0;
@@ -2084,9 +2114,24 @@ export class ThreeWorldRenderer {
     fill.material = material;
     fill.scale.x = clampedPct;
     fill.position.x = -(baseWidth * (1 - clampedPct)) / 2;
-    const visible = entityHpBarVisible3D(pct, forceVisible);
     fill.visible = visible;
     bar.visible = visible;
+  }
+
+  private combatEntityIds(): Set<number> {
+    const ids = new Set<number>();
+    for (const e of this.world.entities.values()) {
+      if (e.cooldown > 0) ids.add(e.id);
+      if (e.targetId !== null) {
+        ids.add(e.id);
+        if (this.world.entities.has(e.targetId)) ids.add(e.targetId);
+      }
+    }
+    for (const p of this.world.projectiles) {
+      ids.add(p.shooterId);
+      ids.add(p.targetId);
+    }
+    return ids;
   }
 
   private hpMaterialForOwner(owner: number): Material {

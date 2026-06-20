@@ -73,9 +73,15 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(entitySelectionRingScale3D({ domain: 'aircraft' })).toBeGreaterThanOrEqual(1.7);
   });
 
-  it('keeps health bars visible at full health so faction status is consistent', () => {
-    expect(renderer3D.entityHpBarVisible3D(1)).toBe(true);
-    expect(renderer3D.entityHpBarVisible3D(0.5)).toBe(true);
+  it('shows health bars only for selected, damaged, hovered, constructing, or fighting entities', () => {
+    const healthyIdle = { hp: 100, maxHp: 100 };
+
+    expect(renderer3D.entityHpBarVisible3D(healthyIdle)).toBe(false);
+    expect(renderer3D.entityHpBarVisible3D({ ...healthyIdle, selected: true })).toBe(true);
+    expect(renderer3D.entityHpBarVisible3D({ hp: 60, maxHp: 100 })).toBe(true);
+    expect(renderer3D.entityHpBarVisible3D({ ...healthyIdle, nearby: true })).toBe(true);
+    expect(renderer3D.entityHpBarVisible3D({ ...healthyIdle, combat: true })).toBe(true);
+    expect(renderer3D.entityHpBarVisible3D({ ...healthyIdle, constructing: true })).toBe(true);
   });
 
   it('raises health bars above low-poly unit silhouettes', () => {

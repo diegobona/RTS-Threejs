@@ -100,6 +100,7 @@ export class MatchView3D {
   private activeCategory: ProdCategory = 'building';
   private placingType: UnitType | null = null;
   private readonly selected = new Set<number>();
+  private readonly nearbyHpIds = new Set<number>();
   private readonly localCommands: Command[] = [];
   private readonly buildButtons: { button: HTMLButtonElement; state: HTMLElement; type: UnitType }[] = [];
   private readonly announcedCompletedBuildings = new Set<number>();
@@ -156,7 +157,7 @@ export class MatchView3D {
     const now = performance.now();
     const alpha = Math.min(0.98, (now - this.lastStepAt) / (1000 / 15));
     this.updateHud();
-    this.renderer.render(this.camera.camera, alpha, this.selected);
+    this.renderer.render(this.camera.camera, alpha, this.selected, this.nearbyHpIds);
   }
 
   dispose(): void {
@@ -363,8 +364,12 @@ export class MatchView3D {
         this.camera.panByScreen(e.clientX - panDrag.x, e.clientY - panDrag.y);
         panDrag = { x: e.clientX, y: e.clientY };
       }
+      this.updateNearbyHpTarget(e.clientX, e.clientY);
       this.updateBuildPreview(e.clientX, e.clientY);
       if (selectDrag) this.drawSelectionBox(selectDrag.x, selectDrag.y, e.clientX, e.clientY);
+    });
+    canvas.addEventListener('pointerleave', () => {
+      this.nearbyHpIds.clear();
     });
     const stop = (e: PointerEvent): void => {
       if (selectDrag) this.finishSelection(selectDrag.x, selectDrag.y, e.clientX, e.clientY);
@@ -386,6 +391,19 @@ export class MatchView3D {
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') this.cancelPlacement();
     });
+  }
+
+  private updateNearbyHpTarget(clientX: number, clientY: number): void {
+    this.nearbyHpIds.clear();
+    const directId = this.renderer.pickEntity(this.camera.camera, clientX, clientY);
+    const nearId =
+      directId ??
+      nearestIdWithinRadius(
+        { x: clientX, y: clientY },
+        this.renderer.entityScreenPoints(this.camera.camera),
+        58,
+      );
+    if (nearId !== null) this.nearbyHpIds.add(nearId);
   }
 
   private finishSelection(startX: number, startY: number, endX: number, endY: number): void {
