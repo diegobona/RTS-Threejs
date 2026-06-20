@@ -5,8 +5,10 @@ import * as matchView3D from './match-view-3d';
 import {
   allOwnedUnitIdsInCapacityGroup3D,
   bindAudioUnlock,
+  buildButtonMeta3D,
   capacitySummarySegments3D,
   capacitySummaryText3D,
+  CONTROL_GROUPS_HUD_LABEL_3D,
   controlGroupButtonLabel3D,
   controlGroupIdsForSelection3D,
   controlGroupHudItems3D,
@@ -17,6 +19,7 @@ import {
   PRODUCTION_CATEGORIES_3D,
   rulesAndControlsSections3D,
   sameTypeVisibleSelectionIds3D,
+  SELECTED_STATUS_CLASS_3D,
   topHudText3D,
 } from './match-view-3d';
 
@@ -29,6 +32,26 @@ describe('MatchView3D camera defaults', () => {
 describe('MatchView3D production tabs', () => {
   it('only exposes manual building production; units are produced automatically by buildings', () => {
     expect(PRODUCTION_CATEGORIES_3D).toEqual(['building']);
+  });
+
+  it('provides readable RTS-style icons and hints for core building buttons', () => {
+    expect(buildButtonMeta3D({ id: 'barracks', name: 'Barracks' })).toEqual({
+      icon: '▥',
+      label: 'Barracks',
+      hint: 'Auto infantry',
+    });
+    expect(buildButtonMeta3D({ id: 'warfactory', name: 'War Factory' })).toEqual({
+      icon: '▰',
+      label: 'War Factory',
+      hint: 'Auto tanks',
+    });
+    expect(buildButtonMeta3D({ id: 'airbase', name: 'Airbase' })).toEqual({
+      icon: '✈',
+      label: 'Airbase',
+      hint: 'Auto aircraft',
+    });
+    expect(buildButtonMeta3D({ id: 'pillbox', name: 'Pillbox' }).icon).toBe('⬟');
+    expect(buildButtonMeta3D({ id: 'battlelab', name: 'Battle Lab' }).hint).toBe('Tech unlocks');
   });
 });
 
@@ -131,6 +154,24 @@ describe('MatchView3D capacity HUD', () => {
     expect(segments.map((segment) => segment.text).join(' | ')).toBe('建筑 4/20 | 工人 8/20 | 士兵 117/300 | 坦克 48/100 | 飞机 23/30');
     expect(segments.map((segment) => segment.selectGroup ?? null)).toEqual([null, 'worker', 'infantry', 'vehicle', 'aircraft']);
   });
+
+  it('keeps capacity chips free of keyboard-letter badges', () => {
+    expect(
+      capacitySummarySegments3D({
+        building: { count: 4, limit: 20 },
+        infantry: { count: 117, limit: 300 },
+        worker: { count: 8, limit: 20 },
+        vehicle: { count: 48, limit: 100 },
+        aircraft: { count: 23, limit: 30 },
+      }),
+    ).toEqual([
+      { text: '建筑 4/20' },
+      { text: '工人 8/20', selectGroup: 'worker' },
+      { text: '士兵 117/300', selectGroup: 'infantry' },
+      { text: '坦克 48/100', selectGroup: 'vehicle' },
+      { text: '飞机 23/30', selectGroup: 'aircraft' },
+    ]);
+  });
 });
 
 describe('MatchView3D unit selection helpers', () => {
@@ -182,6 +223,11 @@ describe('MatchView3D unit selection helpers', () => {
 });
 
 describe('MatchView3D control groups', () => {
+  it('labels control groups separately from unit capacity and gives selected count its own style hook', () => {
+    expect(CONTROL_GROUPS_HUD_LABEL_3D).toBe('编队');
+    expect(SELECTED_STATUS_CLASS_3D).toBe('mv3-selected-status');
+  });
+
   it('stores only live owned non-building units when assigning a control group', () => {
     const world = new World(gridTerrain(20, 20), 7);
     world.addPlayer(1, 'allied', 0);

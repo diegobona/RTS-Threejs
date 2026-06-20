@@ -16,6 +16,27 @@ export function initialCameraFocus3D(mapW: number, mapH: number): { x: number; z
 
 export const PRODUCTION_CATEGORIES_3D = ['building'] as const satisfies readonly ProdCategory[];
 
+export interface BuildButtonMeta3D {
+  icon: string;
+  label: string;
+  hint: string;
+}
+
+const BUILD_BUTTON_META_3D: Record<string, BuildButtonMeta3D> = {
+  conyard: { icon: 'HQ', label: 'Command HQ', hint: 'Base core' },
+  powerplant: { icon: '⚡', label: 'Power', hint: 'Legacy power' },
+  refinery: { icon: '◆', label: 'Refinery', hint: 'Legacy economy' },
+  barracks: { icon: '▥', label: 'Barracks', hint: 'Auto infantry' },
+  warfactory: { icon: '▰', label: 'War Factory', hint: 'Auto tanks' },
+  airbase: { icon: '✈', label: 'Airbase', hint: 'Auto aircraft' },
+  pillbox: { icon: '⬟', label: 'Pillbox', hint: 'Static defense' },
+  battlelab: { icon: '✚', label: 'Battle Lab', hint: 'Tech unlocks' },
+};
+
+export function buildButtonMeta3D(type: Pick<UnitType, 'id' | 'name'>): BuildButtonMeta3D {
+  return BUILD_BUTTON_META_3D[type.id] ?? { icon: '◇', label: type.name, hint: 'Structure' };
+}
+
 export const DEFAULT_GROUND_MOVE_MODE_3D: GroundMoveMode = 'move';
 
 export const GROUND_MOVE_MODE_BUTTONS_3D = [
@@ -24,6 +45,9 @@ export const GROUND_MOVE_MODE_BUTTONS_3D = [
 ] as const satisfies readonly { mode: GroundMoveMode; label: string; title: string }[];
 
 export type CapacitySelectionGroup3D = 'worker' | 'infantry' | 'vehicle' | 'aircraft';
+
+export const CONTROL_GROUPS_HUD_LABEL_3D = '编队';
+export const SELECTED_STATUS_CLASS_3D = 'mv3-selected-status';
 
 export interface CapacitySummarySegment3D {
   text: string;
@@ -194,42 +218,81 @@ export function bindAudioUnlock(pointerTarget: EventTarget, keyboardTarget: Even
 
 export const MATCH_3D_STYLE = `
 .mv3-root { position: fixed; inset: 0; overflow: hidden; background: #070b0d;
-  font: 13px/1.4 system-ui, 'PingFang SC', sans-serif; color: #d8e0e6; touch-action: none; }
+  --hud-bg: rgba(9, 15, 18, .84);
+  --hud-bg-strong: rgba(10, 18, 23, .94);
+  --hud-edge: rgba(146, 174, 188, .24);
+  --hud-edge-strong: rgba(99, 185, 238, .72);
+  --hud-text: #d9e4ea;
+  --hud-muted: #91a2ad;
+  --hud-accent: #68c8ff;
+  --hud-ready: #65e08b;
+  --hud-warn: #f3d35f;
+  font: 13px/1.4 system-ui, 'PingFang SC', sans-serif; color: var(--hud-text); touch-action: none; }
 .mv3-canvas { display: block; width: 100vw; height: 100vh; }
-.mv3-top { position: fixed; left: 12px; top: 10px; z-index: 10; display: flex; gap: 14px; align-items: center;
-  padding: 8px 12px; background: rgba(8,12,16,.82); border: 1px solid rgba(120,150,170,.18); border-radius: 8px; }
-.mv3-top b { color: #f0d040; font-variant-numeric: tabular-nums; }
-.mv3-top a { color: #6db3e8; text-decoration: none; }
-.mv3-capacity { color: #b9c9d2; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.mv3-capacity button { border: 0; background: none; color: inherit; padding: 0; cursor: pointer;
-  font: inherit; font-variant-numeric: inherit; }
-.mv3-capacity button:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
-.mv3-groups { display: flex; gap: 5px; align-items: center; white-space: nowrap; }
-.mv3-groups:empty { display: none; }
-.mv3-group { height: 24px; max-width: 180px; padding: 0 7px; border: 1px solid rgba(88,167,216,.46);
-  border-radius: 5px; background: rgba(23,48,70,.72); color: #dce6ed; cursor: pointer;
+.mv3-top { position: fixed; left: 12px; top: 10px; z-index: 10; display: flex; gap: 8px; align-items: flex-start;
+  max-width: calc(100vw - 300px); }
+.mv3-hud-panel { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 6px;
+  background: var(--hud-bg); border: 1px solid var(--hud-edge); border-radius: 9px;
+  box-shadow: 0 12px 35px rgba(0,0,0,.24); backdrop-filter: blur(6px); }
+.mv3-panel-label { min-height: 28px; display: inline-flex; align-items: center; padding: 0 8px 0 2px;
+  border-right: 1px solid rgba(146,174,188,.18); color: #8fd4ff; font-size: 12px; font-weight: 900; white-space: nowrap; }
+.mv3-capacity { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; color: #b9c9d2; font-variant-numeric: tabular-nums; }
+.mv3-capacity-chip { height: 30px; display: inline-flex; align-items: center; padding: 0 11px; border-radius: 6px;
+  border: 1px solid rgba(146,174,188,.18); background: rgba(8,14,18,.68); color: var(--hud-text); font: inherit;
+  font-variant-numeric: inherit; white-space: nowrap; appearance: none; }
+.mv3-capacity-chip { cursor: default; }
+.mv3-capacity-chip.is-clickable { cursor: pointer; }
+.mv3-capacity-chip.is-clickable:hover { border-color: rgba(104,200,255,.62); background: rgba(20,42,55,.8); color: #fff; }
+.mv3-selected-status { min-height: 34px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 999px;
+  border: 1px solid rgba(243,211,95,.42); background: rgba(45,37,14,.66); color: #ffe39a; font-weight: 850;
+  font-variant-numeric: tabular-nums; white-space: nowrap; box-shadow: inset 0 0 0 1px rgba(255,226,120,.08); }
+.mv3-selected-status:empty { display: none; }
+.mv3-groups-panel { position: fixed; left: 12px; top: 60px; z-index: 10; display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 6px;
+  background: var(--hud-bg); border: 1px solid var(--hud-edge); border-radius: 9px; box-shadow: 0 12px 35px rgba(0,0,0,.2); backdrop-filter: blur(6px); }
+.mv3-groups { display: flex; gap: 6px; align-items: center; min-width: 42px; white-space: nowrap; }
+.mv3-groups:empty::after { content: '无'; color: var(--hud-muted); font-size: 12px; }
+.mv3-group { height: 30px; max-width: 180px; padding: 0 8px; border: 1px solid rgba(88,167,216,.46);
+  border-radius: 6px; background: rgba(23,48,70,.72); color: #dce6ed; cursor: pointer;
   font: inherit; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mv3-group:hover { border-color: #8fd4ff; color: #fff; }
-.mv3-orders { position: fixed; left: 12px; top: 58px; z-index: 10; display: flex; gap: 6px;
-  padding: 6px; background: rgba(8,12,16,.76); border: 1px solid rgba(120,150,170,.18); border-radius: 8px; }
-.mv3-orders button { height: 30px; padding: 0 10px; border: 1px solid rgba(125,150,165,.22); border-radius: 6px;
-  background: #0d151c; color: #aeb9c2; cursor: pointer; font-size: 13px; }
-.mv3-orders button.on { color: #fff; border-color: #58a7d8; background: #173046; }
-.mv3-build { position: fixed; right: 12px; top: 12px; z-index: 10; width: 196px; display: grid; gap: 6px;
-  padding: 8px; background: rgba(8,12,16,.86); border: 1px solid rgba(120,150,170,.2); border-radius: 8px; }
+.mv3-orders { position: fixed; left: 12px; top: 110px; z-index: 10; display: flex; gap: 6px;
+  padding: 6px; background: var(--hud-bg); border: 1px solid var(--hud-edge); border-radius: 9px; box-shadow: 0 12px 35px rgba(0,0,0,.18); }
+.mv3-orders button { min-height: 34px; padding: 0 11px; border: 1px solid rgba(125,150,165,.22); border-radius: 7px;
+  background: #0b141a; color: #b3c0c8; cursor: pointer; font-size: 13px; font-weight: 750; }
+.mv3-orders button.on { color: #fff; border-color: var(--hud-edge-strong); background: linear-gradient(#1a4258, #132d3d); box-shadow: inset 0 0 0 1px rgba(104,200,255,.18); }
+.mv3-build { position: fixed; right: 12px; top: 12px; z-index: 10; width: 260px; max-height: calc(100vh - 24px);
+  overflow: auto; display: grid; gap: 8px;
+  padding: 10px; background: var(--hud-bg-strong); border: 1px solid var(--hud-edge); border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0,0,0,.28); backdrop-filter: blur(6px); }
+.mv3-build::-webkit-scrollbar { width: 8px; }
+.mv3-build::-webkit-scrollbar-thumb { background: rgba(146,174,188,.28); border-radius: 999px; }
+.mv3-build-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 2px 0; }
+.mv3-build-title { display: inline-flex; align-items: center; gap: 8px; color: #f0f7fb; font-weight: 900; letter-spacing: 0; }
+.mv3-build-title-mark { width: 22px; height: 22px; display: inline-grid; place-items: center; border-radius: 5px;
+  background: rgba(104,200,255,.14); border: 1px solid rgba(104,200,255,.34); color: var(--hud-accent); font-size: 13px; }
+.mv3-build-subtitle { color: var(--hud-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
 .mv3-tabs { display: grid; grid-template-columns: 1fr; gap: 4px; }
-.mv3-tabs button { height: 30px; padding: 0; border: 1px solid rgba(125,150,165,.2); border-radius: 5px;
-  background: #0d151c; color: #8ea0aa; cursor: pointer; font-size: 12px; }
-.mv3-tabs button.on { color: #fff; border-color: #58a7d8; background: #173046; }
-.mv3-prod-list { display: grid; gap: 6px; }
-.mv3-prod-list button { height: 46px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px;
-  padding: 7px 8px; border: 1px solid rgba(125,150,165,.28); border-radius: 6px; cursor: pointer;
-  background: linear-gradient(#18232c, #101820); color: #dce6ed; text-align: left; }
+.mv3-tabs button { height: 30px; padding: 0; border: 1px solid rgba(125,150,165,.2); border-radius: 6px;
+  background: #0d151c; color: #8ea0aa; cursor: pointer; font-size: 12px; font-weight: 800; }
+.mv3-tabs button.on { color: #fff; border-color: var(--hud-edge-strong); background: #173046; }
+.mv3-prod-list { display: grid; gap: 7px; }
+.mv3-prod-list button { position: relative; min-height: 62px; display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 9px;
+  padding: 8px 9px; overflow: hidden; border: 1px solid rgba(125,150,165,.24); border-radius: 8px; cursor: pointer;
+  background: linear-gradient(180deg, rgba(31,43,50,.96), rgba(11,18,23,.98)); color: #dce6ed; text-align: left; }
+.mv3-prod-list button:hover:not(:disabled) { border-color: rgba(104,200,255,.62); background: linear-gradient(180deg, rgba(36,56,67,.98), rgba(13,25,32,.98)); }
 .mv3-prod-list button:disabled { cursor: default; color: #6f7a82; background: #0b1116; border-color: rgba(125,150,165,.12); }
-.mv3-prod-list button.ready { border-color: #58d478; box-shadow: inset 0 0 0 1px rgba(88,212,120,.25); }
-.mv3-prod-list button.placing { border-color: #e0c74c; color: #fff2a8; }
-.mv3-build .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mv3-build .state { color: #f0d040; font-variant-numeric: tabular-nums; font-size: 12px; }
+.mv3-prod-list button.ready { border-color: var(--hud-ready); box-shadow: inset 0 0 0 1px rgba(88,212,120,.25); }
+.mv3-prod-list button.placing { border-color: var(--hud-warn); color: #fff2a8; box-shadow: inset 0 0 0 1px rgba(243,211,95,.18); }
+.mv3-prod-icon { width: 36px; height: 36px; display: inline-grid; place-items: center; border-radius: 8px;
+  background: linear-gradient(180deg, rgba(104,200,255,.2), rgba(104,200,255,.08)); border: 1px solid rgba(104,200,255,.24);
+  color: #dff5ff; font-size: 17px; font-weight: 900; }
+.mv3-prod-main { min-width: 0; display: grid; gap: 2px; }
+.mv3-build .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 850; color: #f0f7fb; }
+.mv3-build .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--hud-muted); font-size: 11px; }
+.mv3-build .state { align-self: start; min-width: 54px; padding: 3px 6px; border-radius: 999px; background: rgba(5,10,13,.72);
+  border: 1px solid rgba(146,174,188,.16); color: var(--hud-warn); text-align: center; font-variant-numeric: tabular-nums; font-size: 11px; font-weight: 850; }
+.mv3-prod-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.06); }
+.mv3-prod-progress span { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--hud-accent), var(--hud-ready)); }
 .mv3-producer { display: none; gap: 6px; padding-top: 6px; border-top: 1px solid rgba(125,150,165,.16); }
 .mv3-producer.on { display: grid; }
 .mv3-producer-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; color: #b8c5cc; }
@@ -258,6 +321,13 @@ export const MATCH_3D_STYLE = `
 .mv3-banner.defeat { color: #ff6363; }
 .mv3-banner.victory { color: #68e887; }
 .mv3-banner small { display: block; margin-top: 8px; color: #aeb9c2; font-size: 14px; font-weight: 500; }
+@media (max-width: 980px) {
+  .mv3-top { right: 12px; max-width: none; flex-wrap: wrap; }
+  .mv3-groups-panel { top: auto; bottom: 108px; max-width: calc(100vw - 284px); }
+  .mv3-groups { overflow: hidden; }
+  .mv3-orders { top: auto; bottom: 58px; }
+  .mv3-build { width: 236px; }
+}
 `;
 
 export class MatchView3D {
@@ -349,17 +419,24 @@ export class MatchView3D {
     this.root.insertAdjacentHTML(
       'beforeend',
       `<div class="mv3-top">
-        <span>3D RTS Preview</span>
-        <span id="mv3-capacity" class="mv3-capacity"></span>
-        <span id="mv3-selected"></span>
+        <div class="mv3-hud-panel" aria-label="作战单元数量">
+          <span class="mv3-panel-label">作战单元</span>
+          <span id="mv3-capacity" class="mv3-capacity"></span>
+        </div>
+        <span id="mv3-selected" class="${SELECTED_STATUS_CLASS_3D}"></span>
+      </div>
+      <div class="mv3-groups-panel" aria-label="${CONTROL_GROUPS_HUD_LABEL_3D}">
+        <span class="mv3-panel-label">${CONTROL_GROUPS_HUD_LABEL_3D}</span>
         <span id="mv3-groups" class="mv3-groups"></span>
-        <button id="mv3-mute" type="button" style="background:none;border:none;color:#9aa7b0;cursor:pointer;font-size:15px">Sound</button>
-        <a href="#">Exit</a>
       </div>
       <div class="mv3-orders" id="mv3-orders">
         ${groundModeButtons}
       </div>
       <div class="mv3-build">
+        <div class="mv3-build-head">
+          <div class="mv3-build-title"><span class="mv3-build-title-mark">▦</span><span>Build</span></div>
+          <span class="mv3-build-subtitle">Structures</span>
+        </div>
         <div class="mv3-tabs" id="mv3-tabs"></div>
         <div class="mv3-prod-list" id="mv3-prod-list"></div>
         <div class="mv3-producer" id="mv3-producer"></div>
@@ -394,12 +471,6 @@ export class MatchView3D {
       const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-ground-mode]');
       const mode = button?.dataset.groundMode;
       if (mode === 'move' || mode === 'attackMove') this.setGroundMoveMode(mode);
-    });
-    this.root.querySelector('#mv3-mute')?.addEventListener('click', () => {
-      const muted = audioBus.toggleMute();
-      bgm.setMatchMuted(muted);
-      const button = this.root.querySelector('#mv3-mute');
-      if (button) button.textContent = muted ? 'Muted' : 'Sound';
     });
     const help = this.root.querySelector('#mv3-help');
     help?.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -455,7 +526,7 @@ export class MatchView3D {
     this.updateCapacityHud();
     this.updateControlGroupsHud();
     const sel = this.root.querySelector('#mv3-selected');
-    if (sel) sel.textContent = this.selected.size > 0 ? `Selected ${this.selected.size}` : '';
+    if (sel) sel.textContent = this.selected.size > 0 ? `选中 ${this.selected.size}` : '';
     this.refreshBuildPanel();
     this.refreshProducerPanel();
     this.updateProductionAudio();
@@ -468,16 +539,17 @@ export class MatchView3D {
     if (key === this.capacityHudKey) return;
     this.capacityHudKey = key;
     const nodes: Node[] = [];
-    segments.forEach((segment, index) => {
-      if (index > 0) nodes.push(document.createTextNode(' | '));
+    segments.forEach((segment) => {
       if (!segment.selectGroup) {
         const span = document.createElement('span');
+        span.className = 'mv3-capacity-chip';
         span.textContent = segment.text;
         nodes.push(span);
         return;
       }
       const button = document.createElement('button');
       button.type = 'button';
+      button.className = 'mv3-capacity-chip is-clickable';
       button.dataset.capacityGroup = segment.selectGroup;
       button.textContent = segment.text;
       nodes.push(button);
@@ -522,6 +594,7 @@ export class MatchView3D {
 
   private buildProductionTabs(): void {
     const labels: Record<ProdCategory, string> = { building: 'Build', infantry: 'Inf', vehicle: 'Veh', aircraft: 'Air' };
+    this.tabsEl.hidden = PRODUCTION_CATEGORIES_3D.length <= 1;
     for (const category of PRODUCTION_CATEGORIES_3D) {
       const button = document.createElement('button');
       button.type = 'button';
@@ -548,15 +621,28 @@ export class MatchView3D {
         type.builtBy !== '',
     );
     for (const type of units) {
+      const meta = buildButtonMeta3D(type);
       const button = document.createElement('button');
       button.type = 'button';
-      button.title = type.name;
+      button.title = `${meta.label} - ${meta.hint}`;
+      const icon = document.createElement('span');
+      icon.className = 'mv3-prod-icon';
+      icon.textContent = meta.icon;
+      const main = document.createElement('span');
+      main.className = 'mv3-prod-main';
       const name = document.createElement('span');
       name.className = 'name';
-      name.textContent = this.buildLabel(type);
+      name.textContent = meta.label;
+      const hint = document.createElement('span');
+      hint.className = 'hint';
+      hint.textContent = meta.hint;
+      main.append(name, hint);
       const state = document.createElement('span');
       state.className = 'state';
-      button.append(name, state);
+      const progress = document.createElement('span');
+      progress.className = 'mv3-prod-progress';
+      progress.appendChild(document.createElement('span'));
+      button.append(icon, main, state, progress);
       button.addEventListener('click', () => this.onProductionButton(type));
       this.buildEl.appendChild(button);
       this.buildButtons.push({ button, state, type });
@@ -577,6 +663,15 @@ export class MatchView3D {
       entry.button.classList.toggle('ready', state.ready);
       entry.button.classList.toggle('placing', state.activePlace);
       entry.state.textContent = state.progressText;
+      const progressFill = entry.button.querySelector<HTMLElement>('.mv3-prod-progress span');
+      if (progressFill) {
+        const pct = state.progressText.endsWith('%')
+          ? Number(state.progressText.slice(0, -1))
+          : state.ready || state.activePlace
+            ? 100
+            : 0;
+        progressFill.style.width = `${Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0))}%`;
+      }
     }
   }
 
@@ -976,22 +1071,15 @@ export class MatchView3D {
 
   private buildLabel(type: UnitType): string {
     const labels: Record<string, string> = {
-      powerplant: 'Power',
-      refinery: 'Refinery',
-      barracks: 'Barracks',
-      warfactory: 'War Factory',
-      airbase: 'Airbase',
-      pillbox: 'Pillbox',
-      battlelab: 'Battle Lab',
       worker: 'Worker',
-      gi: 'British Soldier',
+      gi: 'Soldier',
       engineer: 'Engineer',
-      grizzly: 'British Tank',
+      grizzly: 'Tank',
       arty: 'Artillery',
       fighter: 'Fighter',
       harvester: 'Harvester',
     };
-    return labels[type.id] ?? type.name;
+    return buildButtonMeta3D(type).label !== type.name ? buildButtonMeta3D(type).label : (labels[type.id] ?? type.name);
   }
 
   private drawSelectionBox(x0: number, y0: number, x1: number, y1: number): void {
