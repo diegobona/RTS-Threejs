@@ -255,7 +255,7 @@ const UNIT_LIST: UnitType[] = [
     speed: 20,
     rot: 32,
     sight: 5,
-    weapon: { name: 'M1卡宾枪', damage: 15, range: 5 * 256, cooldown: 8, projectileSpeed: 0, warhead: { none: 100, flak: 80, plate: 65, light: 25, heavy: 8 }, splash: 0 },
+    weapon: { name: 'M1卡宾枪', damage: 15, range: 5 * 256, cooldown: 8, projectileSpeed: 0, warhead: { none: 100, flak: 80, plate: 65, light: 25, heavy: 8, concrete: 10 }, splash: 0 },
   },
   {
     id: 'worker',
@@ -286,7 +286,7 @@ const UNIT_LIST: UnitType[] = [
     speed: 22,
     rot: 32,
     sight: 5,
-    weapon: { name: 'PPSh', damage: 12, range: 4 * 256, cooldown: 7, projectileSpeed: 0, warhead: { none: 100, flak: 80, plate: 60, light: 20, heavy: 6 }, splash: 0 },
+    weapon: { name: 'PPSh', damage: 12, range: 4 * 256, cooldown: 7, projectileSpeed: 0, warhead: { none: 100, flak: 80, plate: 60, light: 20, heavy: 6, concrete: 10 }, splash: 0 },
   },
   {
     id: 'engineer',
@@ -416,7 +416,7 @@ const UNIT_LIST: UnitType[] = [
     speed: 40,
     rot: 12,
     sight: 6,
-    weapon: { name: '90mm炮', damage: 45, range: 5 * 256, cooldown: 30, projectileSpeed: 80, warhead: { none: 60, flak: 60, plate: 75, light: 100, heavy: 60, concrete: 50 }, splash: 32 },
+    weapon: { name: '90mm炮', damage: 45, range: 5 * 256, cooldown: 30, projectileSpeed: 80, warhead: { none: 60, flak: 60, plate: 75, light: 100, heavy: 60, concrete: 30 }, splash: 32 },
   },
   {
     id: 'rhino',
@@ -432,7 +432,7 @@ const UNIT_LIST: UnitType[] = [
     speed: 32,
     rot: 10,
     sight: 6,
-    weapon: { name: '120mm炮', damage: 65, range: 5 * 256, cooldown: 45, projectileSpeed: 70, warhead: { none: 60, flak: 60, plate: 80, light: 100, heavy: 70, concrete: 55 }, splash: 36 },
+    weapon: { name: '120mm炮', damage: 65, range: 5 * 256, cooldown: 45, projectileSpeed: 70, warhead: { none: 60, flak: 60, plate: 80, light: 100, heavy: 70, concrete: 30 }, splash: 36 },
   },
   {
     id: 'flaktrak',
@@ -530,7 +530,7 @@ const UNIT_LIST: UnitType[] = [
     speed: 70,
     rot: 24,
     sight: 8,
-    weapon: { name: '航弹', damage: 65, range: 2 * 256, cooldown: 36, projectileSpeed: 100, warhead: { none: 80, flak: 80, plate: 90, light: 100, heavy: 70, concrete: 95 }, splash: 48, role: 'bomb', targetDomains: ['infantry', 'vehicle', 'building'] },
+    weapon: { name: '航弹', damage: 65, range: 2 * 256, cooldown: 36, projectileSpeed: 100, warhead: { none: 80, flak: 80, plate: 90, light: 100, heavy: 70, concrete: 45 }, splash: 48, role: 'bomb', targetDomains: ['infantry', 'vehicle', 'building'] },
     antiAirWeapon: { name: '空空导弹', damage: 55, range: 16 * 256, cooldown: 28, projectileSpeed: 150, warhead: { none: 40, flak: 85, plate: 75, light: 115, heavy: 45, concrete: 10 }, splash: 0, role: 'missile', targetDomains: ['aircraft'] },
   },
 ];

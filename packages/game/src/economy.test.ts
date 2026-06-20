@@ -39,6 +39,35 @@ describe('电力结算', () => {
 });
 
 describe('fighter dual-role combat', () => {
+  it('does not let a first fighter bombing wave instantly erase a full-health production building', () => {
+    const w = new World(gridTerrain(40, 40), 20260622);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const airbase = w.spawnUnit(1, 'airbase', 20, 20)!;
+    const weapon = w.rules.units.get('fighter')!.weapon!;
+    for (let i = 0; i < 15; i++) {
+      w.projectiles.push({
+        id: i + 1,
+        x: airbase.x,
+        y: airbase.y,
+        targetId: airbase.id,
+        speed: 999,
+        damage: weapon.damage,
+        warheadId: JSON.stringify(weapon.warhead),
+        splash: weapon.splash,
+        owner: 2,
+        shooterId: -1,
+        weaponRole: 'bomb',
+        targetDomains: weapon.targetDomains ? [...weapon.targetDomains] : undefined,
+      });
+    }
+
+    w.step();
+
+    expect(w.entities.has(airbase.id)).toBe(true);
+    expect(airbase.hp).toBeGreaterThan(airbase.maxHp * 0.25);
+  });
+
   it('does not let infantry or tanks target aircraft', () => {
     const w = new World(gridTerrain(40, 40), 125);
     w.addPlayer(1, 'allied', 0);

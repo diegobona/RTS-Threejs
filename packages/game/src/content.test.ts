@@ -44,3 +44,12 @@ describe('WWI air force content', () => {
     });
   });
 });
+
+describe('building damage tuning', () => {
+  it('keeps basic infantry and basic tanks from melting buildings', () => {
+    expect(DEFAULT_RULES.units.get('gi')?.weapon?.warhead.concrete).toBe(10);
+    expect(DEFAULT_RULES.units.get('conscript')?.weapon?.warhead.concrete).toBe(10);
+    expect(DEFAULT_RULES.units.get('grizzly')?.weapon?.warhead.concrete).toBe(30);
+    expect(DEFAULT_RULES.units.get('rhino')?.weapon?.warhead.concrete).toBe(30);
+  });
+});
