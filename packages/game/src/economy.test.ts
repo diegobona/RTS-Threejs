@@ -405,7 +405,7 @@ describe('放置校验', () => {
 });
 
 describe('胜负判定', () => {
-  it('失去全部建筑且没有工人 → 判负', () => {
+  it('失去全部建筑且没有战斗单位 → 判负', () => {
     const w = baseWorld();
     const cy = w.spawnUnit(1, 'conyard', 5, 5)!;
     w.step();
@@ -415,9 +415,32 @@ describe('胜负判定', () => {
     expect(w.players.get(1)!.defeated).toBe(true);
   });
 
-  it('工人存活时失去全部建筑不判负，重建生产建筑后继续自动产兵', () => {
+  it('失去全部建筑但仍有战斗单位时不判负', () => {
     const w = baseWorld();
     const cy = w.spawnUnit(1, 'conyard', 5, 5)!;
+    w.spawnUnit(1, 'grizzly', 10, 10);
+
+    cy.hp = 0;
+    w.step();
+
+    expect(w.players.get(1)!.defeated).toBe(false);
+  });
+
+  it('只剩工人且没有建筑或战斗单位时判负', () => {
+    const w = baseWorld();
+    const cy = w.spawnUnit(1, 'conyard', 5, 5)!;
+    w.spawnUnit(1, 'worker', 10, 10);
+
+    cy.hp = 0;
+    w.step();
+
+    expect(w.players.get(1)!.defeated).toBe(true);
+  });
+
+  it('工人和战斗单位存活时失去全部建筑不判负，重建生产建筑后继续自动产兵', () => {
+    const w = baseWorld();
+    const cy = w.spawnUnit(1, 'conyard', 5, 5)!;
+    w.spawnUnit(1, 'grizzly', 9, 10);
     w.spawnUnit(1, 'worker', 10, 10);
     w.spawnUnit(1, 'worker', 11, 10);
     w.spawnUnit(1, 'worker', 12, 10);

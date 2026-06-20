@@ -654,6 +654,16 @@ export class World {
     return false;
   }
 
+  private hasCombatUnit(owner: number): boolean {
+    for (const e of this.entities.values()) {
+      if (e.owner !== owner) continue;
+      const type = this.rules.units.get(e.typeId);
+      if (!type || type.domain === 'building' || e.typeId === 'worker') continue;
+      if (type.weapon || type.antiAirWeapon) return true;
+    }
+    return false;
+  }
+
   canBuild(owner: number, type: UnitType): boolean {
     if (type.builtBy === '') return false;
     if (this.isTypeCapacityFull(owner, type)) return false;
@@ -1882,7 +1892,7 @@ export class World {
         this.entities.delete(id);
       }
     }
-    // 胜负：工人可以重建基地，因此失去全部建筑但仍有工人时不判负。
+    // Defeat: workers alone do not keep a side alive; combat units do.
     for (const player of this.players.values()) {
       if (player.defeated || !player.everBuilt) continue;
       let hasBuilding = false;
@@ -1892,7 +1902,7 @@ export class World {
           break;
         }
       }
-      if (!hasBuilding && !this.hasWorker(player.id)) player.defeated = true;
+      if (!hasBuilding && !this.hasCombatUnit(player.id)) player.defeated = true;
     }
   }
 
