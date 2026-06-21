@@ -80,8 +80,8 @@ export class ThreeCameraController {
   }
 
   private apply(): void {
-    this.target.x = Math.max(-4, Math.min(this.maxX + 4, this.target.x));
-    this.target.z = Math.max(-4, Math.min(this.maxZ + 4, this.target.z));
+    this.target.x = Math.max(0, Math.min(this.maxX, this.target.x));
+    this.target.z = Math.max(0, Math.min(this.maxZ, this.target.z));
     this.offset.copy(this.baseOffset).multiplyScalar(this.distanceScale);
     this.camera.position.copy(this.target).add(this.offset);
     this.camera.lookAt(this.target);

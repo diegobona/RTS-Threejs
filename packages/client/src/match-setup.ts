@@ -17,8 +17,8 @@ export interface SkirmishMapPreset {
   orePatches: { cellX: number; cellY: number }[];
 }
 
-const MAP_W = 72;
-const MAP_H = 72;
+const MAP_W = 108;
+const MAP_H = 88;
 export const DEFAULT_SKIRMISH_MAP_ID: SkirmishMapId = 'verdant';
 
 function key(x: number, y: number, w = MAP_W): number {
@@ -102,27 +102,27 @@ function cellsOf(kind: TerrainKind, cells: number[]): Partial<Record<TerrainKind
 function baseOre(): { cellX: number; cellY: number }[] {
   return [
     { cellX: 16, cellY: 16 },
-    { cellX: 55, cellY: 55 },
-    { cellX: 36, cellY: 36 },
-    { cellX: 18, cellY: 54 },
-    { cellX: 54, cellY: 18 },
-    { cellX: 34, cellY: 18 },
-    { cellX: 38, cellY: 54 },
+    { cellX: 91, cellY: 71 },
+    { cellX: 54, cellY: 44 },
+    { cellX: 18, cellY: 70 },
+    { cellX: 90, cellY: 18 },
+    { cellX: 42, cellY: 18 },
+    { cellX: 66, cellY: 70 },
   ];
 }
 
 const lakelandMainWaterRaw = merge(
-  ellipse(32, 33, 14, 9),
-  ellipse(24, 24, 8, 6),
-  ellipse(44, 25, 9, 7),
-  ellipse(48, 44, 8, 6),
-  lineBand([{ x: 21, y: 20 }, { x: 30, y: 30 }, { x: 40, y: 34 }, { x: 50, y: 43 }], 2),
+  ellipse(50, 40, 20, 11),
+  ellipse(35, 28, 11, 7),
+  ellipse(70, 30, 12, 8),
+  ellipse(74, 55, 11, 7),
+  lineBand([{ x: 32, y: 24 }, { x: 49, y: 38 }, { x: 62, y: 42 }, { x: 77, y: 55 }], 2),
 );
-const lakelandIsland = merge(ellipse(35, 34, 4, 3), ellipse(38, 31, 2, 2));
-const lakelandNorthCreek = lineBand([{ x: 11, y: 4 }, { x: 17, y: 12 }, { x: 22, y: 20 }], 1);
-const lakelandSouthCreek = lineBand([{ x: 50, y: 45 }, { x: 55, y: 55 }, { x: 61, y: 68 }], 1);
-const lakelandWestPond = ellipse(12, 47, 5, 4);
-const lakelandEastPond = ellipse(60, 18, 4, 5);
+const lakelandIsland = merge(ellipse(54, 42, 5, 3), ellipse(59, 38, 3, 2));
+const lakelandNorthCreek = lineBand([{ x: 17, y: 4 }, { x: 26, y: 15 }, { x: 32, y: 24 }], 1);
+const lakelandSouthCreek = lineBand([{ x: 77, y: 55 }, { x: 86, y: 68 }, { x: 96, y: 84 }], 1);
+const lakelandWestPond = ellipse(18, 58, 7, 5);
+const lakelandEastPond = ellipse(92, 22, 6, 6);
 const lakelandWater = merge(
   subtract(lakelandMainWaterRaw, lakelandIsland),
   lakelandNorthCreek,
@@ -132,12 +132,12 @@ const lakelandWater = merge(
 );
 const lakelandShore = subtract(grow(lakelandWater, 2), lakelandWater);
 const lakelandRoads = merge(
-  lineBand([{ x: 4, y: 57 }, { x: 16, y: 54 }, { x: 29, y: 50 }, { x: 43, y: 51 }, { x: 66, y: 58 }], 1),
-  lineBand([{ x: 7, y: 13 }, { x: 18, y: 17 }, { x: 27, y: 24 }], 1),
-  lineBand([{ x: 45, y: 48 }, { x: 55, y: 39 }, { x: 66, y: 35 }], 1),
+  lineBand([{ x: 6, y: 72 }, { x: 24, y: 67 }, { x: 44, y: 62 }, { x: 66, y: 63 }, { x: 102, y: 72 }], 1),
+  lineBand([{ x: 8, y: 16 }, { x: 24, y: 21 }, { x: 39, y: 30 }], 1),
+  lineBand([{ x: 67, y: 58 }, { x: 82, y: 48 }, { x: 102, y: 42 }], 1),
 );
 const lakelandMarsh = subtract(
-  merge(ellipse(18, 36, 8, 5), ellipse(55, 31, 8, 5), ellipse(42, 58, 7, 4)),
+  merge(ellipse(28, 46, 11, 6), ellipse(85, 40, 11, 6), ellipse(64, 72, 10, 5)),
   merge(lakelandWater, lakelandRoads),
 );
 const highlandRidges = merge(
@@ -183,13 +183,13 @@ export const SKIRMISH_MAP_PRESETS: readonly SkirmishMapPreset[] = [
       water: lakelandWater,
     },
     orePatches: [
-      { cellX: 10, cellY: 14 },
-      { cellX: 62, cellY: 58 },
-      { cellX: 35, cellY: 35 },
-      { cellX: 15, cellY: 55 },
-      { cellX: 59, cellY: 17 },
-      { cellX: 26, cellY: 61 },
-      { cellX: 50, cellY: 12 },
+      { cellX: 14, cellY: 14 },
+      { cellX: 94, cellY: 74 },
+      { cellX: 54, cellY: 44 },
+      { cellX: 18, cellY: 70 },
+      { cellX: 91, cellY: 18 },
+      { cellX: 38, cellY: 74 },
+      { cellX: 78, cellY: 14 },
     ],
   },
   {
@@ -214,10 +214,10 @@ export const SKIRMISH_MAP_PRESETS: readonly SkirmishMapPreset[] = [
     terrainCells: { sand: badlandsSand, ridge: badlandsRidges },
     orePatches: [
       { cellX: 16, cellY: 17 },
-      { cellX: 55, cellY: 54 },
+      { cellX: 91, cellY: 70 },
       { cellX: 36, cellY: 36 },
-      { cellX: 18, cellY: 54 },
-      { cellX: 54, cellY: 18 },
+      { cellX: 18, cellY: 70 },
+      { cellX: 90, cellY: 18 },
     ],
   },
   {
@@ -231,10 +231,10 @@ export const SKIRMISH_MAP_PRESETS: readonly SkirmishMapPreset[] = [
     terrainCells: cellsOf('water', deltaWater),
     orePatches: [
       { cellX: 14, cellY: 14 },
-      { cellX: 58, cellY: 58 },
-      { cellX: 22, cellY: 52 },
-      { cellX: 53, cellY: 20 },
-      { cellX: 44, cellY: 42 },
+      { cellX: 92, cellY: 72 },
+      { cellX: 22, cellY: 68 },
+      { cellX: 86, cellY: 20 },
+      { cellX: 62, cellY: 48 },
     ],
   },
 ];
@@ -253,8 +253,8 @@ export function localSkirmishConfig(startingCredits = 5000, mapId: SkirmishMapId
     blockedCells: preset.blockedCells,
     terrainCells: preset.terrainCells,
     spawns: [
-      { playerId: 1, side: 'allied', cellX: 7, cellY: 8 },
-      { playerId: 2, side: 'soviet', cellX: preset.width - 12, cellY: preset.height - 13 },
+      { playerId: 1, side: 'allied', cellX: 10, cellY: 12 },
+      { playerId: 2, side: 'soviet', cellX: preset.width - 16, cellY: preset.height - 16 },
     ],
     orePatches: preset.orePatches,
     inputDelay: 0,

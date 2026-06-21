@@ -115,6 +115,8 @@ export const GROUND_MOVE_MODE_BUTTONS_3D = [
 export type CapacitySelectionGroup3D = 'worker' | 'infantry' | 'vehicle' | 'aircraft';
 
 export const CONTROL_GROUPS_HUD_LABEL_3D = '编队';
+export const ATTACK_MODE_HUD_LABEL_3D = '攻击模式';
+export const CAPACITY_SELECT_TOOLTIP_3D = '点击可全选兵种';
 export const SELECTED_STATUS_CLASS_3D = 'mv3-selected-status';
 
 export interface CapacitySummarySegment3D {
@@ -331,11 +333,18 @@ export const MATCH_3D_STYLE = `
 .mv3-groups { display: flex; gap: 6px; align-items: center; min-width: 42px; white-space: nowrap; }
 .mv3-groups:empty::after { content: '无'; color: var(--hud-muted); font-size: 12px; }
 .mv3-group { height: 30px; max-width: 180px; padding: 0 8px; border: 1px solid rgba(88,167,216,.46);
-  border-radius: 6px; background: rgba(23,48,70,.72); color: #dce6ed; cursor: pointer;
+  border-radius: 6px; background: rgba(23,48,70,.72); color: #dce6ed; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
   font: inherit; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mv3-group:hover { border-color: #8fd4ff; color: #fff; }
+.mv3-group-num { min-width: 20px; height: 22px; display: inline-grid; place-items: center; border-radius: 5px;
+  background: rgba(104,200,255,.18); border: 1px solid rgba(104,200,255,.36); color: #bdeaff; font-weight: 900; }
+.mv3-group-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #e3edf3; font-weight: 750; }
+.mv3-group-summary .mv3-group-count { margin-left: 4px; padding: 1px 6px; border-radius: 999px;
+  background: rgba(243,211,95,.18); border: 1px solid rgba(243,211,95,.28); color: #ffe39a; font-weight: 900; }
 .mv3-orders { position: fixed; left: 12px; top: 110px; z-index: 10; display: flex; gap: 6px;
+  align-items: center;
   padding: 6px; background: var(--hud-bg); border: 1px solid var(--hud-edge); border-radius: 9px; box-shadow: 0 12px 35px rgba(0,0,0,.18); }
+.mv3-orders .mv3-panel-label { min-height: 34px; padding-right: 8px; }
 .mv3-orders button { min-height: 34px; padding: 0 11px; border: 1px solid rgba(125,150,165,.22); border-radius: 7px;
   background: #0b141a; color: #b3c0c8; cursor: pointer; font-size: 13px; font-weight: 750; }
 .mv3-orders button.on { color: #fff; border-color: var(--hud-edge-strong); background: linear-gradient(#1a4258, #132d3d); box-shadow: inset 0 0 0 1px rgba(104,200,255,.18); }
@@ -511,7 +520,8 @@ export class MatchView3D {
         <span class="mv3-panel-label">${CONTROL_GROUPS_HUD_LABEL_3D}</span>
         <span id="mv3-groups" class="mv3-groups"></span>
       </div>
-      <div class="mv3-orders" id="mv3-orders">
+      <div class="mv3-orders" id="mv3-orders" aria-label="${ATTACK_MODE_HUD_LABEL_3D}">
+        <span class="mv3-panel-label">${ATTACK_MODE_HUD_LABEL_3D}</span>
         ${groundModeButtons}
       </div>
       <div class="mv3-build ${BUILD_PANEL_PLACEMENT_CLASS_3D}">
@@ -629,6 +639,7 @@ export class MatchView3D {
       button.type = 'button';
       button.className = 'mv3-capacity-chip is-clickable';
       button.dataset.capacityGroup = segment.selectGroup;
+      button.title = CAPACITY_SELECT_TOOLTIP_3D;
       button.textContent = segment.text;
       nodes.push(button);
     });
@@ -650,11 +661,22 @@ export class MatchView3D {
       button.type = 'button';
       button.className = 'mv3-group';
       button.dataset.controlGroup = String(item.group);
-      button.textContent = item.label;
+      const num = document.createElement('span');
+      num.className = 'mv3-group-num';
+      num.textContent = String(item.group);
+      const summary = document.createElement('span');
+      summary.className = 'mv3-group-summary';
+      summary.innerHTML = this.formatControlGroupSummary(item.label, item.group);
+      button.replaceChildren(num, summary);
       button.title = `Recall group ${item.group}`;
       return button;
     });
     this.groupsEl.replaceChildren(...nodes);
+  }
+
+  private formatControlGroupSummary(label: string, group: number): string {
+    const raw = label.startsWith(`${group} `) ? label.slice(String(group).length + 1) : label;
+    return raw.replace(/ (\d+)(?= ·|$)/g, ' <span class="mv3-group-count">$1</span>');
   }
 
   private checkVictory(): void {

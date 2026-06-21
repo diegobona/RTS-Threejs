@@ -4,11 +4,13 @@ import { gridTerrain } from '@ra2web/game';
 import * as matchView3D from './match-view-3d';
 import {
   allOwnedUnitIdsInCapacityGroup3D,
+  ATTACK_MODE_HUD_LABEL_3D,
   bindAudioUnlock,
   buildButtonMeta3D,
   BUILD_PANEL_PLACEMENT_CLASS_3D,
   capacitySummarySegments3D,
   capacitySummaryText3D,
+  CAPACITY_SELECT_TOOLTIP_3D,
   clickSelectionIds3D,
   clampCellToMap3D,
   CONTROL_GROUPS_HUD_LABEL_3D,
@@ -288,12 +290,19 @@ describe('MatchView3D unit selection helpers', () => {
     expect(allOwnedUnitIdsInCapacityGroup3D(world, 1, 'vehicle')).toEqual([tank.id]);
     expect(allOwnedUnitIdsInCapacityGroup3D(world, 1, 'aircraft')).toEqual([fighter.id]);
   });
+
+  it('uses an explicit tooltip for clickable top unit counters', () => {
+    expect(CAPACITY_SELECT_TOOLTIP_3D).toBe('点击可全选兵种');
+  });
 });
 
 describe('MatchView3D control groups', () => {
   it('labels control groups separately from unit capacity and gives selected count its own style hook', () => {
     expect(CONTROL_GROUPS_HUD_LABEL_3D).toBe('编队');
+    expect(ATTACK_MODE_HUD_LABEL_3D).toBe('攻击模式');
     expect(SELECTED_STATUS_CLASS_3D).toBe('mv3-selected-status');
+    expect(MATCH_3D_STYLE).toContain('.mv3-group-num');
+    expect(MATCH_3D_STYLE).toContain('.mv3-group-count');
   });
 
   it('stores only live owned non-building units when assigning a control group', () => {

@@ -17,8 +17,8 @@ describe('local skirmish map presets', () => {
       'delta',
     ]);
     for (const preset of SKIRMISH_MAP_PRESETS) {
-      expect(preset.width).toBeGreaterThanOrEqual(72);
-      expect(preset.height).toBeGreaterThanOrEqual(72);
+      expect(preset.width).toBeGreaterThanOrEqual(108);
+      expect(preset.height).toBeGreaterThanOrEqual(88);
     }
   });
 
@@ -26,8 +26,8 @@ describe('local skirmish map presets', () => {
     const config = localSkirmishConfig(0);
 
     expect(config.mapId).toBe(DEFAULT_SKIRMISH_MAP_ID);
-    expect(config.mapWidth).toBe(72);
-    expect(config.mapHeight).toBe(72);
+    expect(config.mapWidth).toBe(108);
+    expect(config.mapHeight).toBe(88);
     for (const spawn of config.spawns) {
       expect(spawn.cellX).toBeGreaterThanOrEqual(0);
       expect(spawn.cellY).toBeGreaterThanOrEqual(0);
@@ -61,8 +61,8 @@ describe('local skirmish map presets', () => {
     expect(shore.length).toBeGreaterThan(180);
     expect(road.length).toBeGreaterThan(120);
     expect(marsh.length).toBeGreaterThan(120);
-    expect(world.terrain.passable(35, 35)).toBe(true);
-    expect(world.terrain.terrainAt?.(35, 35)).not.toBe('water');
+    expect(world.terrain.passable(54, 42)).toBe(true);
+    expect(world.terrain.terrainAt?.(54, 42)).not.toBe('water');
     for (const spawn of config.spawns) {
       expect(world.terrain.passable(spawn.cellX, spawn.cellY)).toBe(true);
     }
