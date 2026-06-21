@@ -7,6 +7,7 @@ import { MATCH_3D_STYLE, MatchView3D } from '../match-view-3d';
 const TICK_MS = 1000 / SIM_TICKS_PER_SECOND;
 const HUMAN = 1;
 const AI_ID = 2;
+const DISABLED_MAP_IDS = new Set<SkirmishMapId>(['highlands', 'badlands', 'delta']);
 
 const SETUP_3D_STYLE = `
 .p3-setup { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -22,6 +23,8 @@ const SETUP_3D_STYLE = `
 .p3-map-card { min-height: 112px; padding: 10px; background: #0d1318; color: #c8d2da; border: 1px solid #2a3a48;
   border-radius: 8px; cursor: pointer; text-align: left; }
 .p3-map-card.on { border-color: #5ed8cb; box-shadow: inset 0 0 0 1px #5ed8cb; color: #efffff; }
+.p3-map-card:disabled { cursor: not-allowed; opacity: .48; filter: grayscale(.35); }
+.p3-map-card:disabled.on { border-color: #2a3a48; box-shadow: none; color: #c8d2da; }
 .p3-map-preview { height: 52px; margin-bottom: 8px; border-radius: 5px; border: 1px solid #263946; overflow: hidden;
   background: repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 2px, transparent 2px 6px), #789b68; }
 .p3-map-card[data-v="lakeland"] .p3-map-preview { background:
@@ -46,25 +49,27 @@ const SETUP_3D_STYLE = `
   repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 2px, transparent 2px 6px), #759f67; }
 .p3-map-name { display: block; font-weight: 800; font-size: 14px; }
 .p3-map-hint { display: block; color: #9aa7b0; font-size: 11px; margin-top: 2px; }
+.p3-map-soon { display: inline-block; margin-top: 8px; padding: 2px 7px; border-radius: 999px;
+  background: rgba(94, 216, 203, .12); border: 1px solid rgba(94, 216, 203, .35); color: #8debe2;
+  font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .p3-start { margin-top: 18px; width: 100%; padding: 11px; border: none; border-radius: 6px;
   background: #3a9a4a; color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
-.p3-note { margin-top: 10px; color: #8d9aa4; font-size: 12px; }
-.p3-back { display: block; text-align: center; margin-top: 12px; color: #6db3e8; }
 `;
 
 export async function renderPlay3D(root: HTMLElement): Promise<void> {
-  document.title = '3D RTS Preview';
+  document.title = 'Fast War Game';
   const style = document.createElement('style');
   style.textContent = MATCH_3D_STYLE + SETUP_3D_STYLE;
   document.head.appendChild(style);
 
   let difficulty = (localStorage.getItem('ra2.diff') as Difficulty) || 'normal';
   let mapId = skirmishMapPreset(localStorage.getItem('ra2.map')).id;
+  if (DISABLED_MAP_IDS.has(mapId)) mapId = 'lakeland';
 
   function renderSetup(): void {
     root.innerHTML = `
       <div class="p3-setup"><div class="p3-card">
-        <h1>Three.js 3D RTS Preview</h1>
+        <h1>Fast War Game</h1>
         <div class="p3-label">AI difficulty</div>
         <div class="p3-opts" id="p3-diff">
           <button data-v="easy">Easy</button>
@@ -73,17 +78,19 @@ export async function renderPlay3D(root: HTMLElement): Promise<void> {
         </div>
         <div class="p3-label">Battlefield</div>
         <div class="p3-maps" id="p3-map">
-          ${SKIRMISH_MAP_PRESETS.map((preset) => `
-            <button class="p3-map-card" data-v="${preset.id}">
+          ${SKIRMISH_MAP_PRESETS.map((preset) => {
+            const disabled = DISABLED_MAP_IDS.has(preset.id);
+            return `
+            <button class="p3-map-card" data-v="${preset.id}"${disabled ? ' disabled aria-disabled="true"' : ''}>
               <span class="p3-map-preview"></span>
               <span class="p3-map-name">${preset.name}</span>
               <span class="p3-map-hint">${preset.hint}</span>
+              ${disabled ? '<span class="p3-map-soon">coming soon</span>' : ''}
             </button>
-          `).join('')}
+          `;
+          }).join('')}
         </div>
-        <button class="p3-start" id="p3-start">Start 3D Preview</button>
-        <div class="p3-note">First slice: 3D terrain and placeholder units only. Controls come next.</div>
-        <a class="p3-back" href="#">Back to home</a>
+        <button class="p3-start" id="p3-start">Start Game</button>
       </div></div>`;
     const sync = (): void => {
       for (const b of root.querySelectorAll('#p3-diff button')) b.classList.toggle('on', (b as HTMLElement).dataset.v === difficulty);
@@ -99,7 +106,7 @@ export async function renderPlay3D(root: HTMLElement): Promise<void> {
     root.querySelector('#p3-map')!.addEventListener('click', (e) => {
       const button = (e.target as HTMLElement).closest<HTMLButtonElement>('.p3-map-card');
       const v = button?.dataset.v as SkirmishMapId | undefined;
-      if (v) {
+      if (v && !button?.disabled && !DISABLED_MAP_IDS.has(v)) {
         mapId = skirmishMapPreset(v).id;
         sync();
       }
