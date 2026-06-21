@@ -115,6 +115,30 @@ describe('SimpleAI', () => {
     expect(count('airbase')).toBeGreaterThan(1);
   });
 
+  it('falls back to any empty map location when no local build spot is available', () => {
+    const blocked = new Set<number>();
+    for (let y = 0; y < 40; y++) {
+      for (let x = 0; x < 40; x++) {
+        if (x < 20 || y < 20) blocked.add(y * 40 + x);
+      }
+    }
+    const world = new World(gridTerrain(40, 40, blocked), 20260621);
+    world.addPlayer(1, 'allied', 5000);
+    world.spawnUnit(1, 'conyard', 3, 3);
+    world.spawnUnit(1, 'worker', 4, 4);
+    expect(world.queueProduction(1, 'barracks')).toBe(true);
+    const queue = world.queueFor(1, 'building')!;
+    queue.readyToPlace = true;
+
+    const place = new SimpleAI(1, 'normal', 1).emit(world).find((cmd) => cmd.kind === 'place');
+
+    expect(place?.kind).toBe('place');
+    if (place?.kind === 'place') {
+      expect(place.cellX).toBeGreaterThanOrEqual(20);
+      expect(place.cellY).toBeGreaterThanOrEqual(20);
+    }
+  });
+
   it('stages each unit type into separate formations before proactive attacks', () => {
     const world = aiAttackWorld();
     world.tick = 1500;

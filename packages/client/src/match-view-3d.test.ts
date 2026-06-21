@@ -10,6 +10,7 @@ import {
   capacitySummarySegments3D,
   capacitySummaryText3D,
   clickSelectionIds3D,
+  clampCellToMap3D,
   CONTROL_GROUPS_HUD_LABEL_3D,
   controlGroupButtonLabel3D,
   controlGroupIdsForSelection3D,
@@ -19,6 +20,7 @@ import {
   initialCameraFocus3D,
   matchOutcomeText3D,
   MATCH_3D_STYLE,
+  placementCellForClick3D,
   PRODUCTION_CATEGORIES_3D,
   rulesAndControlsSections3D,
   sameTypeVisibleSelectionIds3D,
@@ -30,6 +32,21 @@ import {
 describe('MatchView3D camera defaults', () => {
   it('starts focused on the center of the map instead of the local spawn', () => {
     expect(initialCameraFocus3D(44, 44)).toEqual({ x: 43, z: 43 });
+  });
+});
+
+describe('MatchView3D map-edge targeting', () => {
+  it('keeps right-click orders usable on the visible outer ground by clamping to the nearest map cell', () => {
+    expect(clampCellToMap3D({ x: -8, y: 12 }, 44, 44)).toEqual({ x: 0, y: 12 });
+    expect(clampCellToMap3D({ x: 12, y: 99 }, 44, 44)).toEqual({ x: 12, y: 43 });
+    expect(clampCellToMap3D({ x: 99, y: -8 }, 44, 44)).toEqual({ x: 43, y: 0 });
+  });
+
+  it('clamps building placement so a clicked footprint can still fit at map edges', () => {
+    const building = { building: { footprintW: 3, footprintH: 2 } } as const;
+
+    expect(placementCellForClick3D({ x: 99, y: 99 }, building, 44, 44)).toEqual({ x: 41, y: 42 });
+    expect(placementCellForClick3D({ x: -5, y: -7 }, building, 44, 44)).toEqual({ x: 0, y: 0 });
   });
 });
 

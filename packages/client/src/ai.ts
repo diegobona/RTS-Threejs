@@ -433,7 +433,7 @@ export class SimpleAI {
         break;
       }
     }
-    if (!anchor) return null;
+    if (!anchor) return this.findAnyBuildSpot(world, type);
 
     for (let r = 2; r < 14; r++) {
       for (let dy = -r; dy <= r; dy++) {
@@ -443,6 +443,15 @@ export class SimpleAI {
           const y = anchor.y + dy;
           if (this.canUseBuildSpot(world, type, x, y)) return { x, y };
         }
+      }
+    }
+    return this.findAnyBuildSpot(world, type);
+  }
+
+  private findAnyBuildSpot(world: World, type: UnitType): { x: number; y: number } | null {
+    for (let y = 0; y < world.terrain.height; y++) {
+      for (let x = 0; x < world.terrain.width; x++) {
+        if (this.canUseBuildSpot(world, type, x, y)) return { x, y };
       }
     }
     return null;

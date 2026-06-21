@@ -14,6 +14,37 @@ export function initialCameraFocus3D(mapW: number, mapH: number): { x: number; z
   return { x: center.x, z: center.z };
 }
 
+function clampInt(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.trunc(value)));
+}
+
+export function clampCellToMap3D(
+  cell: { x: number; y: number },
+  mapW: number,
+  mapH: number,
+): { x: number; y: number } | null {
+  if (mapW <= 0 || mapH <= 0) return null;
+  return {
+    x: clampInt(cell.x, 0, mapW - 1),
+    y: clampInt(cell.y, 0, mapH - 1),
+  };
+}
+
+export function placementCellForClick3D(
+  cell: { x: number; y: number },
+  type: { building?: { footprintW: number; footprintH: number } | null },
+  mapW: number,
+  mapH: number,
+): { x: number; y: number } | null {
+  const b = type.building;
+  if (!b) return clampCellToMap3D(cell, mapW, mapH);
+  if (b.footprintW > mapW || b.footprintH > mapH) return null;
+  return {
+    x: clampInt(cell.x, 0, mapW - b.footprintW),
+    y: clampInt(cell.y, 0, mapH - b.footprintH),
+  };
+}
+
 export const PRODUCTION_CATEGORIES_3D = ['building'] as const satisfies readonly ProdCategory[];
 export const BUILD_PANEL_PLACEMENT_CLASS_3D = 'mv3-build-bottom-bar';
 export const SUPPORTED_BUILDING_BUTTON_IDS_3D = ['barracks', 'warfactory', 'airbase'] as const;
@@ -909,8 +940,7 @@ export class MatchView3D {
   private issueRightClickOrder(clientX: number, clientY: number): void {
     const hit = this.camera.groundAt(clientX, clientY);
     const rawCell = hit ? worldToCell3D(hit.x, hit.z) : null;
-    const cell =
-      rawCell && rawCell.x >= 0 && rawCell.y >= 0 && rawCell.x < this.mapW && rawCell.y < this.mapH ? rawCell : null;
+    const cell = rawCell ? clampCellToMap3D(rawCell, this.mapW, this.mapH) : null;
     const targetId = this.renderer.pickEntity(this.camera.camera, clientX, clientY);
     const target = targetId === null ? null : this.world.entities.get(targetId);
     const producer = this.selectedProducerBuilding();
@@ -960,8 +990,8 @@ export class MatchView3D {
     if (!this.placingType) return;
     const hit = this.camera.groundAt(clientX, clientY);
     if (!hit) return;
-    const cell = worldToCell3D(hit.x, hit.z);
-    if (!this.world.canPlace(this.localPlayerId, this.placingType, cell.x, cell.y)) {
+    const cell = placementCellForClick3D(worldToCell3D(hit.x, hit.z), this.placingType, this.mapW, this.mapH);
+    if (!cell || !this.world.canPlace(this.localPlayerId, this.placingType, cell.x, cell.y)) {
       this.updateBuildPreview(clientX, clientY);
       audioBus.play('deny');
       return;
@@ -981,12 +1011,11 @@ export class MatchView3D {
       this.renderer.setBuildPreview(null, null, false);
       return;
     }
-    const cell = worldToCell3D(hit.x, hit.z);
-    const inBounds = cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH;
+    const cell = placementCellForClick3D(worldToCell3D(hit.x, hit.z), this.placingType, this.mapW, this.mapH);
     this.renderer.setBuildPreview(
       this.placingType,
-      inBounds ? cell : null,
-      inBounds && this.world.canPlace(this.localPlayerId, this.placingType, cell.x, cell.y),
+      cell,
+      !!cell && this.world.canPlace(this.localPlayerId, this.placingType, cell.x, cell.y),
     );
   }
 
