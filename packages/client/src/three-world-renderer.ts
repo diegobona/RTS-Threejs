@@ -339,6 +339,11 @@ export function shouldUseInstancedUnitModel3D(type: Pick<UnitType, 'id' | 'domai
   return type.id === 'gi' || usesLowPolyTankModel3D(type) || type.id === 'fighter';
 }
 
+export function configureInstancedUnitMesh3D(mesh: InstancedMesh, typeId: string): void {
+  mesh.frustumCulled = false;
+  mesh.userData.typeId = typeId;
+}
+
 export function isPickableEntityPart3D(userData: { pickable?: boolean }): boolean {
   return userData.pickable !== false;
 }
@@ -1413,7 +1418,7 @@ export class ThreeWorldRenderer {
       instanced.name = `instanced-${type.id}-${mesh.name || 'part'}`;
       instanced.count = 0;
       instanced.userData.instancedEntityIds = [];
-      instanced.userData.typeId = type.id;
+      configureInstancedUnitMesh3D(instanced, type.id);
       parts.push({ mesh: instanced, localMatrix: mesh.matrixWorld.clone() });
       root.add(instanced);
     });

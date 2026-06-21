@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Vector3 } from 'three';
+import { BoxGeometry, InstancedMesh, MeshBasicMaterial, Vector3 } from 'three';
 import * as renderer3D from './three-world-renderer';
 import {
   combatEffectProfile3D,
@@ -31,6 +31,7 @@ import {
   projectileVisualProfile3D,
   projectileVisualPoint3D,
   RALLY_VISUAL_STYLE_3D,
+  configureInstancedUnitMesh3D,
   shouldUseInstancedUnitModel3D,
   usesLowPolyTankModel3D,
 } from './three-world-renderer';
@@ -210,6 +211,14 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(shouldUseInstancedUnitModel3D({ id: 'worker', domain: 'infantry' })).toBe(false);
     expect(shouldUseInstancedUnitModel3D({ id: 'barracks', domain: 'building' })).toBe(false);
     expect(shouldUseInstancedUnitModel3D({ id: 'fighter', domain: 'aircraft' }, true)).toBe(false);
+  });
+
+  it('disables frustum culling on instanced unit meshes because instances spread across the whole battlefield', () => {
+    const mesh = new InstancedMesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial(), 32);
+
+    configureInstancedUnitMesh3D(mesh, 'grizzly');
+
+    expect(mesh.frustumCulled).toBe(false);
   });
 
   it('maps both player and AI tank unit ids to the detailed low-poly tank model', () => {
