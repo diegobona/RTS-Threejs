@@ -20,6 +20,7 @@ import {
   isPickableEntityPart3D,
   LOWPOLY_FIGHTER_PART_IDS,
   LOWPOLY_FIGHTER_MODEL_SCALE,
+  LOWPOLY_TANK_UNIT_IDS,
   LOWPOLY_WORKER_PART_IDS,
   proceduralModelYawOffset3D,
   combatMuzzlePoint3D,
@@ -31,6 +32,7 @@ import {
   projectileVisualPoint3D,
   RALLY_VISUAL_STYLE_3D,
   shouldUseInstancedUnitModel3D,
+  usesLowPolyTankModel3D,
 } from './three-world-renderer';
 
 describe('ThreeWorldRenderer aircraft altitude', () => {
@@ -203,10 +205,18 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
   it('uses instanced rendering only for repeated procedural combat units', () => {
     expect(shouldUseInstancedUnitModel3D({ id: 'gi', domain: 'infantry' })).toBe(true);
     expect(shouldUseInstancedUnitModel3D({ id: 'grizzly', domain: 'vehicle' })).toBe(true);
+    expect(shouldUseInstancedUnitModel3D({ id: 'rhino', domain: 'vehicle' })).toBe(true);
     expect(shouldUseInstancedUnitModel3D({ id: 'fighter', domain: 'aircraft' })).toBe(true);
     expect(shouldUseInstancedUnitModel3D({ id: 'worker', domain: 'infantry' })).toBe(false);
     expect(shouldUseInstancedUnitModel3D({ id: 'barracks', domain: 'building' })).toBe(false);
     expect(shouldUseInstancedUnitModel3D({ id: 'fighter', domain: 'aircraft' }, true)).toBe(false);
+  });
+
+  it('maps both player and AI tank unit ids to the detailed low-poly tank model', () => {
+    expect(LOWPOLY_TANK_UNIT_IDS).toEqual(['grizzly', 'rhino']);
+    expect(usesLowPolyTankModel3D({ id: 'grizzly', domain: 'vehicle' })).toBe(true);
+    expect(usesLowPolyTankModel3D({ id: 'rhino', domain: 'vehicle' })).toBe(true);
+    expect(usesLowPolyTankModel3D({ id: 'harvester', domain: 'vehicle' })).toBe(false);
   });
 
   it('sends idle aircraft into a large orbit over the home base instead of circling in place', () => {

@@ -223,6 +223,12 @@ export const LOWPOLY_WORKER_PART_IDS = [
   'team-patch',
 ] as const;
 
+export const LOWPOLY_TANK_UNIT_IDS = ['grizzly', 'rhino'] as const;
+
+export function usesLowPolyTankModel3D(type: Pick<UnitType, 'id' | 'domain'>): boolean {
+  return type.domain === 'vehicle' && (LOWPOLY_TANK_UNIT_IDS as readonly string[]).includes(type.id);
+}
+
 export function entityRootAltitude3D(_type: Pick<UnitType, 'domain'>): number {
   return 0;
 }
@@ -330,7 +336,7 @@ export function proceduralModelYawOffset3D(type: Pick<UnitType, 'domain'>, hasEx
 
 export function shouldUseInstancedUnitModel3D(type: Pick<UnitType, 'id' | 'domain'>, hasExternalModel = false): boolean {
   if (hasExternalModel || type.domain === 'building') return false;
-  return type.id === 'gi' || type.id === 'grizzly' || type.id === 'fighter';
+  return type.id === 'gi' || usesLowPolyTankModel3D(type) || type.id === 'fighter';
 }
 
 export function isPickableEntityPart3D(userData: { pickable?: boolean }): boolean {
@@ -1374,7 +1380,7 @@ export class ThreeWorldRenderer {
 
   private createInstancedModelPrototype(type: UnitType, ownerColor: number): Object3D {
     if (type.id === 'gi') return this.createInfantry(ownerColor);
-    if (type.id === 'grizzly') return this.createTank(ownerColor);
+    if (usesLowPolyTankModel3D(type)) return this.createTank(ownerColor);
     if (type.id === 'fighter') return this.createAircraft(ownerColor);
     return this.createVehiclePlaceholder(ownerColor, !!type.weapon);
   }
@@ -1412,7 +1418,7 @@ export class ThreeWorldRenderer {
       visualRoot.add(this.createBuilding(type, ownerColor));
     } else if (type.domain === 'vehicle') {
       visualRoot.add(
-        type.id === 'grizzly'
+        usesLowPolyTankModel3D(type)
           ? this.createTank(ownerColor)
           : type.id === 'harvester'
             ? this.createHarvester(ownerColor)
