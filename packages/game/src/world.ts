@@ -98,6 +98,8 @@ export interface Entity {
   attackMove: boolean;
   /** 攻击移动/巡逻的最终行军终点（格）。途中迎敌时被临时绕开，敌灭后据此续行/折返。null=无。 */
   attackDest: { x: number; y: number } | null;
+  /** 攻击移动的指定最终攻击目标。途中可临时交战，清完后继续攻击该目标。 */
+  attackTargetId: number | null;
   /** 巡逻：到达当前目的地后折返的另一端点（格），null=不巡逻。沿途自动交战。 */
   patrol: { x: number; y: number } | null;
   /** 工程师前往进入的目标建筑 id（己方=满血修复 / 敌方=占领；进入即消耗）。null=无。 */
@@ -138,7 +140,7 @@ export type Command =
   | { kind: 'cancel'; owner: number; category: ProdCategory }
   | { kind: 'place'; owner: number; typeId: string; cellX: number; cellY: number }
   | { kind: 'move'; entityIds: number[]; cellX: number; cellY: number }
-  | { kind: 'attackMove'; entityIds: number[]; cellX: number; cellY: number }
+  | { kind: 'attackMove'; entityIds: number[]; cellX: number; cellY: number; targetId?: number }
   | { kind: 'patrol'; entityIds: number[]; cellX: number; cellY: number }
   | { kind: 'attack'; entityIds: number[]; targetId: number }
   | { kind: 'engineerEnter'; entityIds: number[]; targetId: number }
@@ -343,6 +345,7 @@ export class World {
             e.targetId = null;
             e.attackMove = false;
             e.attackDest = null;
+            e.attackTargetId = null;
             e.patrol = null;
             // 矿车手动移动后回到自动采矿状态：先去目的地，到了再自找最近矿（见 stepHarvester seek）
             if (e.harvester) e.harvester.mode = 'seek';
@@ -352,7 +355,15 @@ export class World {
         case 'attackMove': {
           const ids = [...cmd.entityIds].sort((a, b) => a - b);
           const airFormation = this.allAircraft(ids);
-          const slots = ids.length > 1 ? this.spreadDestinations(cmd.cellX, cmd.cellY, ids.length, airFormation ? 5 : 1, airFormation) : [{ x: cmd.cellX, y: cmd.cellY }];
+          const target = cmd.targetId === undefined ? null : this.entities.get(cmd.targetId) ?? null;
+          const targetCell = target
+            ? airFormation
+              ? this.passableAirNear(target.cellX, target.cellY, 8) ?? { x: target.cellX, y: target.cellY }
+              : this.passableNear(target.cellX, target.cellY) ?? { x: cmd.cellX, y: cmd.cellY }
+            : { x: cmd.cellX, y: cmd.cellY };
+          const slots = ids.length > 1
+            ? this.spreadDestinations(targetCell.x, targetCell.y, ids.length, airFormation ? 5 : 1, airFormation)
+            : [targetCell];
           ids.forEach((eid, i) => {
             const e = this.entities.get(eid);
             if (!e) return;
@@ -363,6 +374,7 @@ export class World {
             e.targetId = null;
             e.attackMove = true;
             e.attackDest = { x: s.x, y: s.y };
+            e.attackTargetId = target?.id ?? null;
             e.patrol = null;
           });
           break;
@@ -380,6 +392,7 @@ export class World {
             e.targetId = null;
             e.attackMove = true;
             e.attackDest = { x: cmd.cellX, y: cmd.cellY };
+            e.attackTargetId = null;
           }
           break;
         case 'attack': {
@@ -400,6 +413,7 @@ export class World {
               e.targetId = cmd.targetId;
               e.attackMove = false;
               e.attackDest = null;
+              e.attackTargetId = null;
               e.patrol = null;
               if (type?.domain === 'aircraft') {
                 const slot = airSlots[airSlotIndex++];
@@ -426,6 +440,7 @@ export class World {
               e.targetId = null;
               e.attackMove = false;
               e.attackDest = null;
+              e.attackTargetId = null;
               e.patrol = null;
               this.orderMove(e, dock.x, dock.y);
             }
@@ -439,6 +454,8 @@ export class World {
             this.clearConstructionTarget(e);
             e.targetId = null;
             e.attackMove = false;
+            e.attackDest = null;
+            e.attackTargetId = null;
             if (this.oreAt(cmd.cellX, cmd.cellY) > 0) {
               this.orderMove(e, cmd.cellX, cmd.cellY); // 去指定矿点开采
               e.harvester.mode = 'toOre';
@@ -494,6 +511,7 @@ export class World {
               e.targetId = null;
               e.attackMove = false;
               e.attackDest = null;
+              e.attackTargetId = null;
               e.patrol = null;
               this.clearConstructionTarget(e);
             }
@@ -534,6 +552,7 @@ export class World {
       kills: 0,
       attackMove: false,
       attackDest: null,
+      attackTargetId: null,
       patrol: null,
       enterTarget: null,
       constructionTargetId: null,
@@ -1056,6 +1075,7 @@ export class World {
       worker.targetId = null;
       worker.attackMove = false;
       worker.attackDest = null;
+      worker.attackTargetId = null;
       worker.patrol = null;
       worker.enterTarget = null;
       this.orderMove(worker, slot.x, slot.y);
@@ -1429,6 +1449,7 @@ export class World {
         if (e.attackMove && (e.attackDest || e.patrol)) return;
         e.goal = null;
         e.attackMove = false; // 普通移动抵达目的地
+        e.attackTargetId = null;
         return;
       }
       e.waypoint = { x: cellToLepton(next.x), y: cellToLepton(next.y) };
@@ -1690,6 +1711,21 @@ export class World {
     return best;
   }
 
+  private attackMoveFinalTarget(e: Entity, type: UnitType): Entity | null {
+    if (e.attackTargetId === null) return null;
+    const target = this.entities.get(e.attackTargetId);
+    if (!target || target.owner === e.owner || this.players.get(target.owner)?.defeated) {
+      e.attackTargetId = null;
+      return null;
+    }
+    const targetType = this.rules.units.get(target.typeId);
+    if (!targetType || !this.weaponForTarget(type, targetType)) {
+      e.attackTargetId = null;
+      return null;
+    }
+    return target;
+  }
+
   private stepCombat(e: Entity, type: UnitType): boolean {
     if (!this.hasWeapon(type)) return false;
     if (e.cooldown > 0) e.cooldown--;
@@ -1698,7 +1734,7 @@ export class World {
     if (e.attackMove) {
       // 攻击移动/巡逻：每帧锁定射程/警戒内最近的敌人——逐个停下歼灭挡路之敌，
       // 打完（目标消失/驶离警戒）再据 attackDest 续行或折返。
-      target = this.acquireEnemy(e, type) ?? undefined;
+      target = this.acquireEnemy(e, type) ?? this.attackMoveFinalTarget(e, type) ?? undefined;
       e.targetId = target ? target.id : null;
     } else {
       // 显式攻击：紧咬指定目标；空闲（无目的地）：警戒索敌被动自卫。
@@ -1785,6 +1821,7 @@ export class World {
       } else {
         e.attackMove = false;
         e.attackDest = null;
+        e.attackTargetId = null;
       }
     } else if (e.path.length === 0 && !e.waypoint) {
       this.orderMove(e, dest.x, dest.y); // 刚打完站住 / 路径耗尽未到点：续行
@@ -1944,7 +1981,7 @@ export class World {
       h.addInt(e.constructionProgress).addInt(e.constructionTotal);
       h.addInt(e.harvester ? e.harvester.load : -1);
       h.addInt(e.repairing ? 1 : 0).addInt(e.rallyX).addInt(e.rallyY).addInt(e.airLoiterX).addInt(e.airLoiterY).addInt(e.enterTarget ?? -1);
-      h.addInt(e.constructionTargetId ?? -1);
+      h.addInt(e.constructionTargetId ?? -1).addInt(e.attackTargetId ?? -1);
       h.addInt(e.producer ? 1 : 0)
         .addInt(e.producer?.enabled ? 1 : 0)
         .addInt(e.producer?.progress ?? -1);

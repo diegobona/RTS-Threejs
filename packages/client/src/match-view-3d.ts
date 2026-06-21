@@ -912,7 +912,7 @@ export class MatchView3D {
     });
     if (cmd) {
       this.localCommands.push(cmd);
-      if (cmd.kind === 'attack' && target) this.spawnTargetCommandIndicator(target);
+      if ((cmd.kind === 'attack' || (cmd.kind === 'attackMove' && target && target.owner !== this.localPlayerId)) && target) this.spawnTargetCommandIndicator(target);
       else if (cell) this.spawnGroundCommandIndicator(cell);
       audioBus.play('move');
     } else {

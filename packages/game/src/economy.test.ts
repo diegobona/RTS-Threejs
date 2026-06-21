@@ -503,6 +503,27 @@ describe('战斗（M5 雏形）', () => {
     expect(tank.attackMove).toBe(false);
   });
 
+  it('攻击移动到指定建筑目标：沿途接敌后继续攻击该建筑', () => {
+    const w = new World(gridTerrain(40, 40), 41);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const tank = w.spawnUnit(1, 'grizzly', 2, 2)!;
+    const blocker = w.spawnUnit(2, 'conscript', 12, 2)!;
+    const target = w.spawnUnit(2, 'barracks', 28, 2)!;
+    if (target.producer) target.producer.enabled = false;
+    const targetHp = target.hp;
+
+    w.applyCommands([
+      { kind: 'attackMove', entityIds: [tank.id], cellX: target.cellX, cellY: target.cellY, targetId: target.id },
+    ]);
+    expect(tank.attackMove).toBe(true);
+
+    runScript(w, [], 1400);
+
+    expect(w.entities.has(blocker.id)).toBe(false);
+    expect(target.hp).toBeLessThan(targetHp);
+  });
+
   it('出售建筑：移除但不回款', () => {
     const w = baseWorld();
     const cy = w.spawnUnit(1, 'conyard', 5, 5)!;

@@ -14,6 +14,19 @@ describe('3D right-click orders', () => {
     ).toEqual({ kind: 'attack', entityIds: [7], targetId: 42 });
   });
 
+  it('attack-moves toward an enemy target when the ground mode says to fight on contact', () => {
+    expect(
+      rightClickCommand({
+        selectedIds: [7, 3],
+        combatIds: [7],
+        target: { id: 42, owner: 2 },
+        localPlayerId: 1,
+        cell: { x: 10, y: 12 },
+        groundMode: 'attackMove',
+      }),
+    ).toEqual({ kind: 'attackMove', entityIds: [7], cellX: 10, cellY: 12, targetId: 42 });
+  });
+
   it('moves all selected units when right-clicking ground or a friendly target', () => {
     expect(
       rightClickCommand({
