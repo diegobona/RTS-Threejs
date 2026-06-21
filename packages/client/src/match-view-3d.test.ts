@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { World } from '@ra2web/game';
 import { gridTerrain } from '@ra2web/game';
 import * as matchView3D from './match-view-3d';
+import { setLocaleForTests } from './i18n';
 import {
   allOwnedUnitIdsInCapacityGroup3D,
   ATTACK_MODE_HUD_LABEL_3D,
@@ -18,7 +19,7 @@ import {
   controlGroupIdsForSelection3D,
   controlGroupHudItems3D,
   DEFAULT_GROUND_MOVE_MODE_3D,
-  GROUND_MOVE_MODE_BUTTONS_3D,
+  groundMoveModeButtons3D,
   initialCameraFocus3D,
   matchOutcomeText3D,
   MATCH_3D_STYLE,
@@ -31,6 +32,9 @@ import {
   supportedBuildButtonTypes3D,
   topHudText3D,
 } from './match-view-3d';
+
+beforeEach(() => setLocaleForTests('zh'));
+afterEach(() => setLocaleForTests(null));
 
 describe('MatchView3D camera defaults', () => {
   it('starts focused on the center of the map instead of the local spawn', () => {
@@ -77,26 +81,25 @@ describe('MatchView3D production tabs', () => {
     expect(MATCH_3D_STYLE).not.toContain('.mv3-build .name { overflow: hidden; text-overflow: ellipsis;');
   });
 
-  it('provides readable RTS-style icons and hints for core building buttons', () => {
+  it('provides localized RTS-style icons and hints for core building buttons', () => {
     expect(buildButtonMeta3D({ id: 'barracks', name: 'Barracks' })).toEqual({
-      icon: '▥',
-      label: 'Barracks',
-      hint: 'Auto infantry',
+      icon: '\u25a5',
+      label: '\u5175\u8425',
+      hint: '\u81ea\u52a8\u751f\u4ea7\u58eb\u5175',
     });
     expect(buildButtonMeta3D({ id: 'warfactory', name: 'War Factory' })).toEqual({
-      icon: '▰',
-      label: 'War Factory',
-      hint: 'Auto tanks',
+      icon: '\u25b0',
+      label: '\u6218\u8f66\u5de5\u5382',
+      hint: '\u81ea\u52a8\u751f\u4ea7\u5766\u514b',
     });
     expect(buildButtonMeta3D({ id: 'airbase', name: 'Airbase' })).toEqual({
-      icon: '✈',
-      label: 'Airbase',
-      hint: 'Auto aircraft',
+      icon: '\u2708',
+      label: '\u7a7a\u519b\u57fa\u5730',
+      hint: '\u81ea\u52a8\u751f\u4ea7\u98de\u673a',
     });
-    expect(buildButtonMeta3D({ id: 'pillbox', name: 'Pillbox' }).icon).toBe('⬟');
-    expect(buildButtonMeta3D({ id: 'battlelab', name: 'Battle Lab' }).hint).toBe('Tech unlocks');
+    expect(buildButtonMeta3D({ id: 'pillbox', name: 'Pillbox' }).icon).toBe('\u2b1f');
+    expect(buildButtonMeta3D({ id: 'battlelab', name: 'Battle Lab' }).hint).toBe('\u79d1\u6280\u89e3\u9501');
   });
-
   it('switches the current pending building instead of queuing behind the previous pending building', () => {
     const world = new World(gridTerrain(20, 20), 7);
     world.addPlayer(1, 'allied', 0);
@@ -116,11 +119,11 @@ describe('MatchView3D production tabs', () => {
 describe('MatchView3D ground order mode HUD', () => {
   it('uses persistent button modes without a keyboard shortcut', () => {
     expect(DEFAULT_GROUND_MOVE_MODE_3D).toBe('move');
-    expect(GROUND_MOVE_MODE_BUTTONS_3D).toEqual([
-      { mode: 'move', label: '途中遇敌不攻击', title: '默认：右键移动，不主动攻击沿途敌人' },
-      { mode: 'attackMove', label: '途中遇敌攻击', title: '选择后，右键移动会边走边攻击' },
+    expect(groundMoveModeButtons3D()).toEqual([
+      { mode: 'move', label: '\u9014\u4e2d\u9047\u654c\u4e0d\u653b\u51fb', title: '\u9ed8\u8ba4\uff1a\u53f3\u952e\u79fb\u52a8\uff0c\u4e0d\u4e3b\u52a8\u653b\u51fb\u6cbf\u9014\u654c\u4eba' },
+      { mode: 'attackMove', label: '\u9014\u4e2d\u9047\u654c\u653b\u51fb', title: '\u9009\u62e9\u540e\uff0c\u53f3\u952e\u79fb\u52a8\u4f1a\u8fb9\u8d70\u8fb9\u653b\u51fb' },
     ]);
-    expect(JSON.stringify(GROUND_MOVE_MODE_BUTTONS_3D)).not.toContain('A');
+    expect(JSON.stringify(groundMoveModeButtons3D())).not.toContain('A');
     expect('isAttackMoveModifierKey3D' in matchView3D).toBe(false);
     expect('groundMoveModeForOrder3D' in matchView3D).toBe(false);
   });
@@ -163,8 +166,8 @@ describe('MatchView3D rules and controls help', () => {
     expect(sections.flatMap((section) => section.items)).toEqual([
       '消灭敌方全部建筑和战斗单位（不包括工人）。',
       '有工人才能新建建筑。',
-      '点击建筑后右键空地：设置集结点。',
-      '按住鼠标中键：平移地图。',
+      '点击建筑后再右键空地，可设置集结点。',
+      '按住鼠标中键，可平移地图。',
       '拖框或按 Ctrl 选择：多选单位。',
       '双击单位：选中屏幕内同类型单位。',
       '点击顶部兵种数量：全选该兵种。',
@@ -230,6 +233,20 @@ describe('MatchView3D capacity HUD', () => {
       { text: '坦克 48/100', selectGroup: 'vehicle' },
       { text: '飞机 23/30', selectGroup: 'aircraft' },
     ]);
+  });
+
+  it('switches the main HUD labels to English for English users', () => {
+    setLocaleForTests('en');
+
+    expect(capacitySummaryText3D({
+      building: { count: 4, limit: 20 },
+      infantry: { count: 117, limit: 300 },
+      worker: { count: 8, limit: 20 },
+      vehicle: { count: 48, limit: 100 },
+      aircraft: { count: 23, limit: 30 },
+    })).toBe('Buildings 4/20 | Workers 8/20 | Soldiers 117/300 | Tanks 48/100 | Aircraft 23/30');
+    expect(groundMoveModeButtons3D()[1]?.label).toBe('Attack while moving');
+    expect(rulesAndControlsSections3D()[0]?.title).toBe('Victory');
   });
 });
 

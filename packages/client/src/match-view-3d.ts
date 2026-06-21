@@ -4,6 +4,7 @@ import { audioBus } from './audio-bus';
 import { bgm } from './bgm';
 import { ThreeCameraController } from './three-camera';
 import { cellToWorld3D, leptonToWorld3D, worldToCell3D } from './three-coords';
+import { uiText } from './i18n';
 import { productionButtonState } from './three-build-ui';
 import { rightClickCommand, type GroundMoveMode } from './three-orders';
 import { idsInScreenRect, nearestIdWithinRadius } from './three-selection';
@@ -63,21 +64,11 @@ export interface BuildButtonMeta3D {
   hint: string;
 }
 
-const BUILD_BUTTON_META_3D: Record<string, BuildButtonMeta3D> = {
-  conyard: { icon: 'HQ', label: 'Command HQ', hint: 'Base core' },
-  powerplant: { icon: '⚡', label: 'Power', hint: 'Legacy power' },
-  refinery: { icon: '◆', label: 'Refinery', hint: 'Legacy economy' },
-  barracks: { icon: '▥', label: 'Barracks', hint: 'Auto infantry' },
-  warfactory: { icon: '▰', label: 'War Factory', hint: 'Auto tanks' },
-  airbase: { icon: '✈', label: 'Airbase', hint: 'Auto aircraft' },
-  pillbox: { icon: '⬟', label: 'Pillbox', hint: 'Static defense' },
-  battlelab: { icon: '✚', label: 'Battle Lab', hint: 'Tech unlocks' },
-};
-
 export function buildButtonMeta3D(type: Pick<UnitType, 'id' | 'name'>): BuildButtonMeta3D {
-  return BUILD_BUTTON_META_3D[type.id] ?? { icon: '◇', label: type.name, hint: 'Structure' };
+  const text = uiText().buildMeta;
+  const known = text[type.id as keyof Omit<typeof text, 'fallback'>];
+  return known ?? { icon: text.fallback.icon, label: type.name, hint: text.fallback.hint };
 }
-
 export interface ProductionClickPlan3D {
   commands: Command[];
   placingTypeId: string | null;
@@ -107,10 +98,15 @@ export function productionClickPlan3D(
 
 export const DEFAULT_GROUND_MOVE_MODE_3D: GroundMoveMode = 'move';
 
-export const GROUND_MOVE_MODE_BUTTONS_3D = [
-  { mode: 'move', label: '途中遇敌不攻击', title: '默认：右键移动，不主动攻击沿途敌人' },
-  { mode: 'attackMove', label: '途中遇敌攻击', title: '选择后，右键移动会边走边攻击' },
-] as const satisfies readonly { mode: GroundMoveMode; label: string; title: string }[];
+export function groundMoveModeButtons3D(): { mode: GroundMoveMode; label: string; title: string }[] {
+  const text = uiText().groundMoveModes;
+  return [
+    { mode: 'move', label: text.move.label, title: text.move.title },
+    { mode: 'attackMove', label: text.attackMove.label, title: text.attackMove.title },
+  ];
+}
+
+export const GROUND_MOVE_MODE_BUTTONS_3D = groundMoveModeButtons3D();
 
 export type CapacitySelectionGroup3D = 'worker' | 'infantry' | 'vehicle' | 'aircraft';
 
@@ -119,21 +115,32 @@ export const ATTACK_MODE_HUD_LABEL_3D = '攻击模式';
 export const CAPACITY_SELECT_TOOLTIP_3D = '点击可全选兵种';
 export const SELECTED_STATUS_CLASS_3D = 'mv3-selected-status';
 
+function controlGroupsHudLabel3D(): string {
+  return uiText().hud.controlGroups;
+}
+
+function attackModeHudLabel3D(): string {
+  return uiText().hud.attackMode;
+}
+
+function capacitySelectTooltip3D(): string {
+  return uiText().hud.capacitySelectTooltip;
+}
 export interface CapacitySummarySegment3D {
   text: string;
   selectGroup?: CapacitySelectionGroup3D;
 }
 
 export function capacitySummarySegments3D(capacity: CapacitySnapshot): CapacitySummarySegment3D[] {
+  const labels = uiText().capacity;
   return [
-    { text: `建筑 ${capacity.building.count}/${capacity.building.limit}` },
-    { text: `工人 ${capacity.worker.count}/${capacity.worker.limit}`, selectGroup: 'worker' },
-    { text: `士兵 ${capacity.infantry.count}/${capacity.infantry.limit}`, selectGroup: 'infantry' },
-    { text: `坦克 ${capacity.vehicle.count}/${capacity.vehicle.limit}`, selectGroup: 'vehicle' },
-    { text: `飞机 ${capacity.aircraft.count}/${capacity.aircraft.limit}`, selectGroup: 'aircraft' },
+    { text: `${labels.building} ${capacity.building.count}/${capacity.building.limit}` },
+    { text: `${labels.worker} ${capacity.worker.count}/${capacity.worker.limit}`, selectGroup: 'worker' },
+    { text: `${labels.infantry} ${capacity.infantry.count}/${capacity.infantry.limit}`, selectGroup: 'infantry' },
+    { text: `${labels.vehicle} ${capacity.vehicle.count}/${capacity.vehicle.limit}`, selectGroup: 'vehicle' },
+    { text: `${labels.aircraft} ${capacity.aircraft.count}/${capacity.aircraft.limit}`, selectGroup: 'aircraft' },
   ];
 }
-
 export function capacitySummaryText3D(capacity: CapacitySnapshot): string {
   return capacitySummarySegments3D(capacity).map((segment) => segment.text).join(' | ');
 }
@@ -148,26 +155,8 @@ export interface RulesAndControlsSection3D {
 }
 
 export function rulesAndControlsSections3D(): RulesAndControlsSection3D[] {
-  return [
-    {
-      title: '胜利条件',
-      items: ['消灭敌方全部建筑和战斗单位（不包括工人）。'],
-    },
-    {
-      title: '建造',
-      items: ['有工人才能新建建筑。', '点击建筑后右键空地：设置集结点。', '按住鼠标中键：平移地图。'],
-    },
-    {
-      title: '选择',
-      items: ['拖框或按 Ctrl 选择：多选单位。', '双击单位：选中屏幕内同类型单位。', '点击顶部兵种数量：全选该兵种。'],
-    },
-    {
-      title: '编队',
-      items: ['Ctrl+数字：保存当前选中单位。', '数字键：选中对应编队。'],
-    },
-  ];
+  return uiText().rules.sections.map((section) => ({ title: section.title, items: [...section.items] }));
 }
-
 export function allOwnedUnitIdsInCapacityGroup3D(world: World, localPlayerId: number, group: CapacitySelectionGroup3D): number[] {
   const ids: number[] = [];
   for (const e of world.entities.values()) {
@@ -224,12 +213,6 @@ export interface ControlGroupHudItem3D {
 }
 
 const CONTROL_GROUP_KIND_ORDER: CapacitySelectionGroup3D[] = ['worker', 'infantry', 'vehicle', 'aircraft'];
-const CONTROL_GROUP_KIND_LABEL: Record<CapacitySelectionGroup3D, string> = {
-  worker: '工人',
-  infantry: '士兵',
-  vehicle: '坦克',
-  aircraft: '飞机',
-};
 
 function controlGroupKindOf(typeId: string, type: UnitType): CapacitySelectionGroup3D | null {
   if (type.domain === 'building') return null;
@@ -268,7 +251,7 @@ export function controlGroupButtonLabel3D(world: World, group: number, ids: read
   }
   const parts = CONTROL_GROUP_KIND_ORDER
     .filter((kind) => counts[kind] > 0)
-    .map((kind) => `${CONTROL_GROUP_KIND_LABEL[kind]} ${counts[kind]}`);
+    .map((kind) => `${uiText().capacity[kind]} ${counts[kind]}`);
   return parts.length > 0 ? `${group} ${parts.join(' · ')}` : `${group}`;
 }
 
@@ -331,7 +314,7 @@ export const MATCH_3D_STYLE = `
 .mv3-groups-panel { position: fixed; left: 12px; top: 60px; z-index: 10; display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 6px;
   background: var(--hud-bg); border: 1px solid var(--hud-edge); border-radius: 9px; box-shadow: 0 12px 35px rgba(0,0,0,.2); backdrop-filter: blur(6px); }
 .mv3-groups { display: flex; gap: 6px; align-items: center; min-width: 42px; white-space: nowrap; }
-.mv3-groups:empty::after { content: '无'; color: var(--hud-muted); font-size: 12px; }
+.mv3-groups:empty::after { content: attr(data-empty); color: var(--hud-muted); font-size: 12px; }
 .mv3-group { height: 30px; max-width: 180px; padding: 0 8px; border: 1px solid rgba(88,167,216,.46);
   border-radius: 6px; background: rgba(23,48,70,.72); color: #dce6ed; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
   font: inherit; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -503,25 +486,26 @@ export class MatchView3D {
   }
 
   private buildDom(): void {
-    const groundModeButtons = GROUND_MOVE_MODE_BUTTONS_3D.map(
+    const text = uiText();
+    const groundModeButtons = groundMoveModeButtons3D().map(
       (button) =>
         `<button type="button" data-ground-mode="${button.mode}" title="${button.title}">${button.label}</button>`,
     ).join('');
     this.root.insertAdjacentHTML(
       'beforeend',
       `<div class="mv3-top">
-        <div class="mv3-hud-panel" aria-label="作战单元数量">
-          <span class="mv3-panel-label">作战单元</span>
+        <div class="mv3-hud-panel" aria-label="${text.hud.combatUnits}">
+          <span class="mv3-panel-label">${text.hud.combatUnits}</span>
           <span id="mv3-capacity" class="mv3-capacity"></span>
         </div>
         <span id="mv3-selected" class="${SELECTED_STATUS_CLASS_3D}"></span>
       </div>
-      <div class="mv3-groups-panel" aria-label="${CONTROL_GROUPS_HUD_LABEL_3D}">
-        <span class="mv3-panel-label">${CONTROL_GROUPS_HUD_LABEL_3D}</span>
-        <span id="mv3-groups" class="mv3-groups"></span>
+      <div class="mv3-groups-panel" aria-label="${controlGroupsHudLabel3D()}">
+        <span class="mv3-panel-label">${controlGroupsHudLabel3D()}</span>
+        <span id="mv3-groups" class="mv3-groups" data-empty="${text.hud.noGroups}"></span>
       </div>
-      <div class="mv3-orders" id="mv3-orders" aria-label="${ATTACK_MODE_HUD_LABEL_3D}">
-        <span class="mv3-panel-label">${ATTACK_MODE_HUD_LABEL_3D}</span>
+      <div class="mv3-orders" id="mv3-orders" aria-label="${attackModeHudLabel3D()}">
+        <span class="mv3-panel-label">${attackModeHudLabel3D()}</span>
         ${groundModeButtons}
       </div>
       <div class="mv3-build ${BUILD_PANEL_PLACEMENT_CLASS_3D}">
@@ -531,7 +515,7 @@ export class MatchView3D {
       </div>
       <div class="mv3-selbox" id="mv3-selbox"></div>
       <div class="mv3-help" id="mv3-help">
-        <button class="mv3-help-toggle" id="mv3-help-toggle" type="button" aria-expanded="false" aria-controls="mv3-help-panel">规则和控制</button>
+        <button class="mv3-help-toggle" id="mv3-help-toggle" type="button" aria-expanded="false" aria-controls="mv3-help-panel">${text.hud.helpButton}</button>
         <div class="mv3-help-panel" id="mv3-help-panel" hidden></div>
       </div>`,
     );
@@ -564,12 +548,11 @@ export class MatchView3D {
     help?.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.root.querySelector('#mv3-help-toggle')?.addEventListener('click', () => this.toggleRulesAndControlsPanel());
   }
-
   private buildRulesAndControlsPanel(): void {
     const panel = this.root.querySelector('#mv3-help-panel');
     if (!panel) return;
     const heading = document.createElement('h3');
-    heading.textContent = '规则和控制';
+    heading.textContent = uiText().hud.helpTitle;
     const sections = rulesAndControlsSections3D().map((section) => {
       const block = document.createElement('section');
       block.className = 'mv3-help-section';
@@ -614,7 +597,7 @@ export class MatchView3D {
     this.updateCapacityHud();
     this.updateControlGroupsHud();
     const sel = this.root.querySelector('#mv3-selected');
-    if (sel) sel.textContent = this.selected.size > 0 ? `选中 ${this.selected.size}` : '';
+    if (sel) sel.textContent = this.selected.size > 0 ? uiText().hud.selected(this.selected.size) : '';
     this.refreshBuildPanel();
     this.refreshProducerPanel();
     this.updateProductionAudio();
@@ -639,7 +622,7 @@ export class MatchView3D {
       button.type = 'button';
       button.className = 'mv3-capacity-chip is-clickable';
       button.dataset.capacityGroup = segment.selectGroup;
-      button.title = CAPACITY_SELECT_TOOLTIP_3D;
+      button.title = capacitySelectTooltip3D();
       button.textContent = segment.text;
       nodes.push(button);
     });
@@ -668,7 +651,7 @@ export class MatchView3D {
       summary.className = 'mv3-group-summary';
       summary.innerHTML = this.formatControlGroupSummary(item.label, item.group);
       button.replaceChildren(num, summary);
-      button.title = `Recall group ${item.group}`;
+      button.title = uiText().hud.recallGroup(item.group);
       return button;
     });
     this.groupsEl.replaceChildren(...nodes);
@@ -688,12 +671,13 @@ export class MatchView3D {
     banner.className = `mv3-banner ${outcome === 'Defeat' ? 'defeat' : 'victory'}`;
     const seconds = Math.floor(this.world.tick / 15);
     const time = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-    banner.innerHTML = `${outcome}<small>Time ${time}</small>`;
+    const text = uiText().hud;
+    banner.innerHTML = `${text.outcome[outcome]}<small>${text.time(time)}</small>`;
     this.root.appendChild(banner);
   }
 
   private buildProductionTabs(): void {
-    const labels: Record<ProdCategory, string> = { building: 'Build', infantry: 'Inf', vehicle: 'Veh', aircraft: 'Air' };
+    const labels: Record<ProdCategory, string> = uiText().hud.tabs;
     this.tabsEl.hidden = PRODUCTION_CATEGORIES_3D.length <= 1;
     for (const category of PRODUCTION_CATEGORIES_3D) {
       const button = document.createElement('button');
@@ -1098,7 +1082,7 @@ export class MatchView3D {
     titleText.textContent = this.buildLabel(this.world.rules.units.get(selected.entity.typeId)!);
     const toggle = document.createElement('button');
     toggle.type = 'button';
-    toggle.textContent = producer.enabled ? 'Auto' : 'Off';
+    toggle.textContent = producer.enabled ? uiText().hud.producerAuto : uiText().hud.producerOff;
     toggle.addEventListener('click', () => {
       this.localCommands.push({ kind: 'setAutoProduction', owner: this.localPlayerId, buildingId: selected.id, enabled: !producer.enabled });
       audioBus.play('select');
@@ -1108,7 +1092,7 @@ export class MatchView3D {
     const row = document.createElement('div');
     row.className = 'mv3-producer-row';
     const progress = document.createElement('span');
-    progress.textContent = producer.paidTypeId ? `${Math.max(0, Math.min(100, pct))}%` : 'Idle';
+    progress.textContent = producer.paidTypeId ? `${Math.max(0, Math.min(100, pct))}%` : uiText().hud.producerIdle;
     const select = document.createElement('select');
     for (const option of options) {
       const item = document.createElement('option');
@@ -1159,15 +1143,7 @@ export class MatchView3D {
   }
 
   private buildLabel(type: UnitType): string {
-    const labels: Record<string, string> = {
-      worker: 'Worker',
-      gi: 'Soldier',
-      engineer: 'Engineer',
-      grizzly: 'Tank',
-      arty: 'Artillery',
-      fighter: 'Fighter',
-      harvester: 'Harvester',
-    };
+    const labels: Record<string, string> = uiText().unitLabels;
     return buildButtonMeta3D(type).label !== type.name ? buildButtonMeta3D(type).label : (labels[type.id] ?? type.name);
   }
 

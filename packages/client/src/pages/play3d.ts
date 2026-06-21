@@ -1,6 +1,7 @@
 import { SIM_TICKS_PER_SECOND } from '@ra2web/game';
 import { SimpleAI, type Difficulty } from '../ai';
 import { audioBus } from '../audio-bus';
+import { difficultyLabel, skirmishMapText, uiText } from '../i18n';
 import { createMatchWorld, localSkirmishConfig, SKIRMISH_MAP_PRESETS, skirmishMapPreset, type SkirmishMapId } from '../match-setup';
 import { MATCH_3D_STYLE, MatchView3D } from '../match-view-3d';
 
@@ -57,7 +58,7 @@ const SETUP_3D_STYLE = `
 `;
 
 export async function renderPlay3D(root: HTMLElement): Promise<void> {
-  document.title = 'Fast War Game';
+  document.title = uiText().appTitle;
   const style = document.createElement('style');
   style.textContent = MATCH_3D_STYLE + SETUP_3D_STYLE;
   document.head.appendChild(style);
@@ -67,30 +68,32 @@ export async function renderPlay3D(root: HTMLElement): Promise<void> {
   if (DISABLED_MAP_IDS.has(mapId)) mapId = 'lakeland';
 
   function renderSetup(): void {
+    const text = uiText();
     root.innerHTML = `
       <div class="p3-setup"><div class="p3-card">
-        <h1>Fast War Game</h1>
-        <div class="p3-label">AI difficulty</div>
+        <h1>${text.appTitle}</h1>
+        <div class="p3-label">${text.setup.aiDifficulty}</div>
         <div class="p3-opts" id="p3-diff">
-          <button data-v="easy">Easy</button>
-          <button data-v="normal">Normal</button>
-          <button data-v="hard">Hard</button>
+          <button data-v="easy">${difficultyLabel('easy')}</button>
+          <button data-v="normal">${difficultyLabel('normal')}</button>
+          <button data-v="hard">${difficultyLabel('hard')}</button>
         </div>
-        <div class="p3-label">Battlefield</div>
+        <div class="p3-label">${text.setup.battlefield}</div>
         <div class="p3-maps" id="p3-map">
           ${SKIRMISH_MAP_PRESETS.map((preset) => {
             const disabled = DISABLED_MAP_IDS.has(preset.id);
+            const mapText = skirmishMapText(preset.id);
             return `
             <button class="p3-map-card" data-v="${preset.id}"${disabled ? ' disabled aria-disabled="true"' : ''}>
               <span class="p3-map-preview"></span>
-              <span class="p3-map-name">${preset.name}</span>
-              <span class="p3-map-hint">${preset.hint}</span>
-              ${disabled ? '<span class="p3-map-soon">coming soon</span>' : ''}
+              <span class="p3-map-name">${mapText.name}</span>
+              <span class="p3-map-hint">${mapText.hint}</span>
+              ${disabled ? `<span class="p3-map-soon">${text.setup.comingSoon}</span>` : ''}
             </button>
           `;
           }).join('')}
         </div>
-        <button class="p3-start" id="p3-start">Start Game</button>
+        <button class="p3-start" id="p3-start">${text.setup.startGame}</button>
       </div></div>`;
     const sync = (): void => {
       for (const b of root.querySelectorAll('#p3-diff button')) b.classList.toggle('on', (b as HTMLElement).dataset.v === difficulty);
