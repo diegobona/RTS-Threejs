@@ -23,10 +23,13 @@ import { StateHash } from './hash';
 import { findPath, type PathGrid } from './pathfind';
 import { Prng } from './prng';
 
+export type TerrainKind = 'grass' | 'water' | 'ridge' | 'sand' | 'scorched' | 'shore' | 'road' | 'marsh';
+
 export interface TerrainInfo extends PathGrid {
   width: number;
   height: number;
   passable(x: number, y: number): boolean;
+  terrainAt?(x: number, y: number): TerrainKind;
 }
 
 export interface Player {

@@ -2,7 +2,7 @@
  * 回放脚本执行器：确定性测试与 desync 排查的核心工具。
  * 命令日志（tick → 命令）就是回放文件格式的雏形。
  */
-import type { Command, TerrainInfo, World } from './world';
+import type { Command, TerrainInfo, TerrainKind, World } from './world';
 
 export interface ScriptedCommand {
   tick: number;
@@ -46,10 +46,12 @@ export function gridTerrain(
   width: number,
   height: number,
   blocked: ReadonlySet<number> = new Set(),
+  terrainAt?: (x: number, y: number) => TerrainKind,
 ): TerrainInfo {
   return {
     width,
     height,
     passable: (x, y) => x >= 0 && y >= 0 && x < width && y < height && !blocked.has(y * width + x),
+    terrainAt,
   };
 }

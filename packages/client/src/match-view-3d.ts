@@ -78,6 +78,33 @@ export function buildButtonMeta3D(type: Pick<UnitType, 'id' | 'name'>): BuildBut
   return BUILD_BUTTON_META_3D[type.id] ?? { icon: '◇', label: type.name, hint: 'Structure' };
 }
 
+export interface ProductionClickPlan3D {
+  commands: Command[];
+  placingTypeId: string | null;
+}
+
+export function productionClickPlan3D(
+  owner: number,
+  type: UnitType,
+  queue: ReturnType<World['queueFor']>,
+  placingTypeId: string | null,
+): ProductionClickPlan3D {
+  if (placingTypeId === type.id) return { commands: [], placingTypeId: null };
+  const category = categoryOf(type);
+  if (type.domain !== 'building') {
+    return { commands: [{ kind: 'produce', owner, typeId: type.id }], placingTypeId };
+  }
+  if (queue?.readyToPlace && queue.items[0] === type.id) {
+    return { commands: [], placingTypeId: type.id };
+  }
+  const commands: Command[] = [];
+  for (let i = 0; i < (queue?.items.length ?? 0); i++) {
+    commands.push({ kind: 'cancel', owner, category });
+  }
+  commands.push({ kind: 'produce', owner, typeId: type.id });
+  return { commands, placingTypeId: type.id };
+}
+
 export const DEFAULT_GROUND_MOVE_MODE_3D: GroundMoveMode = 'move';
 
 export const GROUND_MOVE_MODE_BUTTONS_3D = [
@@ -731,27 +758,20 @@ export class MatchView3D {
   }
 
   private onProductionButton(type: UnitType): void {
-    if (this.placingType?.id === type.id) {
+    const q = this.world.queueFor(this.localPlayerId, categoryOf(type));
+    const plan = productionClickPlan3D(this.localPlayerId, type, q, this.placingType?.id ?? null);
+    if (plan.placingTypeId === null && this.placingType?.id === type.id) {
       this.cancelPlacement();
       return;
     }
-    const category = categoryOf(type);
-    const q = this.world.queueFor(this.localPlayerId, category);
-    if (type.domain === 'building' && q?.readyToPlace && q.items[0] === type.id) {
-      this.placingType = type;
-      this.selected.clear();
-      audioBus.play('select');
-      return;
-    }
-    if (type.domain === 'building' && (!q || q.items.length === 0)) {
-      this.localCommands.push({ kind: 'produce', owner: this.localPlayerId, typeId: type.id });
-      this.placingType = type;
+    this.localCommands.push(...plan.commands);
+    if (type.domain === 'building') {
+      this.placingType = plan.placingTypeId === type.id ? type : null;
       this.selected.clear();
       audioBus.play('build');
       return;
     }
-    this.localCommands.push({ kind: 'produce', owner: this.localPlayerId, typeId: type.id });
-    audioBus.play(type.domain === 'building' ? 'build' : 'select');
+    audioBus.play('select');
   }
 
   private bindCameraInput(): void {

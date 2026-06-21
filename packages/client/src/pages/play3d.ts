@@ -1,7 +1,7 @@
 import { SIM_TICKS_PER_SECOND } from '@ra2web/game';
 import { SimpleAI, type Difficulty } from '../ai';
 import { audioBus } from '../audio-bus';
-import { createMatchWorld, localSkirmishConfig, type MapSize } from '../match-setup';
+import { createMatchWorld, localSkirmishConfig, SKIRMISH_MAP_PRESETS, skirmishMapPreset, type SkirmishMapId } from '../match-setup';
 import { MATCH_3D_STYLE, MatchView3D } from '../match-view-3d';
 
 const TICK_MS = 1000 / SIM_TICKS_PER_SECOND;
@@ -11,13 +11,41 @@ const AI_ID = 2;
 const SETUP_3D_STYLE = `
 .p3-setup { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
   background: #090d10; color: #d8e0e6; font: 14px/1.6 system-ui, 'PingFang SC', sans-serif; }
-.p3-card { width: min(420px, 92vw); background: #121a20; border: 1px solid #25323c; border-radius: 10px; padding: 22px; }
+.p3-card { width: min(780px, 92vw); background: #121a20; border: 1px solid #25323c; border-radius: 10px; padding: 22px; }
 .p3-card h1 { margin: 0 0 16px; font-size: 20px; }
 .p3-label { font-size: 12px; color: #9aa7b0; margin: 12px 0 6px; }
 .p3-opts { display: flex; gap: 8px; }
 .p3-opts button { flex: 1; padding: 8px; background: #0d1318; color: #c8d2da; border: 1px solid #2a3a48;
   border-radius: 6px; cursor: pointer; }
 .p3-opts button.on { background: #2d6fb0; color: #fff; border-color: #2d6fb0; }
+.p3-maps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.p3-map-card { min-height: 112px; padding: 10px; background: #0d1318; color: #c8d2da; border: 1px solid #2a3a48;
+  border-radius: 8px; cursor: pointer; text-align: left; }
+.p3-map-card.on { border-color: #5ed8cb; box-shadow: inset 0 0 0 1px #5ed8cb; color: #efffff; }
+.p3-map-preview { height: 52px; margin-bottom: 8px; border-radius: 5px; border: 1px solid #263946; overflow: hidden;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 2px, transparent 2px 6px), #789b68; }
+.p3-map-card[data-v="lakeland"] .p3-map-preview { background:
+  linear-gradient(24deg, transparent 0 36%, #b7aa83 37% 39%, #b9aa90 40% 42%, transparent 43% 100%),
+  radial-gradient(ellipse at 48% 50%, transparent 0 10%, #367fa5 11% 28%, transparent 29%),
+  radial-gradient(ellipse at 34% 43%, #367fa5 0 20%, transparent 21%),
+  radial-gradient(ellipse at 64% 40%, #367fa5 0 18%, transparent 19%),
+  linear-gradient(65deg, transparent 0 18%, #367fa5 19% 22%, transparent 23% 100%),
+  linear-gradient(105deg, transparent 0 72%, #367fa5 73% 77%, transparent 78% 100%),
+  repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 2px, transparent 2px 6px), #789b68; }
+.p3-map-card[data-v="highlands"] .p3-map-preview { background:
+  linear-gradient(55deg, transparent 0 34%, #79827b 35% 41%, transparent 42% 100%),
+  linear-gradient(55deg, transparent 0 62%, #79827b 63% 68%, transparent 69% 100%),
+  repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 2px, transparent 2px 6px), #6f8a66; }
+.p3-map-card[data-v="badlands"] .p3-map-preview { background:
+  radial-gradient(ellipse at 38% 45%, #a89b62 0 34%, transparent 35%),
+  radial-gradient(ellipse at 75% 70%, #8a7d53 0 20%, transparent 21%),
+  repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 2px, transparent 2px 6px), #867f5f; }
+.p3-map-card[data-v="delta"] .p3-map-preview { background:
+  linear-gradient(75deg, transparent 0 44%, #367fa5 45% 49%, transparent 50% 100%),
+  linear-gradient(20deg, transparent 0 46%, #367fa5 47% 50%, transparent 51% 100%),
+  repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 2px, transparent 2px 6px), #759f67; }
+.p3-map-name { display: block; font-weight: 800; font-size: 14px; }
+.p3-map-hint { display: block; color: #9aa7b0; font-size: 11px; margin-top: 2px; }
 .p3-start { margin-top: 18px; width: 100%; padding: 11px; border: none; border-radius: 6px;
   background: #3a9a4a; color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
 .p3-note { margin-top: 10px; color: #8d9aa4; font-size: 12px; }
@@ -31,7 +59,7 @@ export async function renderPlay3D(root: HTMLElement): Promise<void> {
   document.head.appendChild(style);
 
   let difficulty = (localStorage.getItem('ra2.diff') as Difficulty) || 'normal';
-  let mapSize = (localStorage.getItem('ra2.map') as MapSize) || 'medium';
+  let mapId = skirmishMapPreset(localStorage.getItem('ra2.map')).id;
 
   function renderSetup(): void {
     root.innerHTML = `
@@ -43,11 +71,15 @@ export async function renderPlay3D(root: HTMLElement): Promise<void> {
           <button data-v="normal">Normal</button>
           <button data-v="hard">Hard</button>
         </div>
-        <div class="p3-label">Map size</div>
-        <div class="p3-opts" id="p3-map">
-          <button data-v="small">Small</button>
-          <button data-v="medium">Medium</button>
-          <button data-v="large">Large</button>
+        <div class="p3-label">Battlefield</div>
+        <div class="p3-maps" id="p3-map">
+          ${SKIRMISH_MAP_PRESETS.map((preset) => `
+            <button class="p3-map-card" data-v="${preset.id}">
+              <span class="p3-map-preview"></span>
+              <span class="p3-map-name">${preset.name}</span>
+              <span class="p3-map-hint">${preset.hint}</span>
+            </button>
+          `).join('')}
         </div>
         <button class="p3-start" id="p3-start">Start 3D Preview</button>
         <div class="p3-note">First slice: 3D terrain and placeholder units only. Controls come next.</div>
@@ -55,7 +87,7 @@ export async function renderPlay3D(root: HTMLElement): Promise<void> {
       </div></div>`;
     const sync = (): void => {
       for (const b of root.querySelectorAll('#p3-diff button')) b.classList.toggle('on', (b as HTMLElement).dataset.v === difficulty);
-      for (const b of root.querySelectorAll('#p3-map button')) b.classList.toggle('on', (b as HTMLElement).dataset.v === mapSize);
+      for (const b of root.querySelectorAll('#p3-map button')) b.classList.toggle('on', (b as HTMLElement).dataset.v === mapId);
     };
     root.querySelector('#p3-diff')!.addEventListener('click', (e) => {
       const v = (e.target as HTMLElement).dataset.v as Difficulty;
@@ -65,23 +97,24 @@ export async function renderPlay3D(root: HTMLElement): Promise<void> {
       }
     });
     root.querySelector('#p3-map')!.addEventListener('click', (e) => {
-      const v = (e.target as HTMLElement).dataset.v as MapSize;
+      const button = (e.target as HTMLElement).closest<HTMLButtonElement>('.p3-map-card');
+      const v = button?.dataset.v as SkirmishMapId | undefined;
       if (v) {
-        mapSize = v;
+        mapId = skirmishMapPreset(v).id;
         sync();
       }
     });
     root.querySelector('#p3-start')!.addEventListener('click', () => {
       audioBus.resume();
       localStorage.setItem('ra2.diff', difficulty);
-      localStorage.setItem('ra2.map', mapSize);
+      localStorage.setItem('ra2.map', mapId);
       startMatch();
     });
     sync();
   }
 
   function startMatch(): void {
-    const config = localSkirmishConfig(0, mapSize);
+    const config = localSkirmishConfig(0, mapId);
     const world = createMatchWorld(config);
     const view = new MatchView3D(root, world, HUMAN, config.mapWidth, config.mapHeight);
     const ai = new SimpleAI(AI_ID, difficulty, (Date.now() ^ (AI_ID * 2654435761)) >>> 0);

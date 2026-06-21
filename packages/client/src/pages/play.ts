@@ -3,7 +3,7 @@
  */
 import { SIM_TICKS_PER_SECOND } from '@ra2web/game';
 import { SimpleAI, type Difficulty } from '../ai';
-import { createMatchWorld, localSkirmishConfig, type MapSize } from '../match-setup';
+import { createMatchWorld, localSkirmishConfig, skirmishMapPreset, type SkirmishMapId } from '../match-setup';
 import { MATCH_STYLE, MatchView } from '../match-view';
 import { downloadFreeArt, hasRealArtFiles } from '../game-files';
 
@@ -35,7 +35,7 @@ export async function renderPlay(root: HTMLElement): Promise<void> {
   // 记住上次选择
   let difficulty = (localStorage.getItem('ra2.diff') as Difficulty) || 'normal';
   let credits = Number(localStorage.getItem('ra2.cash') ?? 5000);
-  let mapSize = (localStorage.getItem('ra2.map') as MapSize) || 'medium';
+  let mapId = skirmishMapPreset(localStorage.getItem('ra2.map')).id;
 
   function renderSetup(): void {
     root.innerHTML = `
@@ -53,11 +53,13 @@ export async function renderPlay(root: HTMLElement): Promise<void> {
           <button data-v="5000">5000</button>
           <button data-v="10000">10000</button>
         </div>
-        <div class="label">地图大小</div>
+        <div class="label">Battlefield</div>
         <div class="opts" id="pl-map">
-          <button data-v="small">小</button>
-          <button data-v="medium">中</button>
-          <button data-v="large">大</button>
+          <button data-v="verdant">Verdant</button>
+          <button data-v="lakeland">Lake</button>
+          <button data-v="highlands">Ridge</button>
+          <button data-v="badlands">Badlands</button>
+          <button data-v="delta">Delta</button>
         </div>
         <button class="start" id="pl-start">▶ 开始</button>
         <a class="back" href="#">← 返回首页</a>
@@ -70,7 +72,7 @@ export async function renderPlay(root: HTMLElement): Promise<void> {
         b.classList.toggle('on', Number((b as HTMLElement).dataset.v) === credits);
       }
       for (const b of root.querySelectorAll('#pl-map button')) {
-        b.classList.toggle('on', (b as HTMLElement).dataset.v === mapSize);
+        b.classList.toggle('on', (b as HTMLElement).dataset.v === mapId);
       }
     };
     root.querySelector('#pl-diff')!.addEventListener('click', (e) => {
@@ -88,16 +90,16 @@ export async function renderPlay(root: HTMLElement): Promise<void> {
       }
     });
     root.querySelector('#pl-map')!.addEventListener('click', (e) => {
-      const v = (e.target as HTMLElement).dataset.v as MapSize;
+      const v = (e.target as HTMLElement).dataset.v as SkirmishMapId;
       if (v) {
-        mapSize = v;
+        mapId = skirmishMapPreset(v).id;
         sync();
       }
     });
     root.querySelector('#pl-start')!.addEventListener('click', () => {
       localStorage.setItem('ra2.diff', difficulty);
       localStorage.setItem('ra2.cash', String(credits));
-      localStorage.setItem('ra2.map', mapSize);
+      localStorage.setItem('ra2.map', mapId);
       void beginWithArtCheck();
     });
     sync();
@@ -118,7 +120,7 @@ export async function renderPlay(root: HTMLElement): Promise<void> {
   }
 
   async function startMatch(): Promise<void> {
-    const config = localSkirmishConfig(credits, mapSize);
+    const config = localSkirmishConfig(credits, mapId);
     const world = createMatchWorld(config);
     const view = new MatchView(root, world, HUMAN, config.mapWidth, config.mapHeight);
     await view.init();

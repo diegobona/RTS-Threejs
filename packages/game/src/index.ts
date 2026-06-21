@@ -23,6 +23,7 @@ export {
   type ProducerState,
   type ProductionQueue,
   type TerrainInfo,
+  type TerrainKind,
 } from './world';
 export {
   DEFAULT_RULES,

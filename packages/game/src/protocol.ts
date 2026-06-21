@@ -3,7 +3,7 @@
  * 大厅用 JSON；对局命令包 MVP 也用 JSON（命令是简单对象），
  * 后续可在不改语义的前提下替换为紧凑二进制。
  */
-import type { Command } from './world';
+import type { Command, TerrainKind } from './world';
 import type { Side } from './content';
 
 export const PROTOCOL_VERSION = 2;
@@ -17,8 +17,11 @@ export interface LobbyPlayer {
 
 export interface MatchConfig {
   seed: number;
+  mapId?: string;
   mapWidth: number;
   mapHeight: number;
+  blockedCells?: number[];
+  terrainCells?: Partial<Record<TerrainKind, number[]>>;
   /** 出生点（格），按 playerId 顺序。 */
   spawns: { playerId: number; cellX: number; cellY: number; side: Side }[];
   /** 矿田中心（格）。 */

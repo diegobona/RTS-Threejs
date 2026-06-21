@@ -1003,9 +1003,34 @@ export class ThreeWorldRenderer {
     const passMatA = new MeshLambertMaterial({ color: 0x7f9f70, transparent: true, opacity: 0.16 });
     const passMatB = new MeshLambertMaterial({ color: 0x729568, transparent: true, opacity: 0.12 });
     const blockMat = new MeshLambertMaterial({ color: 0x8b8063, transparent: true, opacity: 0.48 });
+    const waterMat = new MeshLambertMaterial({ color: 0x357ca0, transparent: true, opacity: 0.58 });
+    const ridgeMat = new MeshLambertMaterial({ color: 0x7e857c, transparent: true, opacity: 0.58 });
+    const sandMat = new MeshLambertMaterial({ color: 0xaa9a66, transparent: true, opacity: 0.34 });
+    const scorchedMat = new MeshLambertMaterial({ color: 0x493f32, transparent: true, opacity: 0.4 });
+    const shoreMat = new MeshLambertMaterial({ color: 0xb7aa83, transparent: true, opacity: 0.5 });
+    const roadMat = new MeshLambertMaterial({ color: 0xb9aa90, transparent: true, opacity: 0.66 });
+    const marshMat = new MeshLambertMaterial({ color: 0x6f8f68, transparent: true, opacity: 0.42 });
     for (let y = 0; y < this.world.terrain.height; y++) {
       for (let x = 0; x < this.world.terrain.width; x++) {
-        const m = this.world.terrain.passable(x, y) ? ((x + y) % 2 === 0 ? passMatA : passMatB) : blockMat;
+        const terrain = this.world.terrain.terrainAt?.(x, y);
+        const m =
+          terrain === 'water'
+            ? waterMat
+            : terrain === 'ridge'
+              ? ridgeMat
+              : terrain === 'sand'
+                ? sandMat
+                : terrain === 'scorched'
+                  ? scorchedMat
+                  : terrain === 'shore'
+                    ? shoreMat
+                    : terrain === 'road'
+                      ? roadMat
+                      : terrain === 'marsh'
+                        ? marshMat
+                        : this.world.terrain.passable(x, y)
+                          ? ((x + y) % 2 === 0 ? passMatA : passMatB)
+                          : blockMat;
         const tile = new Mesh(this.tileGeo, m);
         const pos = cellToWorld3D(x, y);
         tile.rotation.x = -Math.PI / 2;
@@ -1014,8 +1039,17 @@ export class ThreeWorldRenderer {
       }
     }
     this.drawGrassBands(center.x, center.z);
-    this.drawRoads();
+    if (!this.hasTerrainKind('road')) this.drawRoads();
     this.drawLandscapeProps();
+  }
+
+  private hasTerrainKind(kind: string): boolean {
+    for (let y = 0; y < this.world.terrain.height; y++) {
+      for (let x = 0; x < this.world.terrain.width; x++) {
+        if (this.world.terrain.terrainAt?.(x, y) === kind) return true;
+      }
+    }
+    return false;
   }
 
   private largeGroundGeo(): PlaneGeometry {
@@ -1116,9 +1150,17 @@ export class ThreeWorldRenderer {
 
     for (let y = 2; y < this.world.terrain.height - 2; y += 3) {
       for (let x = 2; x < this.world.terrain.width - 2; x += 3) {
-        if (!this.world.terrain.passable(x, y) || this.world.oreAt(x, y) > 0 || this.nearInitialEntityCell(x, y, 5)) continue;
+        const terrain = this.world.terrain.terrainAt?.(x, y);
+        if (
+          !this.world.terrain.passable(x, y) ||
+          terrain === 'road' ||
+          terrain === 'shore' ||
+          this.world.oreAt(x, y) > 0 ||
+          this.nearInitialEntityCell(x, y, 5)
+        ) continue;
         const r = this.randCell(x, y);
-        if (r > 0.24) continue;
+        const limit = terrain === 'marsh' ? 0.42 : 0.24;
+        if (r > limit) continue;
         const pos = cellToWorld3D(x + this.randCell(x, y, 2) * 1.4 - 0.7, y + this.randCell(x, y, 3) * 1.4 - 0.7);
         if (r < 0.075) {
           const tree = this.createLandscapeTree(trunkMat, this.randCell(x, y, 4) > 0.45 ? crownMatA : crownMatB);

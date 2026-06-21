@@ -5,9 +5,23 @@
 import { gridTerrain } from './replay';
 import { World } from './world';
 import type { MatchConfig } from './protocol';
+import type { TerrainKind } from './world';
 
 export function createWorldFromConfig(config: MatchConfig): World {
-  const world = new World(gridTerrain(config.mapWidth, config.mapHeight), config.seed);
+  const blocked = new Set(config.blockedCells ?? []);
+  const terrainKinds = new Map<number, TerrainKind>();
+  for (const [kind, cells] of Object.entries(config.terrainCells ?? {}) as [TerrainKind, number[]][]) {
+    for (const cell of cells) terrainKinds.set(cell, kind);
+  }
+  const world = new World(
+    gridTerrain(
+      config.mapWidth,
+      config.mapHeight,
+      blocked,
+      (x, y) => terrainKinds.get(y * config.mapWidth + x) ?? 'grass',
+    ),
+    config.seed,
+  );
   const startCredits = config.startingCredits ?? 5000;
   for (const spawn of config.spawns) {
     world.addPlayer(spawn.playerId, spawn.side, startCredits);

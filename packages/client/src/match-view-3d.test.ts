@@ -22,6 +22,7 @@ import {
   MATCH_3D_STYLE,
   placementCellForClick3D,
   PRODUCTION_CATEGORIES_3D,
+  productionClickPlan3D,
   rulesAndControlsSections3D,
   sameTypeVisibleSelectionIds3D,
   SELECTED_STATUS_CLASS_3D,
@@ -92,6 +93,21 @@ describe('MatchView3D production tabs', () => {
     });
     expect(buildButtonMeta3D({ id: 'pillbox', name: 'Pillbox' }).icon).toBe('⬟');
     expect(buildButtonMeta3D({ id: 'battlelab', name: 'Battle Lab' }).hint).toBe('Tech unlocks');
+  });
+
+  it('switches the current pending building instead of queuing behind the previous pending building', () => {
+    const world = new World(gridTerrain(20, 20), 7);
+    world.addPlayer(1, 'allied', 0);
+    const barracks = world.rules.units.get('barracks')!;
+    const queue = { items: ['warfactory'], progress: 0, readyToPlace: true };
+
+    expect(productionClickPlan3D(1, barracks, queue, 'warfactory')).toEqual({
+      commands: [
+        { kind: 'cancel', owner: 1, category: 'building' },
+        { kind: 'produce', owner: 1, typeId: 'barracks' },
+      ],
+      placingTypeId: 'barracks',
+    });
   });
 });
 
