@@ -146,6 +146,17 @@ export function sameTypeVisibleSelectionIds3D(
   return ids.sort((a, b) => a - b);
 }
 
+export function clickSelectionIds3D(
+  currentIds: Iterable<number>,
+  clickedId: number | null,
+  additive: boolean,
+): number[] {
+  if (!additive) return clickedId === null ? [] : [clickedId];
+  const ids = new Set(currentIds);
+  if (clickedId !== null) ids.add(clickedId);
+  return [...ids].sort((a, b) => a - b);
+}
+
 export interface ControlGroupHudItem3D {
   group: number;
   ids: number[];
@@ -716,7 +727,7 @@ export class MatchView3D {
     const canvas = this.renderer.renderer.domElement;
     bindAudioUnlock(this.root);
     let panDrag: { x: number; y: number } | null = null;
-    let selectDrag: { x: number; y: number } | null = null;
+    let selectDrag: { x: number; y: number; additive: boolean } | null = null;
     canvas.addEventListener('contextmenu', (e: MouseEvent) => e.preventDefault());
     canvas.addEventListener('pointerdown', (e: PointerEvent) => {
       e.preventDefault();
@@ -735,7 +746,7 @@ export class MatchView3D {
       if (e.button === 1 || (e.button === 0 && e.altKey)) {
         panDrag = { x: e.clientX, y: e.clientY };
       } else if (e.button === 0) {
-        selectDrag = { x: e.clientX, y: e.clientY };
+        selectDrag = { x: e.clientX, y: e.clientY, additive: e.ctrlKey };
       }
       canvas.setPointerCapture(e.pointerId);
     });
@@ -752,7 +763,7 @@ export class MatchView3D {
       this.nearbyHpIds.clear();
     });
     const stop = (e: PointerEvent): void => {
-      if (selectDrag) this.finishSelection(selectDrag.x, selectDrag.y, e.clientX, e.clientY);
+      if (selectDrag) this.finishSelection(selectDrag.x, selectDrag.y, e.clientX, e.clientY, selectDrag.additive);
       panDrag = null;
       selectDrag = null;
       this.selBox.style.display = 'none';
@@ -803,14 +814,14 @@ export class MatchView3D {
     if (nearId !== null) this.nearbyHpIds.add(nearId);
   }
 
-  private finishSelection(startX: number, startY: number, endX: number, endY: number): void {
+  private finishSelection(startX: number, startY: number, endX: number, endY: number, additive: boolean): void {
     const w = Math.abs(endX - startX);
     const h = Math.abs(endY - startY);
     if (w < 6 && h < 6) {
       const id =
         this.renderer.pickOwnUnit(this.camera.camera, endX, endY) ??
         nearestIdWithinRadius({ x: endX, y: endY }, this.renderer.ownUnitScreenPoints(this.camera.camera), 54);
-      this.replaceSelection(id !== null ? [id] : []);
+      this.replaceSelection(clickSelectionIds3D(this.selected, id, additive));
       return;
     }
     const ids = idsInScreenRect(

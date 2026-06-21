@@ -9,6 +9,7 @@ import {
   BUILD_PANEL_PLACEMENT_CLASS_3D,
   capacitySummarySegments3D,
   capacitySummaryText3D,
+  clickSelectionIds3D,
   CONTROL_GROUPS_HUD_LABEL_3D,
   controlGroupButtonLabel3D,
   controlGroupIdsForSelection3D,
@@ -197,6 +198,17 @@ describe('MatchView3D capacity HUD', () => {
 });
 
 describe('MatchView3D unit selection helpers', () => {
+  it('adds ctrl-clicked units to the existing selection without clearing it', () => {
+    expect(clickSelectionIds3D([7, 2], 5, true)).toEqual([2, 5, 7]);
+    expect(clickSelectionIds3D([7, 2], 7, true)).toEqual([2, 7]);
+    expect(clickSelectionIds3D([7, 2], null, true)).toEqual([2, 7]);
+  });
+
+  it('keeps normal click selection as replace-or-clear', () => {
+    expect(clickSelectionIds3D([7, 2], 5, false)).toEqual([5]);
+    expect(clickSelectionIds3D([7, 2], null, false)).toEqual([]);
+  });
+
   it('selects same-type owned units that are currently inside the screen', () => {
     const world = new World(gridTerrain(20, 20), 7);
     world.addPlayer(1, 'allied', 0);
