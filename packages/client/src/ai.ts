@@ -17,15 +17,14 @@ type Mode = 'defensive' | 'balanced' | 'aggressive';
 const MODES: Mode[] = ['defensive', 'balanced', 'aggressive'];
 
 interface ModeParams {
-  defenseTarget: number;
   waveSize: number;
   homeReserve: number;
 }
 
 const MODE: Record<Mode, ModeParams> = {
-  defensive: { defenseTarget: 3, waveSize: 10, homeReserve: 1 },
-  balanced: { defenseTarget: 2, waveSize: 8, homeReserve: 1 },
-  aggressive: { defenseTarget: 1, waveSize: 6, homeReserve: 0 },
+  defensive: { waveSize: 10, homeReserve: 1 },
+  balanced: { waveSize: 8, homeReserve: 1 },
+  aggressive: { waveSize: 6, homeReserve: 0 },
 };
 
 const PRODUCTION_BUILDING_TARGETS: Record<Mode, Record<CoreProductionBuilding, number>> = {
@@ -418,7 +417,6 @@ export class SimpleAI {
     }
     if (waitingForProductionExpansion) return null;
 
-    if (this.countBuildings(world, 'tesla') + this.countBuildings(world, 'pillbox') < this.m.defenseTarget) return 'pillbox';
     return null;
   }
 

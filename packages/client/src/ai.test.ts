@@ -115,6 +115,9 @@ describe('SimpleAI', () => {
     expect(count('barracks')).toBeGreaterThan(1);
     expect(count('warfactory')).toBeGreaterThan(1);
     expect(count('airbase')).toBeGreaterThan(1);
+    expect(count('pillbox')).toBe(0);
+    expect(count('tesla')).toBe(0);
+    expect(count('battlelab')).toBe(0);
   });
 
   it('falls back to any empty map location when no local build spot is available', () => {
