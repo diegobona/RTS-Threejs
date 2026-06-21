@@ -6,6 +6,7 @@ import {
   allOwnedUnitIdsInCapacityGroup3D,
   bindAudioUnlock,
   buildButtonMeta3D,
+  BUILD_PANEL_PLACEMENT_CLASS_3D,
   capacitySummarySegments3D,
   capacitySummaryText3D,
   CONTROL_GROUPS_HUD_LABEL_3D,
@@ -16,10 +17,12 @@ import {
   GROUND_MOVE_MODE_BUTTONS_3D,
   initialCameraFocus3D,
   matchOutcomeText3D,
+  MATCH_3D_STYLE,
   PRODUCTION_CATEGORIES_3D,
   rulesAndControlsSections3D,
   sameTypeVisibleSelectionIds3D,
   SELECTED_STATUS_CLASS_3D,
+  supportedBuildButtonTypes3D,
   topHudText3D,
 } from './match-view-3d';
 
@@ -32,6 +35,25 @@ describe('MatchView3D camera defaults', () => {
 describe('MatchView3D production tabs', () => {
   it('only exposes manual building production; units are produced automatically by buildings', () => {
     expect(PRODUCTION_CATEGORIES_3D).toEqual(['building']);
+  });
+
+  it('uses a bottom build bar with only currently supported buildings', () => {
+    const world = new World(gridTerrain(20, 20), 7);
+    world.addPlayer(1, 'allied', 0);
+
+    expect(BUILD_PANEL_PLACEMENT_CLASS_3D).toBe('mv3-build-bottom-bar');
+    expect(supportedBuildButtonTypes3D([...world.rules.units.values()], 'allied').map((type) => type.id)).toEqual([
+      'barracks',
+      'warfactory',
+      'airbase',
+    ]);
+  });
+
+  it('keeps the build bar compact without a heading, status pill, or truncated names', () => {
+    expect(MATCH_3D_STYLE).toContain('.mv3-build-head { display: none; }');
+    expect(MATCH_3D_STYLE).toContain('.mv3-build .state { display: none; }');
+    expect(MATCH_3D_STYLE).toContain('text-overflow: clip');
+    expect(MATCH_3D_STYLE).not.toContain('.mv3-build .name { overflow: hidden; text-overflow: ellipsis;');
   });
 
   it('provides readable RTS-style icons and hints for core building buttons', () => {

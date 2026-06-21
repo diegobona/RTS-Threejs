@@ -15,6 +15,16 @@ export function initialCameraFocus3D(mapW: number, mapH: number): { x: number; z
 }
 
 export const PRODUCTION_CATEGORIES_3D = ['building'] as const satisfies readonly ProdCategory[];
+export const BUILD_PANEL_PLACEMENT_CLASS_3D = 'mv3-build-bottom-bar';
+export const SUPPORTED_BUILDING_BUTTON_IDS_3D = ['barracks', 'warfactory', 'airbase'] as const;
+
+export function supportedBuildButtonTypes3D(types: readonly UnitType[], localSide?: string): UnitType[] {
+  const byId = new Map(types.map((type) => [type.id, type]));
+  return SUPPORTED_BUILDING_BUTTON_IDS_3D.map((id) => byId.get(id)).filter((type): type is UnitType => {
+    if (!type || type.domain !== 'building' || type.builtBy === '') return false;
+    return !localSide || type.side === localSide;
+  });
+}
 
 export interface BuildButtonMeta3D {
   icon: string;
@@ -260,37 +270,37 @@ export const MATCH_3D_STYLE = `
 .mv3-orders button { min-height: 34px; padding: 0 11px; border: 1px solid rgba(125,150,165,.22); border-radius: 7px;
   background: #0b141a; color: #b3c0c8; cursor: pointer; font-size: 13px; font-weight: 750; }
 .mv3-orders button.on { color: #fff; border-color: var(--hud-edge-strong); background: linear-gradient(#1a4258, #132d3d); box-shadow: inset 0 0 0 1px rgba(104,200,255,.18); }
-.mv3-build { position: fixed; right: 12px; top: 12px; z-index: 10; width: 260px; max-height: calc(100vh - 24px);
-  overflow: auto; display: grid; gap: 8px;
-  padding: 10px; background: var(--hud-bg-strong); border: 1px solid var(--hud-edge); border-radius: 10px;
+.mv3-build { position: fixed; left: 50%; right: auto; bottom: 12px; top: auto; transform: translateX(-50%); z-index: 10;
+  width: fit-content; max-width: calc(100vw - 390px); overflow: visible;
+  display: grid; grid-template-columns: 1fr; align-items: center; gap: 8px;
+  padding: 8px; background: var(--hud-bg-strong); border: 1px solid var(--hud-edge); border-radius: 10px;
   box-shadow: 0 16px 40px rgba(0,0,0,.28); backdrop-filter: blur(6px); }
 .mv3-build::-webkit-scrollbar { width: 8px; }
 .mv3-build::-webkit-scrollbar-thumb { background: rgba(146,174,188,.28); border-radius: 999px; }
-.mv3-build-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 2px 0; }
+.mv3-build-head { display: none; }
 .mv3-build-title { display: inline-flex; align-items: center; gap: 8px; color: #f0f7fb; font-weight: 900; letter-spacing: 0; }
 .mv3-build-title-mark { width: 22px; height: 22px; display: inline-grid; place-items: center; border-radius: 5px;
   background: rgba(104,200,255,.14); border: 1px solid rgba(104,200,255,.34); color: var(--hud-accent); font-size: 13px; }
-.mv3-build-subtitle { color: var(--hud-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
-.mv3-tabs { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.mv3-build-subtitle { display: none; }
+.mv3-tabs { display: none; grid-template-columns: 1fr; gap: 4px; }
 .mv3-tabs button { height: 30px; padding: 0; border: 1px solid rgba(125,150,165,.2); border-radius: 6px;
   background: #0d151c; color: #8ea0aa; cursor: pointer; font-size: 12px; font-weight: 800; }
 .mv3-tabs button.on { color: #fff; border-color: var(--hud-edge-strong); background: #173046; }
-.mv3-prod-list { display: grid; gap: 7px; }
-.mv3-prod-list button { position: relative; min-height: 62px; display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 9px;
-  padding: 8px 9px; overflow: hidden; border: 1px solid rgba(125,150,165,.24); border-radius: 8px; cursor: pointer;
+.mv3-prod-list { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+.mv3-prod-list button { position: relative; min-width: 166px; min-height: 50px; display: grid; grid-template-columns: 32px max-content; align-items: center; gap: 8px;
+  padding: 7px 12px 7px 8px; overflow: visible; border: 1px solid rgba(125,150,165,.24); border-radius: 8px; cursor: pointer;
   background: linear-gradient(180deg, rgba(31,43,50,.96), rgba(11,18,23,.98)); color: #dce6ed; text-align: left; }
 .mv3-prod-list button:hover:not(:disabled) { border-color: rgba(104,200,255,.62); background: linear-gradient(180deg, rgba(36,56,67,.98), rgba(13,25,32,.98)); }
 .mv3-prod-list button:disabled { cursor: default; color: #6f7a82; background: #0b1116; border-color: rgba(125,150,165,.12); }
 .mv3-prod-list button.ready { border-color: var(--hud-ready); box-shadow: inset 0 0 0 1px rgba(88,212,120,.25); }
 .mv3-prod-list button.placing { border-color: var(--hud-warn); color: #fff2a8; box-shadow: inset 0 0 0 1px rgba(243,211,95,.18); }
-.mv3-prod-icon { width: 36px; height: 36px; display: inline-grid; place-items: center; border-radius: 8px;
+.mv3-prod-icon { width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: 7px;
   background: linear-gradient(180deg, rgba(104,200,255,.2), rgba(104,200,255,.08)); border: 1px solid rgba(104,200,255,.24);
-  color: #dff5ff; font-size: 17px; font-weight: 900; }
+  color: #dff5ff; font-size: 15px; font-weight: 900; }
 .mv3-prod-main { min-width: 0; display: grid; gap: 2px; }
-.mv3-build .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 850; color: #f0f7fb; }
-.mv3-build .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--hud-muted); font-size: 11px; }
-.mv3-build .state { align-self: start; min-width: 54px; padding: 3px 6px; border-radius: 999px; background: rgba(5,10,13,.72);
-  border: 1px solid rgba(146,174,188,.16); color: var(--hud-warn); text-align: center; font-variant-numeric: tabular-nums; font-size: 11px; font-weight: 850; }
+.mv3-build .name { overflow: visible; text-overflow: clip; white-space: nowrap; font-weight: 850; color: #f0f7fb; }
+.mv3-build .hint { display: none; }
+.mv3-build .state { display: none; }
 .mv3-prod-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.06); }
 .mv3-prod-progress span { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--hud-accent), var(--hud-ready)); }
 .mv3-producer { display: none; gap: 6px; padding-top: 6px; border-top: 1px solid rgba(125,150,165,.16); }
@@ -326,7 +336,10 @@ export const MATCH_3D_STYLE = `
   .mv3-groups-panel { top: auto; bottom: 108px; max-width: calc(100vw - 284px); }
   .mv3-groups { overflow: hidden; }
   .mv3-orders { top: auto; bottom: 58px; }
-  .mv3-build { width: 236px; }
+  .mv3-build { left: 12px; right: 12px; bottom: 10px; transform: none; width: auto; max-width: none; grid-template-columns: 1fr; }
+  .mv3-build-head { display: none; }
+  .mv3-prod-list { overflow-x: auto; padding-bottom: 2px; }
+  .mv3-prod-list button { min-width: 154px; width: 154px; }
 }
 `;
 
@@ -432,11 +445,7 @@ export class MatchView3D {
       <div class="mv3-orders" id="mv3-orders">
         ${groundModeButtons}
       </div>
-      <div class="mv3-build">
-        <div class="mv3-build-head">
-          <div class="mv3-build-title"><span class="mv3-build-title-mark">▦</span><span>Build</span></div>
-          <span class="mv3-build-subtitle">Structures</span>
-        </div>
+      <div class="mv3-build ${BUILD_PANEL_PLACEMENT_CLASS_3D}">
         <div class="mv3-tabs" id="mv3-tabs"></div>
         <div class="mv3-prod-list" id="mv3-prod-list"></div>
         <div class="mv3-producer" id="mv3-producer"></div>
@@ -614,12 +623,10 @@ export class MatchView3D {
     this.buildEl.innerHTML = '';
     this.buildButtons.length = 0;
     const localSide = this.world.players.get(this.localPlayerId)?.side;
-    const units = [...this.world.rules.units.values()].filter(
-      (type) =>
-        categoryOf(type) === this.activeCategory &&
-        (!localSide || type.side === localSide || type.id === 'harvester') &&
-        type.builtBy !== '',
-    );
+    const units =
+      this.activeCategory === 'building'
+        ? supportedBuildButtonTypes3D([...this.world.rules.units.values()], localSide)
+        : [];
     for (const type of units) {
       const meta = buildButtonMeta3D(type);
       const button = document.createElement('button');

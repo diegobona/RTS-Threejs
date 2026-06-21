@@ -15,7 +15,7 @@ export function productionButtonState(
 ): ProductionButtonState {
   const isHead = queue?.items[0] === type.id;
   const ready = !!isHead && queue.readyToPlace;
-  let progressText = canBuild ? 'Build' : 'Locked';
+  let progressText = '';
   if (ready) {
     progressText = placingTypeId === type.id ? 'Placing' : 'Place';
   } else if (isHead && queue.items.length > 0) {
