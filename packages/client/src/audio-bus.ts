@@ -7,9 +7,9 @@
 import { BufferSource, MixFile, parseAud } from '@ra2web/data';
 import { loadGameMix } from './game-files';
 
-export type Sfx = 'fire' | 'cannon' | 'bomb' | 'bombImpact' | 'scream' | 'hit' | 'explosion' | 'bigExplosion' | 'build' | 'ready' | 'place' | 'select' | 'move' | 'deny';
+export type Sfx = 'fire' | 'cannon' | 'bomb' | 'bombImpact' | 'scream' | 'hit' | 'explosion' | 'bigExplosion' | 'build' | 'ready' | 'place' | 'select' | 'move' | 'deny' | 'missileLaunch' | 'missileFlight' | 'missileImpact';
 
-const ALLOWED_SFX = new Set<Sfx>(['fire', 'cannon', 'bomb', 'bombImpact', 'scream', 'build']);
+const ALLOWED_SFX = new Set<Sfx>(['fire', 'cannon', 'bomb', 'bombImpact', 'scream', 'build', 'missileLaunch', 'missileFlight', 'missileImpact']);
 
 export function shouldPlaySfx(sfx: Sfx): boolean {
   return ALLOWED_SFX.has(sfx);
@@ -74,6 +74,9 @@ const REAL_GAIN: Partial<Record<Sfx, number>> = {
   ready: 0.9,
   place: 0.8,
   select: 0.5,
+  missileLaunch: 0.8,
+  missileFlight: 0.4,
+  missileImpact: 0.9,
 };
 
 type SyntheticWeaponSfx = 'fire' | 'cannon';
@@ -252,6 +255,9 @@ export class AudioBus {
     select: 30,
     move: 120,
     deny: 120,
+    missileLaunch: 180,
+    missileFlight: 350,
+    missileImpact: 90,
   };
 
   /** 须在用户手势中调用以解锁音频（浏览器自动播放策略）。 */
@@ -356,8 +362,17 @@ export class AudioBus {
           this.radioTick();
           break;
         case 'deny':
-          this.blip(160, 0.11, 'square', 0.18);
+          this.blip(160, 0.12, 'square', 0.18);
           this.blip(120, 0.12, 'sawtooth', 0.1);
+          break;
+        case 'missileLaunch':
+          this.playMissileLaunch();
+          break;
+        case 'missileFlight':
+          this.playMissileFlight();
+          break;
+        case 'missileImpact':
+          this.playMissileImpact();
           break;
       }
     } finally {
@@ -588,6 +603,40 @@ export class AudioBus {
     this.pitchDrop(620, 230, 0.34, 'sawtooth', 0.1);
     this.pitchDrop(470, 180, 0.28, 'triangle', 0.055, 0.035);
     this.filteredNoise(0.22, 'bandpass', 1450, 1.2, 0.055, 0.015);
+  }
+
+  /** 爱国者 PAC-3 导弹发射音：高压气体喷出的"嗖"声 + 低频推力轰鸣。 */
+  private playMissileLaunch(): void {
+    // 主推力：宽带噪声快速下扫（燃气喷射的"嗖"）
+    this.filteredNoise(0.42, 'bandpass', 1800, 0.6, 0.32);
+    this.filteredNoise(0.38, 'lowpass', 800, 0.7, 0.22, 0.02);
+    // 低频推力轰鸣（发射架共振）
+    this.pitchDrop(180, 60, 0.5, 'sawtooth', 0.18);
+    // 高频"嘶"声（燃气与空气摩擦）
+    this.filteredNoise(0.6, 'highpass', 3500, 0.5, 0.12, 0.05);
+  }
+
+  /** 导弹飞行尾迹音：持续低频呼啸 + 间歇性燃气噪声。 */
+  private playMissileFlight(): void {
+    // 持续呼啸（低频呼吸感）
+    this.pitchDrop(420, 280, 0.8, 'triangle', 0.08);
+    this.filteredNoise(0.7, 'lowpass', 600, 0.4, 0.1);
+    // 燃气噪声层
+    this.filteredNoise(0.6, 'bandpass', 1200, 0.8, 0.06, 0.05);
+  }
+
+  /** 导弹命中爆炸音：高频破裂 + 中频爆炸体 + 低频冲击波。 */
+  private playMissileImpact(): void {
+    // 高频破裂（破片/金属碎裂）
+    this.filteredNoise(0.12, 'bandpass', 2400, 0.8, 0.3);
+    // 中频爆炸体
+    this.filteredNoise(0.32, 'bandpass', 850, 0.7, 0.4);
+    // 低频冲击（冲击波）
+    this.filteredNoise(0.5, 'lowpass', 120, 0.5, 0.5, 0.005);
+    // 低频下坠（余波）
+    this.pitchDrop(120, 30, 0.45, 'triangle', 0.25, 0.01);
+    // 次声尾音
+    this.filteredNoise(0.7, 'lowpass', 200, 0.4, 0.15, 0.05);
   }
 
   private pitchDrop(startFreq: number, endFreq: number, dur: number, type: OscillatorType, gain: number, delay = 0): void {

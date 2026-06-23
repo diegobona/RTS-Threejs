@@ -49,7 +49,7 @@ export function placementCellForClick3D(
 
 export const PRODUCTION_CATEGORIES_3D = ['building'] as const satisfies readonly ProdCategory[];
 export const BUILD_PANEL_PLACEMENT_CLASS_3D = 'mv3-build-bottom-bar';
-export const SUPPORTED_BUILDING_BUTTON_IDS_3D = ['barracks', 'warfactory', 'airbase'] as const;
+export const SUPPORTED_BUILDING_BUTTON_IDS_3D = ['barracks', 'warfactory', 'airbase', 'patriot'] as const;
 
 export function supportedBuildButtonTypes3D(types: readonly UnitType[], localSide?: string): UnitType[] {
   const byId = new Map(types.map((type) => [type.id, type]));

@@ -207,6 +207,35 @@ const UNIT_LIST: UnitType[] = [
     weapon: { name: '磁暴电击', damage: 200, range: 6 * 256, cooldown: 40, projectileSpeed: 0, warhead: { none: 100, flak: 100, plate: 100, light: 100, heavy: 80, concrete: 40 }, splash: 0 },
     building: { footprintW: 2, footprintH: 2, power: -150 },
   },
+  // —— 爱国者防空反导系统（盟军固定防空）——
+  // 不可移动，仅对空（aircraft 域）；导弹高速、追踪、命中爆炸。
+  {
+    id: 'patriot',
+    name: '爱国者防空系统',
+    side: 'allied',
+    domain: 'building',
+    cost: 1000,
+    hp: 700,
+    armor: 'concrete',
+    buildTime: 80,
+    builtBy: 'conyard',
+    prerequisites: ['barracks'],
+    speed: 0,
+    rot: 0,
+    sight: 9,
+    antiAirWeapon: {
+      name: 'PAC-3 拦截弹',
+      damage: 80,
+      range: 9 * 256,
+      cooldown: 32,
+      projectileSpeed: 140,
+      warhead: { none: 30, flak: 100, plate: 110, light: 120, heavy: 50, concrete: 15 },
+      splash: 18,
+      role: 'missile',
+      targetDomains: ['aircraft'],
+    },
+    building: { footprintW: 2, footprintH: 2, power: -75 },
+  },
   // —— 科技建筑：作战实验室（解锁高级单位）——
   {
     id: 'battlelab',

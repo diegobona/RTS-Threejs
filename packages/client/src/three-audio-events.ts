@@ -21,7 +21,8 @@ export interface ThreeProjectileAudioState {
   id: number;
   x: number;
   z: number;
-  impactKind?: Extract<Sfx, 'hit' | 'explosion' | 'bombImpact'>;
+  impactKind?: Extract<Sfx, 'hit' | 'explosion' | 'bombImpact' | 'missileImpact'>;
+  flightKind?: Extract<Sfx, 'missileFlight'>;
 }
 
 export interface ThreeAudioSnapshot {
@@ -30,7 +31,7 @@ export interface ThreeAudioSnapshot {
 }
 
 export interface ThreeAudioEvent {
-  kind: Extract<Sfx, 'fire' | 'cannon' | 'bomb' | 'bombImpact' | 'scream' | 'hit' | 'explosion' | 'bigExplosion'>;
+  kind: Extract<Sfx, 'fire' | 'cannon' | 'bomb' | 'bombImpact' | 'scream' | 'hit' | 'explosion' | 'bigExplosion' | 'missileLaunch' | 'missileFlight' | 'missileImpact'>;
   x: number;
   z: number;
   targetX?: number;
@@ -73,6 +74,11 @@ export class ThreeAudioEventTracker {
     const seenProjectiles = new Set<number>();
     for (const projectile of snapshot.projectiles) {
       seenProjectiles.add(projectile.id);
+      const prev = this.projectiles.get(projectile.id);
+      // 新出现的爱国者拦截弹：发射音
+      if (!prev && projectile.flightKind === 'missileFlight') {
+        events.push({ kind: 'missileLaunch', x: projectile.x, z: projectile.z });
+      }
       this.projectiles.set(projectile.id, projectile);
     }
     for (const [id, prev] of this.projectiles) {

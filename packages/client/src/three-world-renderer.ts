@@ -28,6 +28,7 @@ import {
   Shape,
   ShapeGeometry,
   SphereGeometry,
+  TorusGeometry,
   Vector2,
   Vector3,
   WebGLRenderer,
@@ -540,6 +541,17 @@ export function projectileVisualPoint3D(
 ): Vector3 {
   if (projectile.weaponRole === 'missile') {
     const pos = leptonToWorld3D(projectile.x, projectile.y);
+    // 地面发射的拦截弹（爱国者）：从地面爬升至目标高度，模拟弹道爬升
+    if (shooterType?.domain === 'building') {
+      const startY = 1.0; // 发射架高度
+      const endY = AIRCRAFT_ALTITUDE + 0.15;
+      if (!shooter || !target) return new Vector3(pos.x, endY, pos.z);
+      const full = Math.max(1, Math.hypot(target.x - shooter.x, target.y - shooter.y));
+      const traveled = Math.min(1, Math.max(0, Math.hypot(projectile.x - shooter.x, projectile.y - shooter.y) / full));
+      // 平滑爬升：前段快速爬升，后段接近目标高度
+      const t = 1 - Math.pow(1 - traveled, 2);
+      return new Vector3(pos.x, startY + (endY - startY) * t, pos.z);
+    }
     return new Vector3(pos.x, AIRCRAFT_ALTITUDE + 0.15, pos.z);
   }
   if (shooterType?.domain !== 'aircraft' || projectile.weaponRole === 'cannon' || projectile.weaponRole === 'gun' || !shooter || !target) {
@@ -563,6 +575,7 @@ export function projectileImpactKind3D(
   weaponRole: WeaponRole | undefined,
   splash: number,
 ): ThreeProjectileAudioState['impactKind'] {
+  if (weaponRole === 'missile' && shooterType?.domain === 'building') return 'missileImpact';
   if (weaponRole === 'bomb') return 'bombImpact';
   if (splash > 0 || shooterType?.domain === 'aircraft' || shooterType?.domain === 'vehicle') return 'explosion';
   return 'hit';
@@ -608,6 +621,12 @@ export function combatEffectProfile3D(kind: ThreeAudioEvent['kind']): CombatEffe
       return { visual: 'blast', color: 0xffa640, radius: 0.72, height: 0.5, life: 22, sparkCount: 13, grow: 2.2 };
     case 'bigExplosion':
       return { visual: 'blast', color: 0xff7a2a, radius: 1.18, height: 0.75, life: 32, sparkCount: 20, grow: 2.6 };
+    case 'missileLaunch':
+      return { visual: 'muzzleFlash', color: 0xfff1a0, radius: 0.28, height: 1.1, life: 12, sparkCount: 6, grow: 1.5 };
+    case 'missileFlight':
+      return { visual: 'impactSpark', color: 0xd8d8d8, radius: 0.18, height: 0.3, life: 8, sparkCount: 3, grow: 1.2 };
+    case 'missileImpact':
+      return { visual: 'blast', color: 0xffa640, radius: 0.92, height: 0.62, life: 26, sparkCount: 18, grow: 2.4 };
   }
 }
 
@@ -1399,7 +1418,11 @@ export class ThreeWorldRenderer {
         }
       }
 
-      for (const part of batch.parts) part.mesh.instanceMatrix.needsUpdate = true;
+      for (const part of batch.parts) {
+        part.mesh.instanceMatrix.needsUpdate = true;
+        part.mesh.boundingSphere = null;
+        part.mesh.boundingBox = null;
+      }
     }
   }
 
@@ -1516,6 +1539,7 @@ export class ThreeWorldRenderer {
     if (type.id === 'airbase') return this.createAirbase(ownerColor);
     if (type.id === 'refinery') return this.createRefinery(ownerColor);
     if (type.id === 'powerplant') return this.createPowerPlant(ownerColor);
+    if (type.id === 'patriot') return this.createPatriotBattery(ownerColor);
 
     const b = type.building!;
     const root = new Group();
@@ -1613,6 +1637,101 @@ export class ThreeWorldRenderer {
     teamPanel.position.set(-1.7, 1.05, 0.06);
     const beacon = addPart('beacon', new Mesh(new BoxGeometry(0.18, 0.2, 0.18), accentMat));
     beacon.position.set(1.76, 2.48, -1.18);
+
+    return root;
+  }
+
+  /** 爱国者防空反导系统（Patriot PAC-3）低多边形模型：
+   *  四联装发射架 + 旋转底座 + 相控阵雷达天线 + 控制方舱。 */
+  private createPatriotBattery(ownerColor: number): Object3D {
+    const root = new Group();
+    root.name = 'lowpoly-patriot';
+    const concreteMat = new MeshLambertMaterial({ color: 0x6a6e64 });
+    const hullMat = new MeshLambertMaterial({ color: 0x5a6058 });
+    const darkMat = new MeshLambertMaterial({ color: 0x2d3236 });
+    const metalMat = new MeshLambertMaterial({ color: 0x404648 });
+    const radarMat = new MeshLambertMaterial({ color: 0x1a1d20 });
+    const accentMat = new MeshLambertMaterial({ color: ownerColor });
+    const missileBodyMat = new MeshLambertMaterial({ color: 0xe8e8e0 });
+    const missileNoseMat = new MeshLambertMaterial({ color: 0xc23a3a });
+    const addPart = (name: string, mesh: Mesh): Mesh => {
+      mesh.name = `patriot-${name}`;
+      root.add(mesh);
+      return mesh;
+    };
+
+    // 混凝土基座（2x2 footprint）
+    const pad = addPart('pad', new Mesh(new BoxGeometry(2.6, 0.16, 2.6), concreteMat));
+    pad.position.y = 0.08;
+    // 基座边缘装饰
+    const curb = addPart('curb', new Mesh(new BoxGeometry(2.7, 0.08, 2.7), darkMat));
+    curb.position.y = 0.02;
+
+    // 控制方舱（后方）：长方体 + 顶部天线
+    const cabin = addPart('cabin', new Mesh(new BoxGeometry(0.85, 0.7, 0.6), hullMat));
+    cabin.position.set(-0.7, 0.5, 0.7);
+    const cabinRoof = addPart('cabin-roof', new Mesh(new BoxGeometry(0.92, 0.08, 0.66), darkMat));
+    cabinRoof.position.set(-0.7, 0.89, 0.7);
+    // 控制舱小天线
+    const cabinAntenna = addPart('cabin-antenna', new Mesh(new BoxGeometry(0.04, 0.6, 0.04), metalMat));
+    cabinAntenna.position.set(-0.7, 1.24, 0.7);
+    const cabinAntennaTip = addPart('cabin-antenna-tip', new Mesh(new BoxGeometry(0.06, 0.06, 0.06), accentMat));
+    cabinAntennaTip.position.set(-0.7, 1.56, 0.7);
+
+    // 相控阵雷达天线（侧后方）：矩形板斜立
+    const radarMast = addPart('radar-mast', new Mesh(new BoxGeometry(0.1, 0.9, 0.1), metalMat));
+    radarMast.position.set(0.55, 0.6, 0.85);
+    const radarPanel = addPart('radar-panel', new Mesh(new BoxGeometry(0.95, 0.7, 0.06), radarMat));
+    radarPanel.position.set(0.55, 1.05, 0.85);
+    radarPanel.rotation.x = -Math.PI / 6; // 后仰
+    // 雷达面板边框
+    const radarFrame = addPart('radar-frame', new Mesh(new BoxGeometry(1.0, 0.75, 0.04), metalMat));
+    radarFrame.position.set(0.55, 1.05, 0.83);
+    radarFrame.rotation.x = -Math.PI / 6;
+
+    // 发射架旋转底座（前方中央）
+    const base = addPart('launch-base', new Mesh(new CylinderGeometry(0.42, 0.5, 0.3, 8), hullMat));
+    base.position.set(0.2, 0.3, -0.1);
+    const baseRing = addPart('launch-base-ring', new Mesh(new TorusGeometry(0.46, 0.05, 6, 12), darkMat));
+    baseRing.position.set(0.2, 0.46, -0.1);
+    baseRing.rotation.x = Math.PI / 2;
+
+    // 四联装发射箱（倾斜指向天空）
+    const launcherGroup = new Group();
+    launcherGroup.name = 'patriot-launcher';
+    launcherGroup.position.set(0.2, 0.5, -0.1);
+    launcherGroup.rotation.x = -Math.PI / 4; // 仰角 45°
+    // 发射箱体
+    const crate = new Mesh(new BoxGeometry(0.95, 0.45, 0.7), hullMat);
+    crate.name = 'patriot-launcher-crate';
+    crate.position.set(0, 0.2, 0);
+    launcherGroup.add(crate);
+    // 四枚导弹（露出发射箱前端）
+    const missilePositions: Array<[number, number]> = [
+      [-0.3, 0.1],
+      [0.3, 0.1],
+      [-0.3, -0.1],
+      [0.3, -0.1],
+    ];
+    for (let i = 0; i < missilePositions.length; i++) {
+      const [mx, mz] = missilePositions[i]!;
+      const missile = new Group();
+      missile.name = `patriot-missile-${i}`;
+      const mBody = new Mesh(new CylinderGeometry(0.05, 0.05, 0.6, 6), missileBodyMat);
+      mBody.rotation.x = Math.PI / 2;
+      missile.add(mBody);
+      const mNose = new Mesh(new ConeGeometry(0.05, 0.15, 6), missileNoseMat);
+      mNose.rotation.x = -Math.PI / 2;
+      mNose.position.z = 0.38;
+      missile.add(mNose);
+      missile.position.set(mx, 0.2, mz + 0.45); // 露出发射箱前端
+      launcherGroup.add(missile);
+    }
+    root.add(launcherGroup);
+
+    // 状态指示灯（顶部红色闪烁灯——仅静态显示）
+    const statusLight = addPart('status-light', new Mesh(new BoxGeometry(0.06, 0.06, 0.06), accentMat));
+    statusLight.position.set(0.2, 1.1, -0.1);
 
     return root;
   }
@@ -2510,6 +2629,9 @@ export class ThreeWorldRenderer {
         bomb.position.set(pos.x, pos.y, pos.z);
         bomb.scale.set(0.75, 1.45, 0.75);
         this.projectileLayer.add(bomb);
+      } else if (p.weaponRole === 'missile' && shooterType?.domain === 'building') {
+        // 爱国者拦截弹：细长导弹体 + 烟雾尾迹
+        this.projectileLayer.add(this.createPatriotMissileVisual(pos, target ?? null));
       } else {
         const targetPos = target ? leptonToWorld3D(target.x, target.y) : null;
         const end = targetPos ? projectileTracerEnd3D(pos, new Vector3(targetPos.x, pos.y, targetPos.z), 1.85) : new Vector3(pos.x, pos.y, pos.z - 0.8);
@@ -2517,6 +2639,53 @@ export class ThreeWorldRenderer {
         this.projectileLayer.add(this.createTracerMesh(pos, end, mat));
       }
     }
+  }
+
+  /** 爱国者 PAC-3 拦截弹视觉：细长弹体 + 朝向目标 + 浓白烟雾尾迹。 */
+  private createPatriotMissileVisual(pos: Vector3, target: { x: number; y: number } | null): Group {
+    const root = new Group();
+    root.position.copy(pos);
+    // 弹体：细长圆柱，白色弹身+红色弹头
+    const bodyGeo = new CylinderGeometry(0.06, 0.06, 0.7, 6);
+    const bodyMat = new MeshLambertMaterial({ color: 0xe8e8e0 });
+    const body = new Mesh(bodyGeo, bodyMat);
+    body.rotation.x = Math.PI / 2;
+    root.add(body);
+    const noseGeo = new ConeGeometry(0.06, 0.18, 6);
+    const noseMat = new MeshLambertMaterial({ color: 0xc23a3a });
+    const nose = new Mesh(noseGeo, noseMat);
+    nose.rotation.x = -Math.PI / 2;
+    nose.position.z = 0.44;
+    root.add(nose);
+    // 尾翼
+    const finMat = new MeshLambertMaterial({ color: 0x8a8a82 });
+    for (const [dx, dz] of [[0.1, 0], [-0.1, 0], [0, 0.1], [0, -0.1]] as const) {
+      const fin = new Mesh(new BoxGeometry(0.04, 0.02, 0.18), finMat);
+      fin.position.set(dx, dz, -0.32);
+      root.add(fin);
+    }
+    // 朝向目标
+    if (target) {
+      const targetPos = leptonToWorld3D(target.x, target.y);
+      const dir = new Vector3(targetPos.x - pos.x, (AIRCRAFT_ALTITUDE + 0.15) - pos.y, targetPos.z - pos.z);
+      if (dir.lengthSq() > 0.001) {
+        root.lookAt(new Vector3(pos.x + dir.x, pos.y + dir.y, pos.z + dir.z));
+      }
+    }
+    // 烟雾尾迹：朝发射方向的反向延伸的渐淡圆柱
+    const trailLen = 1.6;
+    const trailGeo = new CylinderGeometry(0.18, 0.04, trailLen, 8, 1, true);
+    const trailMat = new MeshBasicMaterial({
+      color: 0xd8d8d8,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+    });
+    const trail = new Mesh(trailGeo, trailMat);
+    trail.rotation.x = Math.PI / 2;
+    trail.position.z = -trailLen / 2 - 0.35;
+    root.add(trail);
+    return root;
   }
 
   private aircraftOrbitCenters(): Map<number, Vector3> {
@@ -2704,7 +2873,8 @@ export class ThreeWorldRenderer {
       const target = this.world.entities.get(p.targetId);
       const pos = projectileVisualPoint3D(shooterType, p, shooter, target);
       const impactKind = projectileImpactKind3D(shooterType, p.weaponRole, p.splash);
-      projectiles.push({ id: p.id, x: pos.x, z: pos.z, impactKind });
+      const flightKind = p.weaponRole === 'missile' && shooterType?.domain === 'building' ? 'missileFlight' as const : undefined;
+      projectiles.push({ id: p.id, x: pos.x, z: pos.z, impactKind, flightKind });
     }
     return { entities, projectiles };
   }
