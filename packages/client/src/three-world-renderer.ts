@@ -1646,92 +1646,171 @@ export class ThreeWorldRenderer {
   private createPatriotBattery(ownerColor: number): Object3D {
     const root = new Group();
     root.name = 'lowpoly-patriot';
-    const concreteMat = new MeshLambertMaterial({ color: 0x6a6e64 });
-    const hullMat = new MeshLambertMaterial({ color: 0x5a6058 });
-    const darkMat = new MeshLambertMaterial({ color: 0x2d3236 });
-    const metalMat = new MeshLambertMaterial({ color: 0x404648 });
-    const radarMat = new MeshLambertMaterial({ color: 0x1a1d20 });
+    // 配色：参照真实爱国者发射车（橄榄绿/沙色涂装）
+    const bodyMat = new MeshLambertMaterial({ color: 0x4a5238 });   // 军绿车身
+    const darkMat = new MeshLambertMaterial({ color: 0x2a2f1e });  // 深色部件
+    const metalMat = new MeshLambertMaterial({ color: 0x3a3f30 }); // 金属支架
+    const rubberMat = new MeshLambertMaterial({ color: 0x1a1d14 });// 轮胎
+    const crateMat = new MeshLambertMaterial({ color: 0x5d6442 }); // 发射箱体（同色）
+    const tubeMat = new MeshLambertMaterial({ color: 0x6b7350 });  // 发射管口
+    const glassMat = new MeshLambertMaterial({ color: 0x223344 }); // 驾驶舱玻璃
     const accentMat = new MeshLambertMaterial({ color: ownerColor });
-    const missileBodyMat = new MeshLambertMaterial({ color: 0xe8e8e0 });
-    const missileNoseMat = new MeshLambertMaterial({ color: 0xc23a3a });
     const addPart = (name: string, mesh: Mesh): Mesh => {
       mesh.name = `patriot-${name}`;
       root.add(mesh);
       return mesh;
     };
 
-    // 混凝土基座（2x2 footprint）
-    const pad = addPart('pad', new Mesh(new BoxGeometry(2.6, 0.16, 2.6), concreteMat));
-    pad.position.y = 0.08;
-    // 基座边缘装饰
-    const curb = addPart('curb', new Mesh(new BoxGeometry(2.7, 0.08, 2.7), darkMat));
-    curb.position.y = 0.02;
+    // —— 地台/压痕（部署后的地面痕迹，不抬高）——
+    const pad = addPart('pad', new Mesh(new BoxGeometry(3.0, 0.04, 2.4), new MeshLambertMaterial({ color: 0x3a3d2e })));
+    pad.position.y = 0.02;
 
-    // 控制方舱（后方）：长方体 + 顶部天线
-    const cabin = addPart('cabin', new Mesh(new BoxGeometry(0.85, 0.7, 0.6), hullMat));
-    cabin.position.set(-0.7, 0.5, 0.7);
-    const cabinRoof = addPart('cabin-roof', new Mesh(new BoxGeometry(0.92, 0.08, 0.66), darkMat));
-    cabinRoof.position.set(-0.7, 0.89, 0.7);
-    // 控制舱小天线
-    const cabinAntenna = addPart('cabin-antenna', new Mesh(new BoxGeometry(0.04, 0.6, 0.04), metalMat));
-    cabinAntenna.position.set(-0.7, 1.24, 0.7);
-    const cabinAntennaTip = addPart('cabin-antenna-tip', new Mesh(new BoxGeometry(0.06, 0.06, 0.06), accentMat));
-    cabinAntennaTip.position.set(-0.7, 1.56, 0.7);
+    // —— 卡车底盘（M860半挂/HEMTT牵引车风格）——
+    // 主纵梁
+    const chassis = addPart('chassis', new Mesh(new BoxGeometry(2.6, 0.18, 1.5), darkMat));
+    chassis.position.set(0, 0.32, 0);
+    // 底盘横梁
+    for (const z of [-0.55, 0, 0.55]) {
+      const cross = addPart(`cross-${z}`, new Mesh(new BoxGeometry(2.5, 0.1, 0.1), darkMat));
+      cross.position.set(0, 0.36, z);
+    }
 
-    // 相控阵雷达天线（侧后方）：矩形板斜立
-    const radarMast = addPart('radar-mast', new Mesh(new BoxGeometry(0.1, 0.9, 0.1), metalMat));
-    radarMast.position.set(0.55, 0.6, 0.85);
-    const radarPanel = addPart('radar-panel', new Mesh(new BoxGeometry(0.95, 0.7, 0.06), radarMat));
-    radarPanel.position.set(0.55, 1.05, 0.85);
-    radarPanel.rotation.x = -Math.PI / 6; // 后仰
-    // 雷达面板边框
-    const radarFrame = addPart('radar-frame', new Mesh(new BoxGeometry(1.0, 0.75, 0.04), metalMat));
-    radarFrame.position.set(0.55, 1.05, 0.83);
-    radarFrame.rotation.x = -Math.PI / 6;
+    // —— 轮组（3轴6轮，重型越野底盘）——
+    const wheelGeo = new CylinderGeometry(0.28, 0.28, 0.18, 12);
+    const wheelPositions: Array<[number, number]> = [
+      [-0.9, -0.7], [-0.9, 0.7],
+      [0.0, -0.7], [0.0, 0.7],
+      [0.9, -0.7], [0.9, 0.7],
+    ];
+    for (let i = 0; i < wheelPositions.length; i++) {
+      const [wx, wz] = wheelPositions[i]!;
+      const wheel = addPart(`wheel-${i}`, new Mesh(wheelGeo, rubberMat));
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(wx, 0.28, wz);
+      // 轮毂
+      const hub = addPart(`hub-${i}`, new Mesh(new CylinderGeometry(0.1, 0.1, 0.2, 8), metalMat));
+      hub.rotation.z = Math.PI / 2;
+      hub.position.set(wx, 0.28, wz);
+    }
 
-    // 发射架旋转底座（前方中央）
-    const base = addPart('launch-base', new Mesh(new CylinderGeometry(0.42, 0.5, 0.3, 8), hullMat));
-    base.position.set(0.2, 0.3, -0.1);
-    const baseRing = addPart('launch-base-ring', new Mesh(new TorusGeometry(0.46, 0.05, 6, 12), darkMat));
-    baseRing.position.set(0.2, 0.46, -0.1);
-    baseRing.rotation.x = Math.PI / 2;
+    // —— 驾驶室（车头方向，+X 侧）——
+    const cab = addPart('cab', new Mesh(new BoxGeometry(0.7, 0.6, 1.4), bodyMat));
+    cab.position.set(1.15, 0.7, 0);
+    // 驾驶室顶部（略斜）
+    const cabRoof = addPart('cab-roof', new Mesh(new BoxGeometry(0.72, 0.08, 1.42), darkMat));
+    cabRoof.position.set(1.15, 1.02, 0);
+    // 挡风玻璃
+    const windshield = addPart('windshield', new Mesh(new BoxGeometry(0.04, 0.3, 1.2), glassMat));
+    windshield.position.set(1.5, 0.78, 0);
+    // 车头保险杠
+    const bumper = addPart('bumper', new Mesh(new BoxGeometry(0.12, 0.18, 1.6), darkMat));
+    bumper.position.set(1.55, 0.4, 0);
 
-    // 四联装发射箱（倾斜指向天空）
+    // —— 旋转转台（连接底盘与发射架）——
+    const turntable = addPart('turntable', new Mesh(new CylinderGeometry(0.55, 0.65, 0.18, 12), metalMat));
+    turntable.position.set(-0.2, 0.5, 0);
+    // 转台外圈
+    const turntableRing = addPart('turntable-ring', new Mesh(new TorusGeometry(0.6, 0.05, 6, 16), darkMat));
+    turntableRing.position.set(-0.2, 0.6, 0);
+    turntableRing.rotation.x = Math.PI / 2;
+
+    // —— 四个液压支撑腿（部署时伸出接地）——
+    const jackPositions: Array<[number, number]> = [
+      [-1.1, -1.0], [-1.1, 1.0],
+      [0.7, -1.0], [0.7, 1.0],
+    ];
+    for (let i = 0; i < jackPositions.length; i++) {
+      const [jx, jz] = jackPositions[i]!;
+      // 支撑臂（斜向外伸）
+      const arm = addPart(`jack-arm-${i}`, new Mesh(new BoxGeometry(0.12, 0.12, 0.7), metalMat));
+      arm.position.set(jx, 0.42, jz);
+      arm.rotation.y = Math.atan2(jz, jx);
+      // 支撑底脚（接地）
+      const foot = addPart(`jack-foot-${i}`, new Mesh(new CylinderGeometry(0.12, 0.16, 0.1, 8), darkMat));
+      foot.position.set(jx, 0.06, jz);
+      // 液压缸
+      const cyl = addPart(`jack-cyl-${i}`, new Mesh(new CylinderGeometry(0.05, 0.05, 0.36, 6), metalMat));
+      cyl.position.set(jx, 0.24, jz);
+    }
+
+    // —— 发射架组（仰角约30°，指向天空）——
     const launcherGroup = new Group();
     launcherGroup.name = 'patriot-launcher';
-    launcherGroup.position.set(0.2, 0.5, -0.1);
-    launcherGroup.rotation.x = -Math.PI / 4; // 仰角 45°
-    // 发射箱体
-    const crate = new Mesh(new BoxGeometry(0.95, 0.45, 0.7), hullMat);
-    crate.name = 'patriot-launcher-crate';
-    crate.position.set(0, 0.2, 0);
-    launcherGroup.add(crate);
-    // 四枚导弹（露出发射箱前端）
-    const missilePositions: Array<[number, number]> = [
-      [-0.3, 0.1],
-      [0.3, 0.1],
-      [-0.3, -0.1],
-      [0.3, -0.1],
+    launcherGroup.position.set(-0.2, 0.62, 0);
+    launcherGroup.rotation.x = -Math.PI / 6; // 仰角 30°
+
+    // 发射架主框架（箱体结构，容纳4个发射管）
+    const frame = new Mesh(new BoxGeometry(1.5, 0.5, 1.2), crateMat);
+    frame.name = 'patriot-launcher-frame';
+    frame.position.set(0, 0.25, 0);
+    launcherGroup.add(frame);
+    // 框架边沿（深色加固条）
+    const frameEdge = new Mesh(new BoxGeometry(1.54, 0.54, 1.24), darkMat);
+    frameEdge.name = 'patriot-launcher-frame-edge';
+    frameEdge.position.set(0, 0.25, -0.02);
+    frameEdge.scale.set(1, 1, 0.02);
+    launcherGroup.add(frameEdge);
+
+    // 四个密封发射箱（2x2排列，矩形管口朝前上方）
+    const tubePositions: Array<[number, number]> = [
+      [-0.32, 0.3], [0.32, 0.3],
+      [-0.32, -0.3], [0.32, -0.3],
     ];
-    for (let i = 0; i < missilePositions.length; i++) {
-      const [mx, mz] = missilePositions[i]!;
-      const missile = new Group();
-      missile.name = `patriot-missile-${i}`;
-      const mBody = new Mesh(new CylinderGeometry(0.05, 0.05, 0.6, 6), missileBodyMat);
-      mBody.rotation.x = Math.PI / 2;
-      missile.add(mBody);
-      const mNose = new Mesh(new ConeGeometry(0.05, 0.15, 6), missileNoseMat);
-      mNose.rotation.x = -Math.PI / 2;
-      mNose.position.z = 0.38;
-      missile.add(mNose);
-      missile.position.set(mx, 0.2, mz + 0.45); // 露出发射箱前端
-      launcherGroup.add(missile);
+    for (let i = 0; i < tubePositions.length; i++) {
+      const [tx, tz] = tubePositions[i]!;
+      // 发射箱体（长方形密封罐）
+      const tube = new Mesh(new BoxGeometry(1.4, 0.36, 0.36), crateMat);
+      tube.name = `patriot-tube-${i}`;
+      tube.position.set(0, 0.25, 0);
+      // 偏移到各自位置
+      const tubeGroup = new Group();
+      tubeGroup.name = `patriot-tube-group-${i}`;
+      tubeGroup.position.set(tx, 0, tz);
+      tubeGroup.add(tube);
+      // 发射管口（前端，深色圆口）
+      const muzzle = new Mesh(new CylinderGeometry(0.13, 0.13, 0.06, 10), tubeMat);
+      muzzle.name = `patriot-tube-muzzle-${i}`;
+      muzzle.rotation.x = Math.PI / 2;
+      muzzle.position.set(0.72, 0.25, 0);
+      tubeGroup.add(muzzle);
+      // 管口密封盖（前端的方形盖板，发射时脱落）
+      const seal = new Mesh(new BoxGeometry(0.04, 0.34, 0.34), darkMat);
+      seal.name = `patriot-tube-seal-${i}`;
+      seal.position.set(0.74, 0.25, 0);
+      tubeGroup.add(seal);
+      // 发射箱固定卡箍（环形固定件）
+      const clamp = new Mesh(new TorusGeometry(0.2, 0.03, 4, 8), metalMat);
+      clamp.name = `patriot-tube-clamp-${i}`;
+      clamp.rotation.y = Math.PI / 2;
+      clamp.position.set(-0.4, 0.25, 0);
+      tubeGroup.add(clamp);
+      launcherGroup.add(tubeGroup);
     }
+
+    // 发射架侧边加固肋
+    for (const side of [-1, 1]) {
+      const rib = new Mesh(new BoxGeometry(1.5, 0.06, 0.06), darkMat);
+      rib.name = `patriot-rib-${side}`;
+      rib.position.set(0, 0.5, side * 0.6);
+      launcherGroup.add(rib);
+    }
+
+    // 发射架液压俯仰装置（连接转台与发射架底部）
+    const elevActuator = new Mesh(new CylinderGeometry(0.06, 0.06, 0.4, 6), metalMat);
+    elevActuator.name = 'patriot-elev-actuator';
+    elevActuator.rotation.x = Math.PI / 2;
+    elevActuator.position.set(0.6, 0.1, 0);
+    launcherGroup.add(elevActuator);
+
     root.add(launcherGroup);
 
-    // 状态指示灯（顶部红色闪烁灯——仅静态显示）
-    const statusLight = addPart('status-light', new Mesh(new BoxGeometry(0.06, 0.06, 0.06), accentMat));
-    statusLight.position.set(0.2, 1.1, -0.1);
+    // —— 顶部状态指示灯（闪烁灯，玩家色）——
+    const statusLight = addPart('status-light', new Mesh(new BoxGeometry(0.08, 0.08, 0.08), accentMat));
+    statusLight.position.set(1.15, 1.12, 0);
+
+    // —— 车身识别条纹（玩家色装饰）——
+    const stripe = addPart('stripe', new Mesh(new BoxGeometry(0.6, 0.06, 1.3), accentMat));
+    stripe.position.set(1.15, 0.55, 0);
 
     return root;
   }
