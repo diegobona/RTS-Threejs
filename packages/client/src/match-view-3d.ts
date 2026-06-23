@@ -3,7 +3,8 @@ import { Vector3 } from 'three';
 import { audioBus } from './audio-bus';
 import { bgm } from './bgm';
 import { ThreeCameraController } from './three-camera';
-import { cellToWorld3D, leptonToWorld3D, worldToCell3D } from './three-coords';
+import { cellToWorld3D, leptonToWorld3D, worldToCell3D, THREE_CELL_SIZE } from './three-coords';
+import { playerColorForOwner } from './player-colors';
 import { uiText } from './i18n';
 import { productionButtonState } from './three-build-ui';
 import { rightClickCommand, type GroundMoveMode } from './three-orders';
@@ -392,6 +393,10 @@ export const MATCH_3D_STYLE = `
 .mv3-banner.defeat { color: #ff6363; }
 .mv3-banner.victory { color: #68e887; }
 .mv3-banner small { display: block; margin-top: 8px; color: #aeb9c2; font-size: 14px; font-weight: 500; }
+.mv3-minimap { position: fixed; right: 12px; bottom: 12px; z-index: 10; padding: 6px;
+  background: var(--hud-bg-strong); border: 1px solid var(--hud-edge); border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0,0,0,.28); backdrop-filter: blur(6px); }
+.mv3-minimap canvas { display: block; max-width: 200px; max-height: 200px; border-radius: 6px; cursor: crosshair; }
 @media (max-width: 980px) {
   .mv3-top { right: 12px; max-width: none; flex-wrap: wrap; }
   .mv3-groups-panel { top: auto; bottom: 108px; max-width: calc(100vw - 284px); }
@@ -401,6 +406,8 @@ export const MATCH_3D_STYLE = `
   .mv3-build-head { display: none; }
   .mv3-prod-list { overflow-x: auto; padding-bottom: 2px; }
   .mv3-prod-list button { min-width: 154px; width: 154px; }
+  .mv3-minimap { right: 8px; bottom: 72px; padding: 4px; }
+  .mv3-minimap canvas { max-width: 128px; max-height: 128px; }
 }
 `;
 
@@ -427,6 +434,10 @@ export class MatchView3D {
   private controlGroupsHudKey = '';
   private groundMoveMode: GroundMoveMode = DEFAULT_GROUND_MOVE_MODE_3D;
   private over = false;
+  private minimapCanvas!: HTMLCanvasElement;
+  private minimapCtx!: CanvasRenderingContext2D;
+  private minimapScale = 2;
+  private minimapTerrainCache!: HTMLCanvasElement;
 
   constructor(
     private readonly root: HTMLElement,
@@ -478,6 +489,7 @@ export class MatchView3D {
     const alpha = Math.min(0.98, (now - this.lastStepAt) / (1000 / 15));
     this.updateHud();
     this.renderer.render(this.camera.camera, alpha, this.selected, this.nearbyHpIds);
+    this.renderMinimap();
   }
 
   dispose(): void {
@@ -517,6 +529,9 @@ export class MatchView3D {
       <div class="mv3-help" id="mv3-help">
         <button class="mv3-help-toggle" id="mv3-help-toggle" type="button" aria-expanded="false" aria-controls="mv3-help-panel">${text.hud.helpButton}</button>
         <div class="mv3-help-panel" id="mv3-help-panel" hidden></div>
+      </div>
+      <div class="mv3-minimap" id="mv3-minimap" aria-label="小地图">
+        <canvas id="mv3-minimap-canvas"></canvas>
       </div>`,
     );
     this.capacityEl = this.root.querySelector('#mv3-capacity')!;
@@ -547,6 +562,7 @@ export class MatchView3D {
     const help = this.root.querySelector('#mv3-help');
     help?.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.root.querySelector('#mv3-help-toggle')?.addEventListener('click', () => this.toggleRulesAndControlsPanel());
+    this.setupMinimap();
   }
   private buildRulesAndControlsPanel(): void {
     const panel = this.root.querySelector('#mv3-help-panel');
@@ -1155,5 +1171,145 @@ export class MatchView3D {
     this.selBox.style.top = `${minY}px`;
     this.selBox.style.width = `${Math.abs(x1 - x0)}px`;
     this.selBox.style.height = `${Math.abs(y1 - y0)}px`;
+  }
+
+  // ───────────────────────── 小地图 ─────────────────────────
+
+  private get minimapMaxX(): number {
+    return Math.max(1, (this.mapW - 1) * THREE_CELL_SIZE);
+  }
+
+  private get minimapMaxZ(): number {
+    return Math.max(1, (this.mapH - 1) * THREE_CELL_SIZE);
+  }
+
+  private setupMinimap(): void {
+    this.minimapCanvas = this.root.querySelector('#mv3-minimap-canvas')!;
+    const target = 200;
+    const longest = Math.max(this.mapW, this.mapH);
+    this.minimapScale = Math.max(2, Math.floor(target / longest));
+    this.minimapCanvas.width = this.mapW * this.minimapScale;
+    this.minimapCanvas.height = this.mapH * this.minimapScale;
+    this.minimapCtx = this.minimapCanvas.getContext('2d')!;
+    this.minimapTerrainCache = this.buildMinimapTerrain();
+    this.bindMinimapInput();
+  }
+
+  private minimapTerrainColor(x: number, y: number): string {
+    const t = this.world.terrain.terrainAt?.(x, y);
+    switch (t) {
+      case 'water': return '#2f6a8c';
+      case 'ridge': return '#6a716a';
+      case 'sand': return '#8a7a56';
+      case 'scorched': return '#3a3128';
+      case 'shore': return '#9a8d73';
+      case 'road': return '#9a8a76';
+      case 'marsh': return '#5a7a52';
+      default:
+        return this.world.terrain.passable(x, y)
+          ? ((x + y) % 2 === 0 ? '#4a6a40' : '#42583a')
+          : '#5a5040';
+    }
+  }
+
+  private buildMinimapTerrain(): HTMLCanvasElement {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.minimapCanvas.width;
+    canvas.height = this.minimapCanvas.height;
+    const ctx = canvas.getContext('2d')!;
+    const s = this.minimapScale;
+    for (let y = 0; y < this.mapH; y++) {
+      for (let x = 0; x < this.mapW; x++) {
+        ctx.fillStyle = this.minimapTerrainColor(x, y);
+        ctx.fillRect(x * s, y * s, s, s);
+      }
+    }
+    for (let y = 0; y < this.mapH; y++) {
+      for (let x = 0; x < this.mapW; x++) {
+        if (this.world.oreAt(x, y) > 0) {
+          ctx.fillStyle = '#f3d35f';
+          const o = Math.floor(s / 3);
+          ctx.fillRect(x * s + o, y * s + o, Math.max(1, o), Math.max(1, o));
+        }
+      }
+    }
+    return canvas;
+  }
+
+  private worldToMinimapX(wx: number): number {
+    return Math.max(0, Math.min(this.minimapCanvas.width, (wx / this.minimapMaxX) * this.minimapCanvas.width));
+  }
+
+  private worldToMinimapY(wz: number): number {
+    return Math.max(0, Math.min(this.minimapCanvas.height, (wz / this.minimapMaxZ) * this.minimapCanvas.height));
+  }
+
+  private renderMinimap(): void {
+    if (!this.minimapCtx) return;
+    const ctx = this.minimapCtx;
+    const s = this.minimapScale;
+    ctx.drawImage(this.minimapTerrainCache, 0, 0);
+    // 实体
+    for (const e of this.world.entities.values()) {
+      const type = this.world.rules.units.get(e.typeId);
+      if (!type) continue;
+      const wp = leptonToWorld3D(e.x, e.y);
+      const mx = this.worldToMinimapX(wp.x);
+      const my = this.worldToMinimapY(wp.z);
+      const color = playerColorForOwner(e.owner);
+      ctx.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
+      const size = type.domain === 'building' ? Math.max(2, s) : Math.max(1, Math.floor(s / 2));
+      ctx.fillRect(mx - size / 2, my - size / 2, size, size);
+    }
+    // 视口指示框
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const corners = [
+      this.camera.groundAt(0, 0),
+      this.camera.groundAt(vw, 0),
+      this.camera.groundAt(vw, vh),
+      this.camera.groundAt(0, vh),
+    ];
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let started = false;
+    for (const c of corners) {
+      if (!c) continue;
+      const mx = this.worldToMinimapX(c.x);
+      const my = this.worldToMinimapY(c.z);
+      if (!started) { ctx.moveTo(mx, my); started = true; }
+      else ctx.lineTo(mx, my);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  private bindMinimapInput(): void {
+    const canvas = this.minimapCanvas;
+    let dragging = false;
+    const jump = (clientX: number, clientY: number): void => {
+      const rect = canvas.getBoundingClientRect();
+      const ndcX = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const ndcY = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+      this.camera.focus(ndcX * this.minimapMaxX, ndcY * this.minimapMaxZ);
+    };
+    canvas.addEventListener('pointerdown', (e: PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragging = true;
+      canvas.setPointerCapture(e.pointerId);
+      jump(e.clientX, e.clientY);
+    });
+    canvas.addEventListener('pointermove', (e: PointerEvent) => {
+      if (!dragging) return;
+      jump(e.clientX, e.clientY);
+    });
+    const stop = (e: PointerEvent): void => {
+      dragging = false;
+      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    };
+    canvas.addEventListener('pointerup', stop);
+    canvas.addEventListener('pointercancel', stop);
   }
 }
