@@ -114,7 +114,7 @@ export const UI_TEXT = {
       airbase: { icon: '✈', label: '空军基地', hint: '自动生产飞机' },
       pillbox: { icon: '⬟', label: '碉堡', hint: '固定防御' },
       battlelab: { icon: '✚', label: '实验室', hint: '科技解锁' },
-      patriot: { icon: '◬', label: '爱国者防空', hint: '反导防空' },
+      patriot: { icon: '◬', label: '防空导弹阵地', hint: '反导防空' },
       fallback: { icon: '◆', hint: '建筑' },
     },
     unitLabels: {
@@ -218,7 +218,7 @@ export const UI_TEXT = {
       airbase: { icon: '✈', label: 'Airbase', hint: 'Auto aircraft' },
       pillbox: { icon: '⬟', label: 'Pillbox', hint: 'Static defense' },
       battlelab: { icon: '✚', label: 'Battle Lab', hint: 'Tech unlocks' },
-      patriot: { icon: '◬', label: 'Patriot SAM', hint: 'Anti-air missile' },
+      patriot: { icon: '◬', label: 'Air Defense Site', hint: 'Anti-air missile' },
       fallback: { icon: '◆', hint: 'Structure' },
     },
     unitLabels: {
