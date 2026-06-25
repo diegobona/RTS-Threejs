@@ -33,6 +33,13 @@ const PRODUCTION_BUILDING_TARGETS: Record<Mode, Record<CoreProductionBuilding, n
   aggressive: { barracks: 4, warfactory: 3, airbase: 3 },
 };
 
+// 防空阵地目标数量（按模式），不阻塞核心建造顺序，在扩建阶段补建
+const PATRIOT_TARGETS: Record<Mode, number> = {
+  defensive: 4,
+  balanced: 3,
+  aggressive: 2,
+};
+
 interface DiffParams {
   waveBias: number;
 }
@@ -401,11 +408,31 @@ export class SimpleAI {
     return false;
   }
 
+  /** 统计敌方存活的飞行单位数量。 */
+  private enemyAircraftCount(world: World): number {
+    let n = 0;
+    for (const e of world.entities.values()) {
+      if (e.owner === this.playerId) continue;
+      if (!world.players.has(e.owner)) continue;
+      const type = world.rules.units.get(e.typeId);
+      if (type?.domain === 'aircraft') n++;
+    }
+    return n;
+  }
+
   private nextBuilding(world: World, _player: Player): string | null {
     const has = (id: string): boolean => this.countBuildings(world, id) > 0;
     for (const id of BUILD_ORDER) if (!has(id)) return id;
 
     const targets = PRODUCTION_BUILDING_TARGETS[this.mode];
+    // 敌方有空军时，优先补建防空阵地（加量应对威胁）
+    const enemyAir = this.enemyAircraftCount(world);
+    if (enemyAir > 0) {
+      const patriotCount = this.countBuildings(world, 'patriot');
+      const desiredPatriot = Math.max(PATRIOT_TARGETS[this.mode], enemyAir + 1);
+      if (patriotCount < desiredPatriot && !this.hasIncompleteBuilding(world, 'patriot')) return 'patriot';
+    }
+
     let waitingForProductionExpansion = false;
     for (const id of BUILD_ORDER) {
       if (this.countBuildings(world, id) >= targets[id]) continue;
@@ -416,6 +443,10 @@ export class SimpleAI {
       return id;
     }
     if (waitingForProductionExpansion) return null;
+
+    // 核心扩建完成后，补建防空阵地至目标数量
+    const patriotCount = this.countBuildings(world, 'patriot');
+    if (patriotCount < PATRIOT_TARGETS[this.mode] && !this.hasIncompleteBuilding(world, 'patriot')) return 'patriot';
 
     return null;
   }

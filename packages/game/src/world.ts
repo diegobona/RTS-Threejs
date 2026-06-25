@@ -120,6 +120,10 @@ export interface Entity {
   repairing: boolean;
   producer: ProducerState | null;
   producerExit: { x: number; y: number } | null;
+  /** 展开状态：true=已展开可开火，false=已收起可移动。仅 deployTime 单位使用。 */
+  deployed: boolean;
+  /** 展开/收起倒计时（tick）。>0 表示正在转换中。 */
+  deployTimer: number;
 }
 
 export interface Projectile {
@@ -568,6 +572,8 @@ export class World {
       harvester: type.id === 'harvester' ? { mode: 'seek', load: 0, timer: 0 } : null,
       producer: null,
       producerExit: null,
+      deployed: false,
+      deployTimer: 0,
     };
     this.entities.set(id, e);
     return e;
@@ -1737,13 +1743,15 @@ export class World {
     if (e.attackMove) {
       // 攻击移动/巡逻：每帧锁定射程/警戒内最近的敌人——逐个停下歼灭挡路之敌，
       // 打完（目标消失/驶离警戒）再据 attackDest 续行或折返。
-      target = this.acquireEnemy(e, type) ?? this.attackMoveFinalTarget(e, type) ?? undefined;
+      // TEL 不参与自动索敌（仅玩家显式指定目标才开火）
+      target = (type.deployTime ? null : this.acquireEnemy(e, type)) ?? this.attackMoveFinalTarget(e, type) ?? undefined;
       e.targetId = target ? target.id : null;
     } else {
       // 显式攻击：紧咬指定目标；空闲（无目的地）：警戒索敌被动自卫。
+      // TEL 仅攻击玩家显式指定的目标，不自动索敌也不被动还击
       target = e.targetId !== null ? this.entities.get(e.targetId) : undefined;
       if (target && (target.owner === e.owner || this.players.get(target.owner)?.defeated)) target = undefined;
-      if (!target && !e.goal) target = this.acquireEnemy(e, type) ?? undefined;
+      if (!target && !e.goal && !type.deployTime) target = this.acquireEnemy(e, type) ?? undefined;
       e.targetId = target ? target.id : null;
     }
 
@@ -1799,6 +1807,7 @@ export class World {
     e.path = [];
     e.waypoint = null;
     e.goal = null;
+
     const aim = dirToBangle(dx, dy);
     if (type.rot > 0) {
       e.facing = turnToward(e.facing, aim, type.rot);
@@ -1884,12 +1893,12 @@ export class World {
       if (killer && killer.owner !== target.owner) killer.kills++;
     }
     // 反击：空闲的武装单位被打 → 自动还击攻击者（即便对方在远处/警戒范围外）；
-    // 不还火姿态不还击
+    // 不还火姿态不还击；TEL 不自动还击（必须玩家显式指定目标）
     if (attackerId >= 0 && target.stance !== 'holdfire' && target.targetId === null && !target.goal && !target.attackMove) {
       const tt = this.rules.units.get(target.typeId);
       const attacker = this.entities.get(attackerId);
       const attackerType = attacker && this.rules.units.get(attacker.typeId);
-      if (tt && attackerType && this.weaponForTarget(tt, attackerType) && tt.domain !== 'building') target.targetId = attackerId;
+      if (tt && !tt.deployTime && attackerType && this.weaponForTarget(tt, attackerType) && tt.domain !== 'building') target.targetId = attackerId;
     }
     if (splash > 0) {
       for (const e of this.entities.values()) {
@@ -1992,6 +2001,7 @@ export class World {
       addHashString(h, e.producer?.paidTypeId ?? '');
       h.addInt(e.producerExit?.x ?? -1)
         .addInt(e.producerExit?.y ?? -1);
+      h.addInt(e.deployed ? 1 : 0).addInt(e.deployTimer);
     }
     h.addInt(this.projectiles.length);
     for (const p of this.projectiles) {

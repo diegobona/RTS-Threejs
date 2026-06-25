@@ -552,6 +552,19 @@ export function projectileVisualPoint3D(
       const t = 1 - Math.pow(1 - traveled, 2);
       return new Vector3(pos.x, startY + (endY - startY) * t, pos.z);
     }
+    // 战术弹道导弹（TEL 车发射）：高抛物线弹道，中段高空飞行，末段俯冲
+    if (shooterType?.domain === 'vehicle') {
+      const startY = 1.2; // 发射架竖起后的高度
+      const peakY = 14;   // 弹道顶点（高空）
+      const endY = 0.5;   // 目标地面高度
+      if (!shooter || !target) return new Vector3(pos.x, peakY, pos.z);
+      const full = Math.max(1, Math.hypot(target.x - shooter.x, target.y - shooter.y));
+      const traveled = Math.min(1, Math.max(0, Math.hypot(projectile.x - shooter.x, projectile.y - shooter.y) / full));
+      // 抛物线：y = start + (peak-start) * 4t(1-t)，末段叠加下坠
+      const arc = 4 * traveled * (1 - traveled); // 0→1→0
+      const y = startY + (peakY - startY) * arc + (endY - startY) * traveled * traveled;
+      return new Vector3(pos.x, y, pos.z);
+    }
     return new Vector3(pos.x, AIRCRAFT_ALTITUDE + 0.15, pos.z);
   }
   if (shooterType?.domain !== 'aircraft' || projectile.weaponRole === 'cannon' || projectile.weaponRole === 'gun' || !shooter || !target) {
@@ -565,7 +578,11 @@ export function projectileVisualPoint3D(
 }
 
 export function projectileVisualProfile3D(shooterType: Pick<UnitType, 'domain'> | null | undefined, weaponRole?: WeaponRole): ProjectileVisualProfile3D {
-  if (weaponRole === 'missile') return { kind: 'tracer', color: 0xaedfff };
+  if (weaponRole === 'missile') {
+    // TEL 战术导弹：橙色尾焰，更醒目
+    if (shooterType?.domain === 'vehicle') return { kind: 'tracer', color: 0xffaa44 };
+    return { kind: 'tracer', color: 0xaedfff };
+  }
   if (weaponRole === 'bomb' || shooterType?.domain === 'aircraft') return { kind: 'bomb', color: 0x111111 };
   return { kind: 'tracer', color: 0xfff0b0 };
 }
@@ -576,6 +593,8 @@ export function projectileImpactKind3D(
   splash: number,
 ): ThreeProjectileAudioState['impactKind'] {
   if (weaponRole === 'missile' && shooterType?.domain === 'building') return 'missileImpact';
+  // TEL 战术导弹命中：大型战术爆炸
+  if (weaponRole === 'missile' && shooterType?.domain === 'vehicle') return 'tacticalMissileImpact';
   if (weaponRole === 'bomb') return 'bombImpact';
   if (splash > 0 || shooterType?.domain === 'aircraft' || shooterType?.domain === 'vehicle') return 'explosion';
   return 'hit';
@@ -627,6 +646,12 @@ export function combatEffectProfile3D(kind: ThreeAudioEvent['kind']): CombatEffe
       return { visual: 'impactSpark', color: 0xd8d8d8, radius: 0.18, height: 0.3, life: 8, sparkCount: 3, grow: 1.2 };
     case 'missileImpact':
       return { visual: 'blast', color: 0xffa640, radius: 0.92, height: 0.62, life: 26, sparkCount: 18, grow: 2.4 };
+    case 'tacticalMissileLaunch':
+      return { visual: 'muzzleFlash', color: 0xffe080, radius: 0.42, height: 1.4, life: 18, sparkCount: 10, grow: 1.8 };
+    case 'tacticalMissileFlight':
+      return { visual: 'impactSpark', color: 0xffaa44, radius: 0.24, height: 0.4, life: 10, sparkCount: 4, grow: 1.3 };
+    case 'tacticalMissileImpact':
+      return { visual: 'blast', color: 0xff6a2a, radius: 1.5, height: 0.95, life: 40, sparkCount: 28, grow: 3.0 };
   }
 }
 
@@ -1348,6 +1373,16 @@ export class ThreeWorldRenderer {
         const loiterYaw = aircraftLoiterYaw3D(type, aircraftActivity, nowSeconds, e.id);
         view.root.rotation.y = orbiting && loiterYaw !== null ? loiterYaw : entityYawForFacing3D(e.facing);
       }
+      // TEL 发射架：有目标时竖起（约 80°），无目标时水平放置
+      if (type.id === 'tel') {
+        const launcher = view.visualRoot.getObjectByName('tel-launcher');
+        if (launcher) {
+          const targetAngle = e.targetId !== null ? -Math.PI * 0.44 : 0;
+          // 平滑插值至目标角度
+          const current = launcher.rotation.z;
+          launcher.rotation.z = current + (targetAngle - current) * 0.15;
+        }
+      }
       const constructionPct = entityConstructionProgress3D(e);
       const constructing = type.domain === 'building' && constructionPct < 1;
       const selectedScale = selected.has(e.id) ? 1.12 : 1;
@@ -1492,7 +1527,9 @@ export class ThreeWorldRenderer {
           ? this.createTank(ownerColor)
           : type.id === 'harvester'
             ? this.createHarvester(ownerColor)
-            : this.createVehiclePlaceholder(ownerColor, !!type.weapon),
+            : type.id === 'tel'
+              ? this.createTelVehicle(ownerColor)
+              : this.createVehiclePlaceholder(ownerColor, !!type.weapon),
       );
     } else if (type.domain === 'aircraft') {
       visualRoot.add(this.createAircraft(ownerColor));
@@ -2400,6 +2437,144 @@ export class ThreeWorldRenderer {
     return root;
   }
 
+  /** 战术导弹发射车（TEL）：重型卡车底盘 + 可升降导弹发射导轨。
+   *  参照 SCUD/伊斯坎德尔 MAZ-543 发射车：8x8 底盘 + 后部竖立式发射架。 */
+  private createTelVehicle(ownerColor: number): Object3D {
+    const root = new Group();
+    root.name = 'lowpoly-tel';
+    const bodyMat = new MeshLambertMaterial({ color: 0x3d4a35 });   // 军绿车身
+    const darkMat = new MeshLambertMaterial({ color: 0x2a2f1e });  // 深色部件
+    const metalMat = new MeshLambertMaterial({ color: 0x3a3f30 }); // 金属支架
+    const rubberMat = new MeshLambertMaterial({ color: 0x1a1d14 });// 轮胎
+    const railMat = new MeshLambertMaterial({ color: 0x4a4a3e }); // 发射导轨
+    const missileBodyMat = new MeshLambertMaterial({ color: 0xd8d8d0 });
+    const missileNoseMat = new MeshLambertMaterial({ color: 0xc23a3a });
+    const glassMat = new MeshLambertMaterial({ color: 0x223344 });
+    const accentMat = new MeshLambertMaterial({ color: ownerColor });
+    const addPart = (name: string, mesh: Mesh): Mesh => {
+      mesh.name = `tel-${name}`;
+      root.add(mesh);
+      return mesh;
+    };
+
+    // —— 底盘 ——
+    const chassis = addPart('chassis', new Mesh(new BoxGeometry(2.2, 0.2, 1.3), darkMat));
+    chassis.position.y = 0.35;
+
+    // —— 8 轮组（4轴8轮，重型越野）——
+    const wheelGeo = new CylinderGeometry(0.26, 0.26, 0.16, 10);
+    const wheelX = [-0.75, -0.25, 0.25, 0.75];
+    for (let i = 0; i < wheelX.length; i++) {
+      for (const side of [-1, 1]) {
+        const wheel = addPart(`wheel-${i}-${side}`, new Mesh(wheelGeo, rubberMat));
+        wheel.rotation.z = Math.PI / 2;
+        wheel.position.set(wheelX[i]!, 0.26, side * 0.65);
+      }
+    }
+
+    // —— 驾驶室（车头，-X 侧）——
+    const cab = addPart('cab', new Mesh(new BoxGeometry(0.55, 0.55, 1.15), bodyMat));
+    cab.position.set(-0.85, 0.72, 0);
+    const cabRoof = addPart('cab-roof', new Mesh(new BoxGeometry(0.57, 0.06, 1.17), darkMat));
+    cabRoof.position.set(-0.85, 1.02, 0);
+    const windshield = addPart('windshield', new Mesh(new BoxGeometry(0.04, 0.28, 1.0), glassMat));
+    windshield.position.set(-1.12, 0.8, 0);
+    // 车头保险杠
+    const bumper = addPart('bumper', new Mesh(new BoxGeometry(0.1, 0.16, 1.3), darkMat));
+    bumper.position.set(-1.15, 0.42, 0);
+
+    // —— 后部设备舱（驾驶室后方，连接底盘与发射架）——
+    const deck = addPart('deck', new Mesh(new BoxGeometry(0.8, 0.4, 1.1), bodyMat));
+    deck.position.set(-0.15, 0.65, 0);
+    // 设备舱顶部散热格栅
+    for (const z of [-0.35, 0, 0.35]) {
+      const vent = addPart(`vent-${z}`, new Mesh(new BoxGeometry(0.6, 0.04, 0.12), darkMat));
+      vent.position.set(-0.15, 0.87, z);
+    }
+
+    // —— 发射架组（后部，可竖起）——
+    // 真实 SCUD 发射车：行军时发射架水平放置在车顶，发射时竖起至近垂直
+    const launcherGroup = new Group();
+    launcherGroup.name = 'tel-launcher';
+    // 旋转支点在底盘后部
+    launcherGroup.position.set(0.55, 0.7, 0);
+    // 默认行军状态：水平放置（展开时由 syncEntities 动态旋转）
+    launcherGroup.rotation.z = 0;
+
+    // 发射导轨主梁（长矩形）
+    const rail = new Mesh(new BoxGeometry(1.8, 0.16, 0.28), railMat);
+    rail.name = 'tel-rail';
+    rail.position.set(0.4, 0, 0); // 向后延伸
+    launcherGroup.add(rail);
+    // 导轨加强肋
+    for (const x of [-0.2, 0.3, 0.8, 1.2]) {
+      const rib = new Mesh(new BoxGeometry(0.06, 0.2, 0.32), darkMat);
+      rib.name = `tel-rail-rib-${x}`;
+      rib.position.set(x, 0, 0);
+      launcherGroup.add(rib);
+    }
+    // 导轨底座连接（旋转轴处）
+    const pivot = new Mesh(new CylinderGeometry(0.12, 0.12, 0.4, 8), metalMat);
+    pivot.name = 'tel-pivot';
+    pivot.rotation.z = Math.PI / 2;
+    pivot.position.set(-0.4, 0, 0);
+    launcherGroup.add(pivot);
+
+    // —— 战术导弹（放置在导轨上）——
+    const missileGroup = new Group();
+    missileGroup.name = 'tel-missile';
+    missileGroup.position.set(0.5, 0.14, 0); // 在导轨上方
+    // 弹体（细长圆柱）
+    const mBody = new Mesh(new CylinderGeometry(0.07, 0.07, 1.2, 8), missileBodyMat);
+    mBody.name = 'tel-missile-body';
+    mBody.rotation.z = Math.PI / 2;
+    missileGroup.add(mBody);
+    // 弹头（红色锥形）
+    const mNose = new Mesh(new ConeGeometry(0.07, 0.25, 8), missileNoseMat);
+    mNose.name = 'tel-missile-nose';
+    mNose.rotation.z = -Math.PI / 2;
+    mNose.position.x = 0.72;
+    missileGroup.add(mNose);
+    // 尾翼（4片）
+    for (let i = 0; i < 4; i++) {
+      const fin = new Mesh(new BoxGeometry(0.12, 0.02, 0.14), darkMat);
+      fin.name = `tel-missile-fin-${i}`;
+      fin.position.set(-0.55, 0, 0);
+      fin.rotation.x = (i * Math.PI) / 2;
+      missileGroup.add(fin);
+    }
+    // 弹体标识环（玩家色）
+    const ring = new Mesh(new TorusGeometry(0.08, 0.015, 4, 8), accentMat);
+    ring.name = 'tel-missile-ring';
+    ring.rotation.y = Math.PI / 2;
+    ring.position.x = 0.3;
+    missileGroup.add(ring);
+    launcherGroup.add(missileGroup);
+
+    // 液压举升臂（连接底盘与发射架，可见的液压杆）
+    const liftArm = new Mesh(new CylinderGeometry(0.05, 0.05, 0.5, 6), metalMat);
+    liftArm.name = 'tel-lift-arm';
+    liftArm.position.set(0.1, -0.2, 0);
+    liftArm.rotation.z = Math.PI / 4;
+    launcherGroup.add(liftArm);
+
+    root.add(launcherGroup);
+
+    // —— 支撑腿（2个后部液压支撑，部署时接地）——
+    for (const side of [-1, 1]) {
+      const jackArm = addPart(`jack-arm-${side}`, new Mesh(new BoxGeometry(0.08, 0.3, 0.08), metalMat));
+      jackArm.position.set(0.7, 0.25, side * 0.6);
+      const jackFoot = addPart(`jack-foot-${side}`, new Mesh(new CylinderGeometry(0.1, 0.14, 0.06, 6), darkMat));
+      jackFoot.position.set(0.7, 0.04, side * 0.6);
+    }
+
+    // —— 识别条纹（玩家色）——
+    const stripe = addPart('stripe', new Mesh(new BoxGeometry(0.04, 0.2, 1.1), accentMat));
+    stripe.position.set(-0.55, 0.72, 0);
+
+    return root;
+  }
+
   private createTank(ownerColor: number): Object3D {
     const root = new Group();
     root.name = 'lowpoly-tank';
@@ -2711,6 +2886,9 @@ export class ThreeWorldRenderer {
       } else if (p.weaponRole === 'missile' && shooterType?.domain === 'building') {
         // 爱国者拦截弹：细长导弹体 + 烟雾尾迹
         this.projectileLayer.add(this.createPatriotMissileVisual(pos, target ?? null));
+      } else if (p.weaponRole === 'missile' && shooterType?.domain === 'vehicle') {
+        // TEL 战术弹道导弹：大型导弹体 + 朝向目标 + 橙色尾焰
+        this.projectileLayer.add(this.createTacticalMissileVisual(pos, shooter ?? null, target ?? null));
       } else {
         const targetPos = target ? leptonToWorld3D(target.x, target.y) : null;
         const end = targetPos ? projectileTracerEnd3D(pos, new Vector3(targetPos.x, pos.y, targetPos.z), 1.85) : new Vector3(pos.x, pos.y, pos.z - 0.8);
@@ -2764,6 +2942,80 @@ export class ThreeWorldRenderer {
     trail.rotation.x = Math.PI / 2;
     trail.position.z = -trailLen / 2 - 0.35;
     root.add(trail);
+    return root;
+  }
+
+  /** TEL 战术弹道导弹视觉：大型导弹体 + 朝向飞行方向 + 橙色尾焰。 */
+  private createTacticalMissileVisual(pos: Vector3, shooter: { x: number; y: number } | null, target: { x: number; y: number } | null): Group {
+    const root = new Group();
+    root.position.copy(pos);
+    // 弹体：粗圆柱，白色弹身+红色弹头（比爱国者更大）
+    const bodyGeo = new CylinderGeometry(0.12, 0.12, 1.1, 8);
+    const bodyMat = new MeshLambertMaterial({ color: 0xe0e0d8 });
+    const body = new Mesh(bodyGeo, bodyMat);
+    body.rotation.x = Math.PI / 2;
+    root.add(body);
+    // 弹头（红色锥）
+    const noseGeo = new ConeGeometry(0.12, 0.28, 8);
+    const noseMat = new MeshLambertMaterial({ color: 0xc23a3a });
+    const nose = new Mesh(noseGeo, noseMat);
+    nose.rotation.x = -Math.PI / 2;
+    nose.position.z = 0.69;
+    root.add(nose);
+    // 尾翼（4片）
+    const finMat = new MeshLambertMaterial({ color: 0x8a8a82 });
+    for (const [dx, dz] of [[0.16, 0], [-0.16, 0], [0, 0.16], [0, -0.16]] as const) {
+      const fin = new Mesh(new BoxGeometry(0.06, 0.02, 0.26), finMat);
+      fin.position.set(dx, dz, -0.5);
+      root.add(fin);
+    }
+    // 朝向飞行方向（从发射点指向目标）
+    if (shooter && target) {
+      const shooterPos = leptonToWorld3D(shooter.x, shooter.y);
+      const targetPos = leptonToWorld3D(target.x, target.y);
+      // 用当前弹道切线方向：近似为 (target - shooter)，高度按抛物线切线估算
+      const full = Math.max(1, Math.hypot(target.x - shooter.x, target.y - shooter.y));
+      const traveled = Math.min(1, Math.max(0, Math.hypot(pos.x - shooterPos.x, pos.z - shooterPos.z) / full));
+      const peakY = 14, startY = 1.2, endY = 0.5;
+      // 抛物线 y(t) 的导数：dy/dt = (peak-start)*4(1-2t) + (end-start)*2t
+      const dydt = (peakY - startY) * 4 * (1 - 2 * traveled) + (endY - startY) * 2 * traveled;
+      const dirX = targetPos.x - shooterPos.x;
+      const dirZ = targetPos.z - shooterPos.z;
+      const len = Math.max(0.001, Math.hypot(dirX, dirZ));
+      // lookAt 需要前方点：水平方向归一化 × 步长 + 高度切线
+      const step = 2;
+      const lookTarget = new Vector3(
+        pos.x + (dirX / len) * step,
+        pos.y + dydt * 0.3,
+        pos.z + (dirZ / len) * step,
+      );
+      root.lookAt(lookTarget);
+    }
+    // 橙色尾焰：渐淡圆柱（比爱国者更长更亮）
+    const trailLen = 2.4;
+    const trailGeo = new CylinderGeometry(0.22, 0.05, trailLen, 8, 1, true);
+    const trailMat = new MeshBasicMaterial({
+      color: 0xff7a1a,
+      transparent: true,
+      opacity: 0.7,
+      depthWrite: false,
+    });
+    const trail = new Mesh(trailGeo, trailMat);
+    trail.rotation.x = Math.PI / 2;
+    trail.position.z = -trailLen / 2 - 0.55;
+    root.add(trail);
+    // 内层亮焰
+    const innerTrailGeo = new CylinderGeometry(0.1, 0.02, trailLen * 0.7, 8, 1, true);
+    const innerTrailMat = new MeshBasicMaterial({
+      color: 0xffe0a0,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+    });
+    const innerTrail = new Mesh(innerTrailGeo, innerTrailMat);
+    innerTrail.rotation.x = Math.PI / 2;
+    innerTrail.position.z = -innerTrailGeo.parameters.height / 2 - 0.55;
+    root.add(innerTrail);
     return root;
   }
 
@@ -2952,7 +3204,11 @@ export class ThreeWorldRenderer {
       const target = this.world.entities.get(p.targetId);
       const pos = projectileVisualPoint3D(shooterType, p, shooter, target);
       const impactKind = projectileImpactKind3D(shooterType, p.weaponRole, p.splash);
-      const flightKind = p.weaponRole === 'missile' && shooterType?.domain === 'building' ? 'missileFlight' as const : undefined;
+      const flightKind = p.weaponRole === 'missile' && shooterType?.domain === 'building'
+        ? 'missileFlight' as const
+        : p.weaponRole === 'missile' && shooterType?.domain === 'vehicle'
+          ? 'tacticalMissileFlight' as const
+          : undefined;
       projectiles.push({ id: p.id, x: pos.x, z: pos.z, impactKind, flightKind });
     }
     return { entities, projectiles };

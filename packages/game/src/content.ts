@@ -63,6 +63,8 @@ export interface UnitType {
   building?: BuildingTraits;
   /** 工程师：进入己方建筑满血修复、进入敌方建筑占领（进入后被消耗）。 */
   engineer?: boolean;
+  /** 需展开才能开火的单位：展开耗时（tick）。展开后不可移动，收起耗时为展开的一半。 */
+  deployTime?: number;
 }
 
 export interface BuildingTraits {
@@ -561,6 +563,34 @@ const UNIT_LIST: UnitType[] = [
     sight: 8,
     weapon: { name: '航弹', damage: 65, range: 2 * 256, cooldown: 36, projectileSpeed: 100, warhead: { none: 80, flak: 80, plate: 90, light: 100, heavy: 70, concrete: 45 }, splash: 48, role: 'bomb', targetDomains: ['infantry', 'vehicle', 'building'] },
     antiAirWeapon: { name: '空空导弹', damage: 55, range: 16 * 256, cooldown: 28, projectileSpeed: 150, warhead: { none: 40, flak: 85, plate: 75, light: 115, heavy: 45, concrete: 10 }, splash: 0, role: 'missile', targetDomains: ['aircraft'] },
+  },
+  // —— 战术导弹发射车（TEL）：远程压制，需展开→发射→收起→转移 ——
+  {
+    id: 'tel',
+    name: '战术导弹车',
+    side: 'soviet',
+    domain: 'vehicle',
+    cost: 1500,
+    hp: 200,
+    armor: 'light',
+    buildTime: 100,
+    builtBy: 'warfactory',
+    prerequisites: [],
+    speed: 14,
+    rot: 6,
+    sight: 8,
+    deployTime: 60,
+    weapon: {
+      name: '战术弹道导弹',
+      damage: 180,
+      range: 180 * 256,
+      cooldown: 90,
+      projectileSpeed: 1200,
+      warhead: { none: 100, flak: 90, plate: 100, light: 80, heavy: 60, concrete: 120 },
+      splash: 80,
+      role: 'missile',
+      targetDomains: ['infantry', 'vehicle', 'building'],
+    },
   },
 ];
 

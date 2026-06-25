@@ -368,10 +368,17 @@ export const MATCH_3D_STYLE = `
 .mv3-producer { display: none; gap: 6px; padding-top: 6px; border-top: 1px solid rgba(125,150,165,.16); }
 .mv3-producer.on { display: grid; }
 .mv3-producer-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; color: #b8c5cc; }
-.mv3-producer button, .mv3-producer select { height: 30px; border-radius: 5px; border: 1px solid rgba(125,150,165,.25);
+.mv3-producer button { height: 30px; border-radius: 5px; border: 1px solid rgba(125,150,165,.25);
   background: #0d151c; color: #dce6ed; }
 .mv3-producer button { cursor: pointer; padding: 0 9px; }
-.mv3-producer select { min-width: 118px; }
+.mv3-producer-units { display: flex; gap: 6px; flex-wrap: wrap; }
+.mv3-producer-unit { position: relative; min-width: 96px; min-height: 44px; display: grid; grid-template-columns: 24px 1fr; align-items: center; gap: 6px;
+  padding: 0 8px; border: 1px solid rgba(125,150,165,.25); border-radius: 6px; background: #0d151c; color: #dce6ed; cursor: pointer; font: inherit; }
+.mv3-producer-unit:hover:not(:disabled) { border-color: rgba(104,200,255,.62); background: linear-gradient(180deg, rgba(36,56,67,.98), rgba(13,25,32,.98)); }
+.mv3-producer-unit:disabled { cursor: default; color: #6f7a82; background: #0b1116; border-color: rgba(125,150,165,.12); }
+.mv3-producer-unit.active { border-color: var(--hud-accent); box-shadow: inset 0 0 0 1px rgba(104,200,255,.25); color: #fff; }
+.mv3-producer-unit .mv3-prod-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.06); }
+.mv3-producer-unit .mv3-prod-progress span { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--hud-accent), var(--hud-ready)); }
 .mv3-help { position: fixed; left: 12px; bottom: 12px; z-index: 10; display: grid; gap: 8px; justify-items: start; max-width: min(340px, calc(100vw - 24px)); }
 .mv3-help-toggle { height: 34px; padding: 0 12px; border: 1px solid rgba(120,150,170,.28); border-radius: 8px;
   background: rgba(8,12,16,.86); color: #d8e0e6; cursor: pointer; font: inherit; font-weight: 700; }
@@ -430,6 +437,7 @@ export class MatchView3D {
   private readonly buildButtons: { button: HTMLButtonElement; state: HTMLElement; type: UnitType }[] = [];
   private readonly announcedCompletedBuildings = new Set<number>();
   private producerPanelKey = '';
+  private readonly producerUnitFills = new Map<string, HTMLElement>();
   private capacityHudKey = '';
   private controlGroupsHudKey = '';
   private groundMoveMode: GroundMoveMode = DEFAULT_GROUND_MOVE_MODE_3D;
@@ -1073,56 +1081,78 @@ export class MatchView3D {
       this.producerPanelKey = '';
       this.producerEl.innerHTML = '';
       this.producerEl.classList.remove('on');
+      this.producerUnitFills.clear();
       return;
     }
 
     const options = this.producerOptionsFor(selected.entity);
     const activeType = this.world.rules.units.get(producer.paidTypeId ?? producer.typeId);
     const pct = activeType && producer.paidTypeId ? Math.floor((producer.progress / activeType.buildTime) * 100) : 0;
+    // 结构 key：不含 progress，避免生产中每帧重建导致按钮闪烁无法点击
     const key = [
       selected.id,
       producer.enabled ? 1 : 0,
       producer.typeId,
       producer.paidTypeId ?? '',
-      producer.progress,
       options.map((o) => o.id).join(','),
     ].join('|');
-    if (key === this.producerPanelKey) return;
-    this.producerPanelKey = key;
-    this.producerEl.innerHTML = '';
-    this.producerEl.classList.add('on');
+    if (key !== this.producerPanelKey) {
+      this.producerPanelKey = key;
+      this.producerUnitFills.clear();
+      this.producerEl.innerHTML = '';
+      this.producerEl.classList.add('on');
 
-    const title = document.createElement('div');
-    title.className = 'mv3-producer-row';
-    const titleText = document.createElement('span');
-    titleText.textContent = this.buildLabel(this.world.rules.units.get(selected.entity.typeId)!);
-    const toggle = document.createElement('button');
-    toggle.type = 'button';
-    toggle.textContent = producer.enabled ? uiText().hud.producerAuto : uiText().hud.producerOff;
-    toggle.addEventListener('click', () => {
-      this.localCommands.push({ kind: 'setAutoProduction', owner: this.localPlayerId, buildingId: selected.id, enabled: !producer.enabled });
-      audioBus.play('select');
-    });
-    title.append(titleText, toggle);
+      const title = document.createElement('div');
+      title.className = 'mv3-producer-row';
+      const titleText = document.createElement('span');
+      titleText.textContent = this.buildLabel(this.world.rules.units.get(selected.entity.typeId)!);
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.textContent = producer.enabled ? uiText().hud.producerAuto : uiText().hud.producerOff;
+      toggle.addEventListener('click', () => {
+        this.localCommands.push({ kind: 'setAutoProduction', owner: this.localPlayerId, buildingId: selected.id, enabled: !producer.enabled });
+        audioBus.play('select');
+      });
+      title.append(titleText, toggle);
 
-    const row = document.createElement('div');
-    row.className = 'mv3-producer-row';
-    const progress = document.createElement('span');
-    progress.textContent = producer.paidTypeId ? `${Math.max(0, Math.min(100, pct))}%` : uiText().hud.producerIdle;
-    const select = document.createElement('select');
-    for (const option of options) {
-      const item = document.createElement('option');
-      item.value = option.id;
-      item.textContent = this.buildLabel(option);
-      select.appendChild(item);
+      const unitsRow = document.createElement('div');
+      unitsRow.className = 'mv3-producer-units';
+      for (const option of options) {
+        const meta = buildButtonMeta3D(option);
+        const label = this.buildLabel(option);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'mv3-producer-unit';
+        btn.title = `${label} - ${meta.hint}`;
+        if (option.id === producer.typeId) btn.classList.add('active');
+        const canProduce = this.world.canBuild(this.localPlayerId, option);
+        btn.disabled = !canProduce;
+        const icon = document.createElement('span');
+        icon.className = 'mv3-prod-icon';
+        icon.textContent = meta.icon;
+        const name = document.createElement('span');
+        name.className = 'name';
+        name.textContent = label;
+        const progress = document.createElement('span');
+        progress.className = 'mv3-prod-progress';
+        const fill = document.createElement('span');
+        progress.appendChild(fill);
+        btn.append(icon, name, progress);
+        btn.addEventListener('click', () => {
+          this.localCommands.push({ kind: 'setProducerType', owner: this.localPlayerId, buildingId: selected.id, typeId: option.id });
+          audioBus.play('select');
+        });
+        unitsRow.appendChild(btn);
+        this.producerUnitFills.set(option.id, fill);
+      }
+      this.producerEl.append(title, unitsRow);
     }
-    select.value = producer.typeId;
-    select.addEventListener('change', () => {
-      this.localCommands.push({ kind: 'setProducerType', owner: this.localPlayerId, buildingId: selected.id, typeId: select.value });
-      audioBus.play('select');
-    });
-    row.append(progress, select);
-    this.producerEl.append(title, row);
+
+    // 仅更新进度条宽度（不重建 DOM）
+    for (const [id, fill] of this.producerUnitFills) {
+      const p = id === producer.paidTypeId ? pct : 0;
+      fill.style.width = `${Math.max(0, Math.min(100, p))}%`;
+    }
   }
 
   private producerOptionsFor(building: NonNullable<ReturnType<World['entities']['get']>>): UnitType[] {

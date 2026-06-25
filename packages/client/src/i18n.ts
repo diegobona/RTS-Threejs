@@ -115,6 +115,14 @@ export const UI_TEXT = {
       pillbox: { icon: '⬟', label: '碉堡', hint: '固定防御' },
       battlelab: { icon: '✚', label: '实验室', hint: '科技解锁' },
       patriot: { icon: '◬', label: '防空导弹阵地', hint: '反导防空' },
+      worker: { icon: '⚒', label: '工人', hint: '采集维修' },
+      gi: { icon: '步兵', label: '士兵', hint: '基础步兵' },
+      engineer: { icon: '🔧', label: '工程师', hint: '占领维修' },
+      grizzly: { icon: '▰', label: '坦克', hint: '主战坦克' },
+      arty: { icon: '◈', label: '火炮', hint: '远程压制' },
+      fighter: { icon: '✈', label: '战斗机', hint: '对空对地' },
+      harvester: { icon: '$', label: '采矿车', hint: '采集资源' },
+      tel: { icon: '⊕', label: '战术导弹车', hint: '远程展开发射' },
       fallback: { icon: '◆', hint: '建筑' },
     },
     unitLabels: {
@@ -125,6 +133,7 @@ export const UI_TEXT = {
       arty: '火炮',
       fighter: '战斗机',
       harvester: '采矿车',
+      tel: '战术导弹车',
     },
     rules: {
       sections: [
@@ -219,6 +228,14 @@ export const UI_TEXT = {
       pillbox: { icon: '⬟', label: 'Pillbox', hint: 'Static defense' },
       battlelab: { icon: '✚', label: 'Battle Lab', hint: 'Tech unlocks' },
       patriot: { icon: '◬', label: 'Air Defense Site', hint: 'Anti-air missile' },
+      worker: { icon: '⚒', label: 'Worker', hint: 'Gather repair' },
+      gi: { icon: 'GI', label: 'Soldier', hint: 'Basic infantry' },
+      engineer: { icon: '🔧', label: 'Engineer', hint: 'Capture repair' },
+      grizzly: { icon: '▰', label: 'Tank', hint: 'Main battle tank' },
+      arty: { icon: '◈', label: 'Artillery', hint: 'Long range' },
+      fighter: { icon: '✈', label: 'Fighter', hint: 'Air to ground' },
+      harvester: { icon: '$', label: 'Harvester', hint: 'Gather ore' },
+      tel: { icon: '⊕', label: 'Tactical Missile', hint: 'Deploy and fire' },
       fallback: { icon: '◆', hint: 'Structure' },
     },
     unitLabels: {
@@ -229,6 +246,7 @@ export const UI_TEXT = {
       arty: 'Artillery',
       fighter: 'Fighter',
       harvester: 'Harvester',
+      tel: 'Tactical Missile',
     },
     rules: {
       sections: [

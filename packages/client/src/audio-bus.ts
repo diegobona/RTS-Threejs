@@ -7,9 +7,9 @@
 import { BufferSource, MixFile, parseAud } from '@ra2web/data';
 import { loadGameMix } from './game-files';
 
-export type Sfx = 'fire' | 'cannon' | 'bomb' | 'bombImpact' | 'scream' | 'hit' | 'explosion' | 'bigExplosion' | 'build' | 'ready' | 'place' | 'select' | 'move' | 'deny' | 'missileLaunch' | 'missileFlight' | 'missileImpact';
+export type Sfx = 'fire' | 'cannon' | 'bomb' | 'bombImpact' | 'scream' | 'hit' | 'explosion' | 'bigExplosion' | 'build' | 'ready' | 'place' | 'select' | 'move' | 'deny' | 'missileLaunch' | 'missileFlight' | 'missileImpact' | 'tacticalMissileLaunch' | 'tacticalMissileFlight' | 'tacticalMissileImpact';
 
-const ALLOWED_SFX = new Set<Sfx>(['fire', 'cannon', 'bomb', 'bombImpact', 'scream', 'build', 'missileLaunch', 'missileFlight', 'missileImpact']);
+const ALLOWED_SFX = new Set<Sfx>(['fire', 'cannon', 'bomb', 'bombImpact', 'scream', 'build', 'missileLaunch', 'missileFlight', 'missileImpact', 'tacticalMissileLaunch', 'tacticalMissileFlight', 'tacticalMissileImpact']);
 
 export function shouldPlaySfx(sfx: Sfx): boolean {
   return ALLOWED_SFX.has(sfx);
@@ -258,6 +258,9 @@ export class AudioBus {
     missileLaunch: 180,
     missileFlight: 350,
     missileImpact: 90,
+    tacticalMissileLaunch: 250,
+    tacticalMissileFlight: 500,
+    tacticalMissileImpact: 120,
   };
 
   /** 须在用户手势中调用以解锁音频（浏览器自动播放策略）。 */
@@ -373,6 +376,15 @@ export class AudioBus {
           break;
         case 'missileImpact':
           this.playMissileImpact();
+          break;
+        case 'tacticalMissileLaunch':
+          this.playTacticalMissileLaunch();
+          break;
+        case 'tacticalMissileFlight':
+          this.playTacticalMissileFlight();
+          break;
+        case 'tacticalMissileImpact':
+          this.playTacticalMissileImpact();
           break;
       }
     } finally {
@@ -637,6 +649,48 @@ export class AudioBus {
     this.pitchDrop(120, 30, 0.45, 'triangle', 0.25, 0.01);
     // 次声尾音
     this.filteredNoise(0.7, 'lowpass', 200, 0.4, 0.15, 0.05);
+  }
+
+  /** 战术弹道导弹（TEL）发射音：比爱国者更沉重、低沉、轰鸣更久。
+   *  模拟大型固体火箭发动机点火：低频轰鸣 + 长持续推力 + 地面共振。 */
+  private playTacticalMissileLaunch(): void {
+    // 主推力：宽带噪声缓慢下扫（大型燃气喷射的"轰"）
+    this.filteredNoise(0.9, 'lowpass', 600, 0.5, 0.42);
+    this.filteredNoise(0.8, 'bandpass', 1200, 0.6, 0.3, 0.03);
+    // 低频轰鸣（发动机共振，比爱国者更低更长）
+    this.pitchDrop(140, 40, 1.0, 'sawtooth', 0.32);
+    // 次低频地面震动
+    this.pitchDrop(70, 28, 1.2, 'triangle', 0.22, 0.02);
+    // 高频"嘶"声（燃气与空气摩擦，延迟出现）
+    this.filteredNoise(0.7, 'highpass', 3000, 0.5, 0.14, 0.08);
+    // 中频咆哮层
+    this.filteredNoise(0.6, 'bandpass', 400, 0.8, 0.18, 0.05);
+  }
+
+  /** 战术弹道导弹飞行音：高空呼啸 + 持续低频轰鸣（比爱国者更厚重）。 */
+  private playTacticalMissileFlight(): void {
+    // 高空呼啸（低频持续）
+    this.pitchDrop(320, 200, 1.0, 'triangle', 0.12);
+    this.filteredNoise(0.9, 'lowpass', 450, 0.5, 0.14);
+    // 火箭发动机持续轰鸣
+    this.filteredNoise(0.8, 'bandpass', 800, 0.7, 0.1, 0.03);
+    // 高频气流层
+    this.filteredNoise(0.7, 'highpass', 2500, 0.6, 0.05, 0.06);
+  }
+
+  /** 战术弹道导弹命中音：大型爆炸 + 冲击波 + 余震（比爱国者更剧烈）。 */
+  private playTacticalMissileImpact(): void {
+    // 初始高频破裂（大型破片）
+    this.filteredNoise(0.18, 'bandpass', 2200, 0.9, 0.42);
+    // 中频爆炸体（更厚重）
+    this.filteredNoise(0.45, 'bandpass', 650, 0.6, 0.55);
+    // 低频冲击波（强烈）
+    this.filteredNoise(0.7, 'lowpass', 90, 0.4, 0.65, 0.003);
+    // 次低频地面震动
+    this.pitchDrop(90, 22, 0.7, 'triangle', 0.38, 0.005);
+    // 余波（长尾音）
+    this.filteredNoise(0.9, 'lowpass', 160, 0.4, 0.22, 0.04);
+    this.filteredNoise(1.0, 'lowpass', 120, 0.4, 0.15, 0.1);
   }
 
   private pitchDrop(startFreq: number, endFreq: number, dur: number, type: OscillatorType, gain: number, delay = 0): void {
