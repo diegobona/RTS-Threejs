@@ -33,11 +33,12 @@ const PRODUCTION_BUILDING_TARGETS: Record<Mode, Record<CoreProductionBuilding, n
   aggressive: { barracks: 4, warfactory: 3, airbase: 3 },
 };
 
-// 防空阵地目标数量（按模式），不阻塞核心建造顺序，在扩建阶段补建
-const PATRIOT_TARGETS: Record<Mode, number> = {
-  defensive: 4,
-  balanced: 3,
-  aggressive: 2,
+// 防空阵地目标数量（按难度×模式），不阻塞核心建造顺序，在扩建阶段补建
+// 难度越高，AI 越重视防空；防御型性格建得最多，进攻型最少
+const PATRIOT_TARGETS: Record<Difficulty, Record<Mode, number>> = {
+  easy: { defensive: 2, balanced: 2, aggressive: 1 },
+  normal: { defensive: 4, balanced: 3, aggressive: 2 },
+  hard: { defensive: 6, balanced: 5, aggressive: 3 },
 };
 
 interface DiffParams {
@@ -72,6 +73,7 @@ export class SimpleAI {
   private readonly mode: Mode;
   private readonly m: ModeParams;
   private readonly waveSize: number;
+  private readonly difficulty: Difficulty;
   private engaged = false;
   private formation: FormationPlan | null = null;
   private activeAssault: ActiveAssault | null = null;
@@ -81,6 +83,7 @@ export class SimpleAI {
     difficulty: Difficulty = 'normal',
     seed: number = playerId,
   ) {
+    this.difficulty = difficulty;
     this.mode = MODES[((seed >>> 0) + playerId) % MODES.length]!;
     this.m = MODE[this.mode];
     this.waveSize = Math.max(6, this.m.waveSize + DIFF[difficulty].waveBias);
@@ -429,7 +432,7 @@ export class SimpleAI {
     const enemyAir = this.enemyAircraftCount(world);
     if (enemyAir > 0) {
       const patriotCount = this.countBuildings(world, 'patriot');
-      const desiredPatriot = Math.max(PATRIOT_TARGETS[this.mode], enemyAir + 1);
+      const desiredPatriot = Math.max(PATRIOT_TARGETS[this.difficulty][this.mode], enemyAir + 1);
       if (patriotCount < desiredPatriot && !this.hasIncompleteBuilding(world, 'patriot')) return 'patriot';
     }
 
@@ -446,7 +449,7 @@ export class SimpleAI {
 
     // 核心扩建完成后，补建防空阵地至目标数量
     const patriotCount = this.countBuildings(world, 'patriot');
-    if (patriotCount < PATRIOT_TARGETS[this.mode] && !this.hasIncompleteBuilding(world, 'patriot')) return 'patriot';
+    if (patriotCount < PATRIOT_TARGETS[this.difficulty][this.mode] && !this.hasIncompleteBuilding(world, 'patriot')) return 'patriot';
 
     return null;
   }
