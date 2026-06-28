@@ -5,6 +5,7 @@ export type GroundMoveMode = 'move' | 'attackMove';
 interface RightClickOrderInput {
   selectedIds: readonly number[];
   combatIds: readonly number[];
+  groundAttackIds?: readonly number[];
   target: { id: number; owner: number } | null;
   localPlayerId: number;
   cell: { x: number; y: number } | null;

@@ -533,6 +533,31 @@ function aircraftIdleHash3D(entityId: number, salt: number): number {
   return value - Math.floor(value);
 }
 
+export function tacticalMissileLookTarget3D(
+  pos: Vector3,
+  shooter: { x: number; y: number } | null | undefined,
+  target: { x: number; y: number } | null | undefined,
+): Vector3 | null {
+  if (!shooter || !target) return null;
+  const shooterPos = leptonToWorld3D(shooter.x, shooter.y);
+  const targetPos = leptonToWorld3D(target.x, target.y);
+  const dirX = targetPos.x - shooterPos.x;
+  const dirZ = targetPos.z - shooterPos.z;
+  const fullWorld = Math.max(0.001, Math.hypot(dirX, dirZ));
+  const traveled = Math.min(1, Math.max(0, Math.hypot(pos.x - shooterPos.x, pos.z - shooterPos.z) / fullWorld));
+  const peakY = 14;
+  const startY = 1.2;
+  const endY = 0.5;
+  const dyDt = (peakY - startY) * 4 * (1 - 2 * traveled) + (endY - startY) * 2 * traveled;
+  const step = 3;
+  const yDelta = (dyDt / fullWorld) * step;
+  return new Vector3(
+    pos.x + (dirX / fullWorld) * step,
+    pos.y + yDelta,
+    pos.z + (dirZ / fullWorld) * step,
+  );
+}
+
 export function projectileVisualPoint3D(
   shooterType: Pick<UnitType, 'domain'> | null | undefined,
   projectile: { x: number; y: number; weaponRole?: WeaponRole },
@@ -1374,10 +1399,10 @@ export class ThreeWorldRenderer {
         view.root.rotation.y = orbiting && loiterYaw !== null ? loiterYaw : entityYawForFacing3D(e.facing);
       }
       // TEL 发射架：有目标时竖起（约 80°），无目标时水平放置
-      if (type.id === 'tel') {
+      if (type.id === 'tel' || type.id === 'arty') {
         const launcher = view.visualRoot.getObjectByName('tel-launcher');
         if (launcher) {
-          const targetAngle = e.targetId !== null ? -Math.PI * 0.44 : 0;
+          const targetAngle = e.targetId !== null || e.groundTargetX !== null ? -Math.PI * 0.44 : 0;
           // 平滑插值至目标角度
           const current = launcher.rotation.z;
           launcher.rotation.z = current + (targetAngle - current) * 0.15;
@@ -1527,7 +1552,7 @@ export class ThreeWorldRenderer {
           ? this.createTank(ownerColor)
           : type.id === 'harvester'
             ? this.createHarvester(ownerColor)
-            : type.id === 'tel'
+            : type.id === 'tel' || type.id === 'arty'
               ? this.createTelVehicle(ownerColor)
               : this.createVehiclePlaceholder(ownerColor, !!type.weapon),
       );
@@ -2838,7 +2863,7 @@ export class ThreeWorldRenderer {
     }
     for (const p of this.world.projectiles) {
       ids.add(p.shooterId);
-      ids.add(p.targetId);
+      if (p.targetId !== null) ids.add(p.targetId);
     }
     return ids;
   }
@@ -2875,8 +2900,9 @@ export class ThreeWorldRenderer {
       if (!consumeFrameVisualBudget3D(this.frameVisualBudget, 'projectile')) continue;
       const shooter = this.world.entities.get(p.shooterId);
       const shooterType = shooter && this.world.rules.units.get(shooter.typeId);
-      const target = this.world.entities.get(p.targetId);
-      const pos = projectileVisualPoint3D(shooterType, p, shooter, target);
+      const target = p.targetId === null ? null : (this.world.entities.get(p.targetId) ?? null);
+      const targetPoint = target ?? (p.targetX !== undefined && p.targetY !== undefined ? { x: p.targetX, y: p.targetY } : null);
+      const pos = projectileVisualPoint3D(shooterType, p, shooter, targetPoint);
       const profile = projectileVisualProfile3D(shooterType, p.weaponRole);
       if (profile.kind === 'bomb') {
         const bomb = new Mesh(this.projectileGeo, this.projectileMat);
@@ -2885,12 +2911,12 @@ export class ThreeWorldRenderer {
         this.projectileLayer.add(bomb);
       } else if (p.weaponRole === 'missile' && shooterType?.domain === 'building') {
         // 爱国者拦截弹：细长导弹体 + 烟雾尾迹
-        this.projectileLayer.add(this.createPatriotMissileVisual(pos, target ?? null));
+        this.projectileLayer.add(this.createPatriotMissileVisual(pos, targetPoint));
       } else if (p.weaponRole === 'missile' && shooterType?.domain === 'vehicle') {
         // TEL 战术弹道导弹：大型导弹体 + 朝向目标 + 橙色尾焰
-        this.projectileLayer.add(this.createTacticalMissileVisual(pos, shooter ?? null, target ?? null));
+        this.projectileLayer.add(this.createTacticalMissileVisual(pos, shooter ?? null, targetPoint));
       } else {
-        const targetPos = target ? leptonToWorld3D(target.x, target.y) : null;
+        const targetPos = targetPoint ? leptonToWorld3D(targetPoint.x, targetPoint.y) : null;
         const end = targetPos ? projectileTracerEnd3D(pos, new Vector3(targetPos.x, pos.y, targetPos.z), 1.85) : new Vector3(pos.x, pos.y, pos.z - 0.8);
         const mat = p.weaponRole === 'missile' ? this.projectileMissileTracerMat : this.projectileTracerMat;
         this.projectileLayer.add(this.createTracerMesh(pos, end, mat));
@@ -2991,6 +3017,8 @@ export class ThreeWorldRenderer {
       );
       root.lookAt(lookTarget);
     }
+    const parabolicLookTarget = tacticalMissileLookTarget3D(pos, shooter, target);
+    if (parabolicLookTarget) root.lookAt(parabolicLookTarget);
     // 橙色尾焰：渐淡圆柱（比爱国者更长更亮）
     const trailLen = 2.4;
     const trailGeo = new CylinderGeometry(0.22, 0.05, trailLen, 8, 1, true);
@@ -3201,8 +3229,9 @@ export class ThreeWorldRenderer {
     for (const p of this.world.projectiles) {
       const shooter = this.world.entities.get(p.shooterId);
       const shooterType = shooter && this.world.rules.units.get(shooter.typeId);
-      const target = this.world.entities.get(p.targetId);
-      const pos = projectileVisualPoint3D(shooterType, p, shooter, target);
+      const target = p.targetId === null ? null : (this.world.entities.get(p.targetId) ?? null);
+      const targetPoint = target ?? (p.targetX !== undefined && p.targetY !== undefined ? { x: p.targetX, y: p.targetY } : null);
+      const pos = projectileVisualPoint3D(shooterType, p, shooter, targetPoint);
       const impactKind = projectileImpactKind3D(shooterType, p.weaponRole, p.splash);
       const flightKind = p.weaponRole === 'missile' && shooterType?.domain === 'building'
         ? 'missileFlight' as const

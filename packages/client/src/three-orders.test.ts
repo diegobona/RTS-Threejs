@@ -52,6 +52,19 @@ describe('3D right-click orders', () => {
     ).toEqual({ kind: 'attackMove', entityIds: [3, 7], cellX: 10, cellY: 12 });
   });
 
+  it('moves selected missile trucks when right-clicking empty ground', () => {
+    expect(
+      rightClickCommand({
+        selectedIds: [9, 7],
+        combatIds: [9, 7],
+        groundAttackIds: [9],
+        target: null,
+        localPlayerId: 1,
+        cell: { x: 24, y: 18 },
+      }),
+    ).toEqual({ kind: 'move', entityIds: [7, 9], cellX: 24, cellY: 18 });
+  });
+
   it('falls back to movement when selected units cannot attack', () => {
     expect(
       rightClickCommand({

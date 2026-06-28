@@ -28,6 +28,7 @@ import {
   createFrameVisualBudget3D,
   projectileTracerEnd3D,
   projectileImpactKind3D,
+  tacticalMissileLookTarget3D,
   projectileVisualProfile3D,
   projectileVisualPoint3D,
   RALLY_VISUAL_STYLE_3D,
@@ -149,6 +150,18 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(aircraft.kind).toBe('bomb');
     expect(aircraft.color).toBe(0x111111);
     expect(aircraftMissile.kind).toBe('tracer');
+  });
+
+  it('aims tactical missile bodies along the parabola instead of straight upward', () => {
+    const lookTarget = tacticalMissileLookTarget3D(
+      new Vector3(50, 12, 20),
+      { x: 0, y: 0 },
+      { x: 100 * 256, y: 0 },
+    );
+
+    expect(lookTarget).not.toBeNull();
+    expect(lookTarget!.x).toBeGreaterThan(50);
+    expect(Math.abs(lookTarget!.y - 12)).toBeLessThan(2);
   });
 
   it('marks aircraft bomb impacts with a dedicated audible impact instead of muted generic explosions', () => {

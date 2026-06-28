@@ -1011,6 +1011,7 @@ export class MatchView3D {
     if (cmd) {
       this.localCommands.push(cmd);
       if ((cmd.kind === 'attack' || (cmd.kind === 'attackMove' && target && target.owner !== this.localPlayerId)) && target) this.spawnTargetCommandIndicator(target);
+      else if (cmd.kind === 'attackGround' && cell) this.spawnGroundAttackCommandIndicator(cell);
       else if (cell) this.spawnGroundCommandIndicator(cell);
       audioBus.play('move');
     } else {
@@ -1021,6 +1022,11 @@ export class MatchView3D {
   private spawnGroundCommandIndicator(cell: { x: number; y: number }): void {
     const pos = cellToWorld3D(cell.x, cell.y);
     this.renderer.spawnCommandIndicator('move', pos.x, pos.z);
+  }
+
+  private spawnGroundAttackCommandIndicator(cell: { x: number; y: number }): void {
+    const pos = cellToWorld3D(cell.x, cell.y);
+    this.renderer.spawnCommandIndicator('attack', pos.x, pos.z);
   }
 
   private spawnTargetCommandIndicator(target: Entity): void {

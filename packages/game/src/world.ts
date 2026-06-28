@@ -94,6 +94,8 @@ export interface Entity {
   goal: { x: number; y: number } | null;
   // 战斗
   targetId: number | null;
+  groundTargetX: number | null;
+  groundTargetY: number | null;
   cooldown: number;
   /** 累计击杀（老兵等级：≥2 老兵、≥5 精英，伤害递增）。 */
   kills: number;
@@ -130,7 +132,9 @@ export interface Projectile {
   id: number;
   x: number;
   y: number;
-  targetId: number;
+  targetId: number | null;
+  targetX?: number;
+  targetY?: number;
   speed: number;
   damage: number;
   warheadId: string;
@@ -150,6 +154,7 @@ export type Command =
   | { kind: 'attackMove'; entityIds: number[]; cellX: number; cellY: number; targetId?: number }
   | { kind: 'patrol'; entityIds: number[]; cellX: number; cellY: number }
   | { kind: 'attack'; entityIds: number[]; targetId: number }
+  | { kind: 'attackGround'; entityIds: number[]; cellX: number; cellY: number }
   | { kind: 'engineerEnter'; entityIds: number[]; targetId: number }
   | { kind: 'harvest'; entityIds: number[]; cellX: number; cellY: number }
   | { kind: 'setRally'; owner: number; buildingId: number; cellX: number; cellY: number }
@@ -350,6 +355,8 @@ export class World {
             this.setAircraftLoiter(e, s.x, s.y);
             this.orderMove(e, s.x, s.y);
             e.targetId = null;
+            e.groundTargetX = null;
+            e.groundTargetY = null;
             e.attackMove = false;
             e.attackDest = null;
             e.attackTargetId = null;
@@ -379,6 +386,8 @@ export class World {
             this.setAircraftLoiter(e, s.x, s.y);
             this.orderMove(e, s.x, s.y);
             e.targetId = null;
+            e.groundTargetX = null;
+            e.groundTargetY = null;
             e.attackMove = true;
             e.attackDest = { x: s.x, y: s.y };
             e.attackTargetId = target?.id ?? null;
@@ -397,6 +406,8 @@ export class World {
             e.patrol = { x: e.cellX, y: e.cellY };
             this.orderMove(e, cmd.cellX, cmd.cellY);
             e.targetId = null;
+            e.groundTargetX = null;
+            e.groundTargetY = null;
             e.attackMove = true;
             e.attackDest = { x: cmd.cellX, y: cmd.cellY };
             e.attackTargetId = null;
@@ -418,6 +429,8 @@ export class World {
               this.clearConstructionTarget(e);
               const type = this.rules.units.get(e.typeId);
               e.targetId = cmd.targetId;
+              e.groundTargetX = null;
+              e.groundTargetY = null;
               e.attackMove = false;
               e.attackDest = null;
               e.attackTargetId = null;
@@ -433,6 +446,24 @@ export class World {
           }
           break;
         }
+        case 'attackGround': {
+          const targetX = cellToLepton(cmd.cellX);
+          const targetY = cellToLepton(cmd.cellY);
+          for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
+            const e = this.entities.get(eid);
+            const type = e && this.rules.units.get(e.typeId);
+            if (!e || type?.domain !== 'vehicle' || type.weapon?.role !== 'missile') continue;
+            this.clearConstructionTarget(e);
+            e.targetId = null;
+            e.groundTargetX = targetX;
+            e.groundTargetY = targetY;
+            e.attackMove = false;
+            e.attackDest = null;
+            e.attackTargetId = null;
+            e.patrol = null;
+          }
+          break;
+        }
         case 'engineerEnter': {
           // 工程师前往目标建筑：抵达即修复（己方）/ 占领（敌方），由 stepEngineer 处理。
           const tgt = this.entities.get(cmd.targetId);
@@ -445,6 +476,8 @@ export class World {
               this.clearConstructionTarget(e);
               e.enterTarget = cmd.targetId;
               e.targetId = null;
+              e.groundTargetX = null;
+              e.groundTargetY = null;
               e.attackMove = false;
               e.attackDest = null;
               e.attackTargetId = null;
@@ -460,6 +493,8 @@ export class World {
             if (!e || !e.harvester) continue;
             this.clearConstructionTarget(e);
             e.targetId = null;
+            e.groundTargetX = null;
+            e.groundTargetY = null;
             e.attackMove = false;
             e.attackDest = null;
             e.attackTargetId = null;
@@ -516,6 +551,8 @@ export class World {
               e.waypoint = null;
               e.goal = null;
               e.targetId = null;
+              e.groundTargetX = null;
+              e.groundTargetY = null;
               e.attackMove = false;
               e.attackDest = null;
               e.attackTargetId = null;
@@ -555,6 +592,8 @@ export class World {
       waypoint: null,
       goal: null,
       targetId: null,
+      groundTargetX: null,
+      groundTargetY: null,
       cooldown: 0,
       kills: 0,
       attackMove: false,
@@ -1082,6 +1121,8 @@ export class World {
       const slot = slots[index]!;
       worker.constructionTargetId = site.id;
       worker.targetId = null;
+      worker.groundTargetX = null;
+      worker.groundTargetY = null;
       worker.attackMove = false;
       worker.attackDest = null;
       worker.attackTargetId = null;
@@ -1735,9 +1776,37 @@ export class World {
     return target;
   }
 
+  private stepGroundAttack(e: Entity, type: UnitType): boolean {
+    const weapon = type.weapon;
+    if (!weapon || e.groundTargetX === null || e.groundTargetY === null) return false;
+    const dx = e.groundTargetX - e.x;
+    const dy = e.groundTargetY - e.y;
+    const d = dist(dx, dy);
+    if (d > weapon.range) {
+      if (type.domain !== 'building' && !e.goal) this.orderMove(e, leptonToCell(e.groundTargetX), leptonToCell(e.groundTargetY));
+      return false;
+    }
+
+    e.path = [];
+    e.waypoint = null;
+    e.goal = null;
+
+    const aim = dirToBangle(dx, dy);
+    if (type.rot > 0) {
+      e.facing = turnToward(e.facing, aim, type.rot);
+      if (Math.abs(((aim - e.facing + 128) & 0xff) - 128) > 8) return true;
+    }
+    if (e.cooldown <= 0) {
+      this.fireGround(e, e.groundTargetX, e.groundTargetY, type, weapon);
+      e.cooldown = weapon.cooldown;
+    }
+    return true;
+  }
+
   private stepCombat(e: Entity, type: UnitType): boolean {
     if (!this.hasWeapon(type)) return false;
     if (e.cooldown > 0) e.cooldown--;
+    if (e.groundTargetX !== null && e.groundTargetY !== null) return this.stepGroundAttack(e, type);
 
     let target: Entity | undefined;
     if (e.attackMove) {
@@ -1867,8 +1936,71 @@ export class World {
     }
   }
 
+  private fireGround(shooter: Entity, targetX: number, targetY: number, shooterType: UnitType, weapon: WeaponSpec): void {
+    const dmg = Math.floor((weapon.damage * this.vetMul(shooter)) / 100);
+    if (weapon.projectileSpeed <= 0) {
+      this.applyGroundDamage(targetX, targetY, dmg, weapon.warhead, weapon.splash, shooter.owner, shooter.id, weapon.targetDomains);
+    } else {
+      this.projectiles.push({
+        id: this.nextProjectileId++,
+        x: shooter.x,
+        y: shooter.y,
+        targetId: null,
+        targetX,
+        targetY,
+        speed: weapon.projectileSpeed,
+        damage: dmg,
+        warheadId: JSON.stringify(weapon.warhead),
+        splash: weapon.splash,
+        owner: shooter.owner,
+        shooterId: shooter.id,
+        weaponRole: this.weaponRoleFor(shooterType, weapon),
+        targetDomains: weapon.targetDomains ? [...weapon.targetDomains] : undefined,
+      });
+    }
+  }
+
   private armorOf(e: Entity): ArmorType {
     return this.rules.units.get(e.typeId)?.armor ?? 'none';
+  }
+
+  private applyGroundDamage(
+    x: number,
+    y: number,
+    damage: number,
+    warhead: WeaponSpec['warhead'],
+    splash: number,
+    owner: number,
+    attackerId = -1,
+    targetDomains?: Domain[],
+  ): void {
+    const verses = this.rules.resolveVerses(warhead);
+    const radius = Math.max(1, splash);
+    for (const e of this.entities.values()) {
+      if (e.owner === owner) continue;
+      const type = this.rules.units.get(e.typeId);
+      if (!type || !this.targetDomainsCanTarget(targetDomains, type.domain)) continue;
+      const d = this.distanceToImpact(e, type, x, y);
+      if (d > radius) continue;
+      const base = splash > 0 ? Math.floor((damage * (splash - d)) / splash) : damage;
+      const pct = verses[this.armorOf(e)];
+      const before = e.hp;
+      e.hp -= Math.max(1, Math.floor((base * pct) / 100));
+      if (before > 0 && e.hp <= 0 && attackerId >= 0) {
+        const killer = this.entities.get(attackerId);
+        if (killer && killer.owner !== e.owner) killer.kills++;
+      }
+    }
+  }
+
+  private distanceToImpact(e: Entity, type: UnitType, x: number, y: number): number {
+    const b = type.building;
+    if (!b) return dist(e.x - x, e.y - y);
+    const impactCellX = leptonToCell(x);
+    const impactCellY = leptonToCell(y);
+    const nearestCellX = Math.max(e.cellX, Math.min(e.cellX + b.footprintW - 1, impactCellX));
+    const nearestCellY = Math.max(e.cellY, Math.min(e.cellY + b.footprintH - 1, impactCellY));
+    return dist(cellToLepton(nearestCellX) - x, cellToLepton(nearestCellY) - y);
   }
 
   private applyDamage(
@@ -1914,16 +2046,23 @@ export class World {
   private stepProjectiles(): void {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i]!;
-      const target = this.entities.get(p.targetId);
-      if (!target) {
+      const target = p.targetId === null ? null : this.entities.get(p.targetId);
+      if (p.targetId !== null && !target) {
         this.projectiles.splice(i, 1);
         continue;
       }
-      const dx = target.x - p.x;
-      const dy = target.y - p.y;
+      const targetX = target ? target.x : p.targetX;
+      const targetY = target ? target.y : p.targetY;
+      if (targetX === undefined || targetY === undefined) {
+        this.projectiles.splice(i, 1);
+        continue;
+      }
+      const dx = targetX - p.x;
+      const dy = targetY - p.y;
       const d = dist(dx, dy);
       if (d <= p.speed) {
-        this.applyDamage(target, p.damage, JSON.parse(p.warheadId), p.splash, p.owner, p.shooterId, p.targetDomains);
+        if (target) this.applyDamage(target, p.damage, JSON.parse(p.warheadId), p.splash, p.owner, p.shooterId, p.targetDomains);
+        else this.applyGroundDamage(targetX, targetY, p.damage, JSON.parse(p.warheadId), p.splash, p.owner, p.shooterId, p.targetDomains);
         this.projectiles.splice(i, 1);
       } else {
         const ang = dirToBangle(dx, dy);
@@ -1993,7 +2132,7 @@ export class World {
       h.addInt(e.constructionProgress).addInt(e.constructionTotal);
       h.addInt(e.harvester ? e.harvester.load : -1);
       h.addInt(e.repairing ? 1 : 0).addInt(e.rallyX).addInt(e.rallyY).addInt(e.airLoiterX).addInt(e.airLoiterY).addInt(e.enterTarget ?? -1);
-      h.addInt(e.constructionTargetId ?? -1).addInt(e.attackTargetId ?? -1);
+      h.addInt(e.constructionTargetId ?? -1).addInt(e.attackTargetId ?? -1).addInt(e.groundTargetX ?? -1).addInt(e.groundTargetY ?? -1);
       h.addInt(e.producer ? 1 : 0)
         .addInt(e.producer?.enabled ? 1 : 0)
         .addInt(e.producer?.progress ?? -1);
@@ -2005,7 +2144,7 @@ export class World {
     }
     h.addInt(this.projectiles.length);
     for (const p of this.projectiles) {
-      h.addInt(p.id).addInt(p.x).addInt(p.y);
+      h.addInt(p.id).addInt(p.x).addInt(p.y).addInt(p.targetId ?? -1).addInt(p.targetX ?? -1).addInt(p.targetY ?? -1);
       addHashString(h, p.weaponRole);
     }
     return h.value;
