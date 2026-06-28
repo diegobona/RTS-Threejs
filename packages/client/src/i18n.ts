@@ -240,6 +240,7 @@ export const UI_TEXT = {
       worker: 'Workers',
       infantry: 'Soldiers',
       vehicle: 'Tanks',
+      missileTruck: 'Missile Trucks',
       aircraft: 'Aircraft',
     },
     buildMeta: {

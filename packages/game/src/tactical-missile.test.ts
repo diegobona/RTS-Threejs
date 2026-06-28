@@ -15,6 +15,8 @@ describe('mobile tactical missile artillery', () => {
     expect(arty?.deployTime).toBeGreaterThan(0);
     expect(arty?.weapon?.role).toBe('missile');
     expect(arty?.weapon?.range).toBeGreaterThanOrEqual(400 * 256);
+    expect(arty?.weapon?.minRange).toBeGreaterThanOrEqual(8 * 256);
+    expect(arty?.weapon?.cooldown).toBeGreaterThanOrEqual(90);
     expect(arty?.weapon?.targetDomains).toEqual(['infantry', 'vehicle', 'building']);
   });
 
@@ -32,5 +34,20 @@ describe('mobile tactical missile artillery', () => {
     runTicks(w, 180);
 
     expect(target.hp).toBeLessThan(startingHp);
+  });
+
+  it('does not fire tactical missiles inside the minimum range', () => {
+    const w = new World(gridTerrain(80, 80), 20260628);
+    w.addPlayer(1, 'allied', 10000);
+    w.addPlayer(2, 'soviet', 10000);
+    const launcher = w.spawnUnit(1, 'arty', 10, 10)!;
+    const target = w.spawnUnit(2, 'warfactory', 12, 10)!;
+    const startingHp = target.hp;
+
+    w.applyCommands([{ kind: 'attack', entityIds: [launcher.id], targetId: target.id }]);
+    runTicks(w, 220);
+
+    expect(target.hp).toBe(startingHp);
+    expect(w.projectiles).toHaveLength(0);
   });
 });

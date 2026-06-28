@@ -216,6 +216,11 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(proceduralModelYawOffset3D({ domain: 'vehicle' }, true)).toBe(0);
   });
 
+  it('uses a dedicated yaw offset for procedural missile trucks so the cab points forward', () => {
+    expect(proceduralModelYawOffset3D({ id: 'arty', domain: 'vehicle' }, false)).toBeCloseTo(Math.PI);
+    expect(proceduralModelYawOffset3D({ id: 'tel', domain: 'vehicle' }, false)).toBeCloseTo(Math.PI);
+  });
+
   it('uses instanced rendering only for repeated procedural combat units', () => {
     expect(shouldUseInstancedUnitModel3D({ id: 'gi', domain: 'infantry' })).toBe(true);
     expect(shouldUseInstancedUnitModel3D({ id: 'grizzly', domain: 'vehicle' })).toBe(true);

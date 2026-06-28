@@ -41,6 +41,7 @@ describe('automatic production buildings', () => {
     w.spawnUnit(1, 'worker', 11, 12);
     w.spawnUnit(1, 'gi', 12, 12);
     w.spawnUnit(1, 'grizzly', 14, 12);
+    w.spawnUnit(1, 'arty', 15, 12);
     w.spawnUnit(1, 'fighter', 16, 12);
 
     expect(w.capacityFor(1)).toMatchObject({
@@ -48,6 +49,7 @@ describe('automatic production buildings', () => {
       infantry: { count: 1, limit: 300 },
       worker: { count: 1, limit: 20 },
       vehicle: { count: 1, limit: 100 },
+      missileTruck: { count: 1, limit: 10 },
       aircraft: { count: 1, limit: 30 },
     });
   });
@@ -101,6 +103,21 @@ describe('automatic production buildings', () => {
     expect(w.capacityFor(1).infantry.count).toBe(299);
     expect(barracks.producer?.paidTypeId).toBe('gi');
     expect(w.players.get(1)!.credits).toBe(creditsAtCap);
+  });
+
+  it('caps missile trucks separately from regular tanks', () => {
+    const w = new World(gridTerrain(80, 80), 7);
+    w.addPlayer(1, 'allied', 50000);
+    const factory = w.spawnUnit(1, 'warfactory', 10, 10)!;
+    for (let i = 0; i < 10; i++) w.spawnUnit(1, 'arty', 20 + i, 20);
+    w.applyCommands([{ kind: 'setProducerType', owner: 1, buildingId: factory.id, typeId: 'arty' }]);
+
+    runTicks(w, 240);
+
+    expect(countType(w, 'arty')).toBe(10);
+    expect(w.capacityFor(1).missileTruck).toMatchObject({ count: 10, limit: 10 });
+    expect(w.capacityFor(1).vehicle).toMatchObject({ count: 0, limit: 100 });
+    expect(factory.producer?.paidTypeId).toBeNull();
   });
 
   it('produces infantry from every barracks in parallel', () => {

@@ -109,7 +109,7 @@ export function groundMoveModeButtons3D(): { mode: GroundMoveMode; label: string
 
 export const GROUND_MOVE_MODE_BUTTONS_3D = groundMoveModeButtons3D();
 
-export type CapacitySelectionGroup3D = 'worker' | 'infantry' | 'vehicle' | 'aircraft';
+export type CapacitySelectionGroup3D = 'worker' | 'infantry' | 'vehicle' | 'missileTruck' | 'aircraft';
 
 export const CONTROL_GROUPS_HUD_LABEL_3D = '编队';
 export const ATTACK_MODE_HUD_LABEL_3D = '攻击模式';
@@ -132,15 +132,27 @@ export interface CapacitySummarySegment3D {
   selectGroup?: CapacitySelectionGroup3D;
 }
 
+function isMissileTruckUnitType3D(typeId: string, type: UnitType): boolean {
+  return type.domain === 'vehicle' && (typeId === 'arty' || typeId === 'tel');
+}
+
 export function capacitySummarySegments3D(capacity: CapacitySnapshot): CapacitySummarySegment3D[] {
   const labels = uiText().capacity;
-  return [
+  const missileTruckLabel = (labels as { missileTruck?: string }).missileTruck ?? '\u5bfc\u5f39\u8f66';
+  const segments: CapacitySummarySegment3D[] = [
     { text: `${labels.building} ${capacity.building.count}/${capacity.building.limit}` },
     { text: `${labels.worker} ${capacity.worker.count}/${capacity.worker.limit}`, selectGroup: 'worker' },
     { text: `${labels.infantry} ${capacity.infantry.count}/${capacity.infantry.limit}`, selectGroup: 'infantry' },
     { text: `${labels.vehicle} ${capacity.vehicle.count}/${capacity.vehicle.limit}`, selectGroup: 'vehicle' },
-    { text: `${labels.aircraft} ${capacity.aircraft.count}/${capacity.aircraft.limit}`, selectGroup: 'aircraft' },
   ];
+  if (capacity.missileTruck) {
+    segments.push({
+      text: `${missileTruckLabel} ${capacity.missileTruck.count}/${capacity.missileTruck.limit}`,
+      selectGroup: 'missileTruck',
+    });
+  }
+  segments.push({ text: `${labels.aircraft} ${capacity.aircraft.count}/${capacity.aircraft.limit}`, selectGroup: 'aircraft' });
+  return segments;
 }
 export function capacitySummaryText3D(capacity: CapacitySnapshot): string {
   return capacitySummarySegments3D(capacity).map((segment) => segment.text).join(' | ');
@@ -168,7 +180,11 @@ export function allOwnedUnitIdsInCapacityGroup3D(world: World, localPlayerId: nu
       if (e.typeId === 'worker') ids.push(e.id);
       continue;
     }
-    if (type.domain === group && e.typeId !== 'worker') ids.push(e.id);
+    if (group === 'missileTruck') {
+      if (isMissileTruckUnitType3D(e.typeId, type)) ids.push(e.id);
+      continue;
+    }
+    if (type.domain === group && e.typeId !== 'worker' && !isMissileTruckUnitType3D(e.typeId, type)) ids.push(e.id);
   }
   return ids.sort((a, b) => a - b);
 }
@@ -213,15 +229,22 @@ export interface ControlGroupHudItem3D {
   label: string;
 }
 
-const CONTROL_GROUP_KIND_ORDER: CapacitySelectionGroup3D[] = ['worker', 'infantry', 'vehicle', 'aircraft'];
+const CONTROL_GROUP_KIND_ORDER: CapacitySelectionGroup3D[] = ['worker', 'infantry', 'vehicle', 'missileTruck', 'aircraft'];
 
 function controlGroupKindOf(typeId: string, type: UnitType): CapacitySelectionGroup3D | null {
   if (type.domain === 'building') return null;
   if (typeId === 'worker') return 'worker';
   if (type.domain === 'infantry') return 'infantry';
+  if (isMissileTruckUnitType3D(typeId, type)) return 'missileTruck';
   if (type.domain === 'vehicle') return 'vehicle';
   if (type.domain === 'aircraft') return 'aircraft';
   return null;
+}
+
+function capacityGroupLabel3D(kind: CapacitySelectionGroup3D): string {
+  const labels = uiText().capacity as Record<string, string>;
+  if (kind === 'missileTruck') return labels.missileTruck ?? '\u5bfc\u5f39\u8f66';
+  return labels[kind] ?? kind;
 }
 
 export function controlGroupIdsForSelection3D(world: World, localPlayerId: number, selectedIds: readonly number[]): number[] {
@@ -241,6 +264,7 @@ export function controlGroupButtonLabel3D(world: World, group: number, ids: read
     worker: 0,
     infantry: 0,
     vehicle: 0,
+    missileTruck: 0,
     aircraft: 0,
   };
   for (const id of ids) {
@@ -252,7 +276,7 @@ export function controlGroupButtonLabel3D(world: World, group: number, ids: read
   }
   const parts = CONTROL_GROUP_KIND_ORDER
     .filter((kind) => counts[kind] > 0)
-    .map((kind) => `${uiText().capacity[kind]} ${counts[kind]}`);
+    .map((kind) => `${capacityGroupLabel3D(kind)} ${counts[kind]}`);
   return parts.length > 0 ? `${group} ${parts.join(' · ')}` : `${group}`;
 }
 

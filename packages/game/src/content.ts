@@ -28,6 +28,7 @@ export interface WeaponSpec {
   damage: number;
   /** 射程（lepton）。 */
   range: number;
+  minRange?: number;
   /** 攻击间隔（tick）。 */
   cooldown: number;
   /** 弹丸飞行速度（lepton/tick）；0=瞬中（如激光）。 */
@@ -501,6 +502,7 @@ const UNIT_LIST: UnitType[] = [
       name: 'Tactical missile',
       damage: 160,
       range: 400 * 256,
+      minRange: 8 * 256,
       cooldown: 95,
       projectileSpeed: 280,
       warhead: { none: 100, flak: 90, plate: 100, light: 80, heavy: 60, concrete: 120 },

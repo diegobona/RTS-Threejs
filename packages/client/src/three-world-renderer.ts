@@ -330,8 +330,12 @@ export function entityYawForFacing3D(facing: number): number {
   return -(((facing % 256) + 256) % 256 / 256) * Math.PI * 2;
 }
 
-export function proceduralModelYawOffset3D(type: Pick<UnitType, 'domain'>, hasExternalModel: boolean): number {
+export function proceduralModelYawOffset3D(
+  type: Pick<UnitType, 'domain'> & Partial<Pick<UnitType, 'id'>>,
+  hasExternalModel: boolean,
+): number {
   if (hasExternalModel) return 0;
+  if (type.domain === 'vehicle' && (type.id === 'arty' || type.id === 'tel')) return Math.PI;
   return type.domain === 'vehicle' || type.domain === 'infantry' ? -Math.PI / 2 : 0;
 }
 

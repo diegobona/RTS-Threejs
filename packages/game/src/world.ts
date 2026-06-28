@@ -190,6 +190,7 @@ export interface CapacitySnapshot {
   worker: CapacitySlot;
   infantry: CapacitySlot;
   vehicle: CapacitySlot;
+  missileTruck?: CapacitySlot;
   aircraft: CapacitySlot;
 }
 
@@ -198,8 +199,21 @@ export const DEFAULT_CAPACITY_LIMITS: Record<keyof CapacitySnapshot, number> = {
   worker: 20,
   infantry: 300,
   vehicle: 100,
+  missileTruck: 10,
   aircraft: 30,
 };
+
+type CapacityKey = keyof CapacitySnapshot;
+
+function isMissileTruckType(type: UnitType): boolean {
+  return type.domain === 'vehicle' && (type.id === 'arty' || type.id === 'tel');
+}
+
+function capacityKeyForType(type: UnitType): CapacityKey {
+  if (type.id === 'worker') return 'worker';
+  if (isMissileTruckType(type)) return 'missileTruck';
+  return type.domain;
+}
 /** 单位「警戒」半径（lepton）：空闲单位会主动迎击此范围内的敌人（即便超出武器射程也会上前）。 */
 const GUARD_RANGE = 6 * 256;
 const COMBAT_SPATIAL_BUCKET_SIZE = GUARD_RANGE;
@@ -690,14 +704,15 @@ export class World {
       worker: { count: 0, limit: DEFAULT_CAPACITY_LIMITS.worker },
       infantry: { count: 0, limit: DEFAULT_CAPACITY_LIMITS.infantry },
       vehicle: { count: 0, limit: DEFAULT_CAPACITY_LIMITS.vehicle },
+      missileTruck: { count: 0, limit: DEFAULT_CAPACITY_LIMITS.missileTruck },
       aircraft: { count: 0, limit: DEFAULT_CAPACITY_LIMITS.aircraft },
     };
     for (const e of this.entities.values()) {
       if (e.owner !== owner) continue;
       const type = this.rules.units.get(e.typeId);
       if (type) {
-        const key = type.id === 'worker' ? 'worker' : type.domain;
-        snapshot[key].count++;
+        const key = capacityKeyForType(type);
+        snapshot[key]!.count++;
       }
     }
     return snapshot;
@@ -710,8 +725,8 @@ export class World {
 
   private isTypeCapacityFull(owner: number, type: UnitType): boolean {
     const capacity = this.capacityFor(owner);
-    const slot = type.id === 'worker' ? capacity.worker : capacity[type.domain];
-    return slot.count >= slot.limit;
+    const slot = capacity[capacityKeyForType(type)];
+    return !!slot && slot.count >= slot.limit;
   }
 
   private hasWorker(owner: number): boolean {
@@ -1782,6 +1797,12 @@ export class World {
     const dx = e.groundTargetX - e.x;
     const dy = e.groundTargetY - e.y;
     const d = dist(dx, dy);
+    if (weapon.minRange !== undefined && d < weapon.minRange) {
+      e.path = [];
+      e.waypoint = null;
+      e.goal = null;
+      return true;
+    }
     if (d > weapon.range) {
       if (type.domain !== 'building' && !e.goal) this.orderMove(e, leptonToCell(e.groundTargetX), leptonToCell(e.groundTargetY));
       return false;
@@ -1844,6 +1865,12 @@ export class World {
     const aircraftStandoff = this.aircraftMissileStandoffDistance(type, weapon);
     const bombRun = this.usesAircraftBombRun(type, target, weapon);
     const effectiveRange = this.effectiveWeaponRange(type, e, target, weapon);
+    if (weapon.minRange !== undefined && d < weapon.minRange) {
+      e.path = [];
+      e.waypoint = null;
+      e.goal = null;
+      return true;
+    }
     if (aircraftStandoff > 0 && d < aircraftStandoff) {
       const away = this.aircraftStandoffStation(e, target, weapon);
       if (away) {

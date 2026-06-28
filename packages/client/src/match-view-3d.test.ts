@@ -71,6 +71,7 @@ describe('MatchView3D production tabs', () => {
       'barracks',
       'warfactory',
       'airbase',
+      'patriot',
     ]);
   });
 
@@ -248,6 +249,36 @@ describe('MatchView3D capacity HUD', () => {
     expect(groundMoveModeButtons3D()[1]?.label).toBe('Attack while moving');
     expect(rulesAndControlsSections3D()[0]?.title).toBe('Victory');
   });
+
+  it('shows missile truck capacity separately between tanks and aircraft', () => {
+    setLocaleForTests('en');
+
+    const segments = capacitySummarySegments3D({
+      building: { count: 3, limit: 20 },
+      worker: { count: 20, limit: 20 },
+      infantry: { count: 0, limit: 300 },
+      vehicle: { count: 100, limit: 100 },
+      missileTruck: { count: 4, limit: 10 },
+      aircraft: { count: 0, limit: 30 },
+    });
+
+    expect(segments.map((segment) => segment.text)).toEqual([
+      'Buildings 3/20',
+      'Workers 20/20',
+      'Soldiers 0/300',
+      'Tanks 100/100',
+      'Missile Trucks 4/10',
+      'Aircraft 0/30',
+    ]);
+    expect(segments.map((segment) => segment.selectGroup ?? null)).toEqual([
+      null,
+      'worker',
+      'infantry',
+      'vehicle',
+      'missileTruck',
+      'aircraft',
+    ]);
+  });
 });
 
 describe('MatchView3D unit selection helpers', () => {
@@ -306,6 +337,16 @@ describe('MatchView3D unit selection helpers', () => {
     expect(allOwnedUnitIdsInCapacityGroup3D(world, 1, 'infantry')).toEqual([gi.id]);
     expect(allOwnedUnitIdsInCapacityGroup3D(world, 1, 'vehicle')).toEqual([tank.id]);
     expect(allOwnedUnitIdsInCapacityGroup3D(world, 1, 'aircraft')).toEqual([fighter.id]);
+  });
+
+  it('selects missile trucks separately from regular tanks from the top counters', () => {
+    const world = new World(gridTerrain(20, 20), 7);
+    world.addPlayer(1, 'allied', 0);
+    const tank = world.spawnUnit(1, 'grizzly', 5, 3)!;
+    const missileTruck = world.spawnUnit(1, 'arty', 6, 3)!;
+
+    expect(allOwnedUnitIdsInCapacityGroup3D(world, 1, 'vehicle')).toEqual([tank.id]);
+    expect(allOwnedUnitIdsInCapacityGroup3D(world, 1, 'missileTruck')).toEqual([missileTruck.id]);
   });
 
   it('uses an explicit tooltip for clickable top unit counters', () => {
