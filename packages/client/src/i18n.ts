@@ -45,10 +45,22 @@ export function currentLocale(): Locale {
 export const UI_TEXT = {
   zh: {
     appTitle: 'Fast War Game',
+    seoTitle: 'Fast War Game - Free Online Modern RTS Battle Game',
     setup: {
+      seoHero: {
+        brand: 'FAST WAR GAME',
+        subtitle: 'Free Online Modern RTS Game',
+        bullets: [
+          'No long resource grind. No slow buildup.',
+          'Produce units fast and attack instantly.',
+          'Play modern RTS battles directly in your browser.',
+        ],
+        browserNote: 'Play in browser, no download required.',
+        nav: ['Play Now', 'Choose Map'],
+      },
       aiDifficulty: 'AI 难度',
-      battlefield: '战场',
-      startGame: '开始游戏',
+      battlefield: 'Choose Map',
+      startGame: 'Play Now',
       comingSoon: '即将开放',
       difficulty: {
         easy: '简单',
@@ -158,10 +170,22 @@ export const UI_TEXT = {
   },
   en: {
     appTitle: 'Fast War Game',
+    seoTitle: 'Fast War Game - Free Online Modern RTS Battle Game',
     setup: {
+      seoHero: {
+        brand: 'FAST WAR GAME',
+        subtitle: 'Free Online Modern RTS Game',
+        bullets: [
+          'No long resource grind. No slow buildup.',
+          'Produce units fast and attack instantly.',
+          'Play modern RTS battles directly in your browser.',
+        ],
+        browserNote: 'Play in browser, no download required.',
+        nav: ['Play Now', 'Choose Map'],
+      },
       aiDifficulty: 'AI Difficulty',
-      battlefield: 'Battlefield',
-      startGame: 'Start Game',
+      battlefield: 'Choose Map',
+      startGame: 'Play Now',
       comingSoon: 'Coming Soon',
       difficulty: {
         easy: 'Easy',

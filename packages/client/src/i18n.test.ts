@@ -18,10 +18,10 @@ describe('i18n locale detection', () => {
   it('exposes one active text set at runtime', () => {
     setLocaleForTests('zh');
     expect(currentLocale()).toBe('zh');
-    expect(uiText().setup.startGame).toBe('开始游戏');
+    expect(uiText().setup.startGame).toBe('Play Now');
 
     setLocaleForTests('en');
     expect(currentLocale()).toBe('en');
-    expect(uiText().setup.startGame).toBe('Start Game');
+    expect(uiText().setup.startGame).toBe('Play Now');
   });
 });
