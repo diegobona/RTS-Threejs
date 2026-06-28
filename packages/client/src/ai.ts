@@ -103,6 +103,7 @@ export class SimpleAI {
     if (!player || player.defeated) return cmds;
 
     this.manageBuildings(world, player, cmds);
+    this.manageProducers(world, player, cmds);
     this.manageArmy(world, cmds);
     return cmds;
   }
@@ -120,6 +121,38 @@ export class SimpleAI {
 
     const next = this.nextBuilding(world, player);
     if (next) world.queueProduction(this.playerId, next);
+  }
+
+  private manageProducers(world: World, player: Player, cmds: Command[]): void {
+    if (this.difficulty !== 'hard') return;
+    void player;
+    const missileTruckTypeId = 'arty';
+    const tankTypeId = 'grizzly';
+    if (!world.rules.units.has(missileTruckTypeId) || !world.rules.units.has(tankTypeId)) return;
+
+    const factories = [...world.entities.values()]
+      .filter((e) =>
+        e.owner === this.playerId &&
+        e.typeId === 'warfactory' &&
+        !!e.producer &&
+        (e.constructionTotal <= 0 || e.constructionProgress >= e.constructionTotal),
+      )
+      .sort((a, b) => a.id - b.id);
+    if (factories.length === 0) return;
+
+    const missileCapacity = world.capacityFor(this.playerId).missileTruck;
+    if (!missileCapacity) return;
+    const desiredMissileFactories = missileCapacity.count >= missileCapacity.limit
+      ? 0
+      : Math.max(1, Math.floor(factories.length / 3));
+    const missileFactoryIds = new Set(factories.slice(-desiredMissileFactories).map((e) => e.id));
+
+    for (const factory of factories) {
+      const desiredTypeId = missileFactoryIds.has(factory.id) ? missileTruckTypeId : tankTypeId;
+      if (factory.producer?.typeId !== desiredTypeId) {
+        cmds.push({ kind: 'setProducerType', owner: this.playerId, buildingId: factory.id, typeId: desiredTypeId });
+      }
+    }
   }
 
   private manageArmy(world: World, cmds: Command[]): void {

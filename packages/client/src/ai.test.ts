@@ -25,6 +25,10 @@ function aiMirrorWorld(): World {
 
 const isAttackCommand = (cmd: { kind: string }): boolean => cmd.kind === 'attack' || cmd.kind === 'attackMove';
 
+function runTicks(world: World, ticks: number): void {
+  for (let i = 0; i < ticks; i++) world.step();
+}
+
 describe('SimpleAI', () => {
   it('hard AI mirror match runs a tactical window without throwing', () => {
     const world = aiMirrorWorld();
@@ -118,6 +122,33 @@ describe('SimpleAI', () => {
     expect(count('pillbox')).toBe(0);
     expect(count('tesla')).toBe(0);
     expect(count('battlelab')).toBe(0);
+  });
+
+  it('hard AI switches any war factory to shared missile truck production while normal AI keeps tanks', () => {
+    const hardWorld = new World(gridTerrain(64, 64), 20260628);
+    hardWorld.addPlayer(2, 'soviet', 5000);
+    const hardFactory = hardWorld.spawnUnit(2, 'warfactory', 20, 20)!;
+
+    const hardCmds = new SimpleAI(2, 'hard', 1).emit(hardWorld);
+
+    expect(hardCmds).toContainEqual({
+      kind: 'setProducerType',
+      owner: 2,
+      buildingId: hardFactory.id,
+      typeId: 'arty',
+    });
+    hardWorld.applyCommands(hardCmds);
+    runTicks(hardWorld, 120);
+    expect([...hardWorld.entities.values()].some((e) => e.owner === 2 && e.typeId === 'arty')).toBe(true);
+
+    const normalWorld = new World(gridTerrain(64, 64), 20260628);
+    normalWorld.addPlayer(2, 'soviet', 5000);
+    normalWorld.spawnUnit(2, 'warfactory', 20, 20);
+    normalWorld.spawnUnit(2, 'warfactory', 26, 20);
+
+    const normalCmds = new SimpleAI(2, 'normal', 1).emit(normalWorld);
+
+    expect(normalCmds.some((cmd) => cmd.kind === 'setProducerType')).toBe(false);
   });
 
   it('falls back to any empty map location when no local build spot is available', () => {
