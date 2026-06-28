@@ -340,6 +340,53 @@ export function infantryWalkPartTransform3D(
   return { translationY, translationZ, rotationX, rotationZ };
 }
 
+export function infantryFirePartTransform3D(
+  partId: string,
+  firing: boolean,
+  entityId: number,
+  timeSeconds: number,
+): InfantryWalkPartTransform3D {
+  if (!firing) return IDLE_INFANTRY_WALK_PART_TRANSFORM_3D;
+
+  const impulse = 0.65 + Math.abs(Math.sin(timeSeconds * 34 + entityId * 0.37)) * 0.35;
+  let translationY = 0;
+  let translationZ = 0;
+  let rotationX = 0;
+  let rotationZ = 0;
+
+  if (partId.includes('rifle')) {
+    translationZ = 0.1 * impulse;
+    rotationX = -0.035 * impulse;
+  } else if (partId === 'right-forearm' || partId === 'right-glove') {
+    translationZ = 0.035 * impulse;
+    rotationX = -0.13 * impulse;
+  } else if (partId === 'left-forearm' || partId === 'left-glove') {
+    translationZ = 0.025 * impulse;
+    rotationX = -0.08 * impulse;
+  } else if (partId.includes('upper-arm')) {
+    rotationX = -0.055 * impulse;
+  } else if (
+    partId === 'body' ||
+    partId.includes('armor') ||
+    partId.includes('plate') ||
+    partId.includes('rig') ||
+    partId.includes('pouch') ||
+    partId.includes('head') ||
+    partId.includes('helmet') ||
+    partId.includes('goggles') ||
+    partId.includes('mask') ||
+    partId.includes('backpack') ||
+    partId.includes('radio') ||
+    partId.includes('team-patch')
+  ) {
+    rotationX = -0.045 * impulse;
+    rotationZ = Math.sin(timeSeconds * 18 + entityId) * 0.012;
+    translationY = -0.01 * impulse;
+  }
+
+  return { translationY, translationZ, rotationX, rotationZ };
+}
+
 function lowPolyPartId3D(meshName: string): string {
   return meshName
     .replace(/^infantry-/, '')
@@ -1713,7 +1760,15 @@ export class ThreeWorldRenderer {
     if (type.id !== 'gi' || !entity) return local;
 
     const moving = this.entityMovingForWalkAnimation(entity, view);
-    const transform = infantryWalkPartTransform3D(part.partId, moving, entity.id, timeSeconds);
+    const firing = this.entityFiringForInfantryAnimation(entity);
+    const walk = infantryWalkPartTransform3D(part.partId, moving, entity.id, timeSeconds);
+    const fire = infantryFirePartTransform3D(part.partId, firing, entity.id, timeSeconds);
+    const transform = {
+      translationY: walk.translationY + fire.translationY,
+      translationZ: walk.translationZ + fire.translationZ,
+      rotationX: walk.rotationX + fire.rotationX,
+      rotationZ: walk.rotationZ + fire.rotationZ,
+    };
     if (
       transform.translationY === 0 &&
       transform.translationZ === 0 &&
@@ -1740,6 +1795,10 @@ export class ThreeWorldRenderer {
     const dx = entity.x - (last?.x ?? entity.x);
     const dy = entity.y - (last?.y ?? entity.y);
     return Math.hypot(dx, dy) > 0.5 || entity.path.length > 0 || entity.waypoint !== null || entity.goal !== null;
+  }
+
+  private entityFiringForInfantryAnimation(entity: Entity): boolean {
+    return entity.cooldown > 0 || entity.targetId !== null;
   }
 
   private createInstancedModelPrototype(type: UnitType, ownerColor: number): Object3D {

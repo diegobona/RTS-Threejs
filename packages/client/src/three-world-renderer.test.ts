@@ -23,6 +23,7 @@ import {
   LOWPOLY_TANK_UNIT_IDS,
   LOWPOLY_SOLDIER_PART_IDS,
   LOWPOLY_WORKER_PART_IDS,
+  infantryFirePartTransform3D,
   infantryWalkPartTransform3D,
   proceduralModelYawOffset3D,
   combatMuzzlePoint3D,
@@ -290,6 +291,19 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(Math.abs(leftLeg.rotationX)).toBeGreaterThan(0.1);
     expect(leftLeg.rotationX).toBeCloseTo(-rightLeg.rotationX, 5);
     expect(body.translationY).toBeGreaterThan(0);
+  });
+
+  it('animates modern infantry rifle recoil and bracing only while firing', () => {
+    const idleRifle = infantryFirePartTransform3D('rifle-body', false, 12, 0.2);
+    const firingRifle = infantryFirePartTransform3D('rifle-body', true, 12, 0.2);
+    const firingForearm = infantryFirePartTransform3D('right-forearm', true, 12, 0.2);
+    const firingBody = infantryFirePartTransform3D('body', true, 12, 0.2);
+
+    expect(idleRifle.translationZ).toBe(0);
+    expect(idleRifle.rotationX).toBe(0);
+    expect(firingRifle.translationZ).toBeGreaterThan(0.03);
+    expect(firingForearm.rotationX).toBeLessThan(-0.04);
+    expect(firingBody.rotationX).toBeLessThan(0);
   });
 
   it('scales the procedural fighter large enough for close inspection', () => {
