@@ -29,6 +29,7 @@ import {
   projectileTracerEnd3D,
   projectileImpactKind3D,
   tacticalMissileLookTarget3D,
+  tacticalMissileStatus3D,
   projectileVisualProfile3D,
   projectileVisualPoint3D,
   RALLY_VISUAL_STYLE_3D,
@@ -162,6 +163,20 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(lookTarget).not.toBeNull();
     expect(lookTarget!.x).toBeGreaterThan(50);
     expect(Math.abs(lookTarget!.y - 12)).toBeLessThan(2);
+  });
+
+  it('reports visible tactical missile deploy and cooldown status', () => {
+    const type = { id: 'arty', deployTime: 60, weapon: { cooldown: 100 } };
+
+    expect(tacticalMissileStatus3D({ deployed: false, deployTimer: 30, cooldown: 0 }, type)).toEqual({
+      kind: 'deploy',
+      pct: 0.5,
+    });
+    expect(tacticalMissileStatus3D({ deployed: true, deployTimer: 0, cooldown: 25 }, type)).toEqual({
+      kind: 'cooldown',
+      pct: 0.75,
+    });
+    expect(tacticalMissileStatus3D({ deployed: true, deployTimer: 0, cooldown: 0 }, type)).toBeNull();
   });
 
   it('marks aircraft bomb impacts with a dedicated audible impact instead of muted generic explosions', () => {

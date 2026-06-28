@@ -1493,6 +1493,10 @@ export class World {
 
   private orderMove(e: Entity, cellX: number, cellY: number): void {
     const type = this.rules.units.get(e.typeId);
+    if (type?.deployTime) {
+      e.deployed = false;
+      e.deployTimer = 0;
+    }
     const canFly = type?.domain === 'aircraft';
     const grid: PathGrid = {
       width: this.terrain.width,
@@ -1507,6 +1511,10 @@ export class World {
 
   private stepMovement(e: Entity, type: UnitType): void {
     if (type.domain === 'building') return;
+    if (type.deployTime && (e.goal || e.waypoint || e.path.length > 0)) {
+      e.deployed = false;
+      e.deployTimer = 0;
+    }
     if (!e.waypoint) {
       const next = e.path.pop();
       if (!next) {
@@ -1817,6 +1825,7 @@ export class World {
       e.facing = turnToward(e.facing, aim, type.rot);
       if (Math.abs(((aim - e.facing + 128) & 0xff) - 128) > 8) return true;
     }
+    if (!this.readyToFireAfterDeploy(e, type)) return true;
     if (e.cooldown <= 0) {
       this.fireGround(e, e.groundTargetX, e.groundTargetY, type, weapon);
       e.cooldown = weapon.cooldown;
@@ -1909,11 +1918,22 @@ export class World {
       e.facing = turnToward(e.facing, aim, type.rot);
       if ((((aim - e.facing + 128) & 0xff) - 128) > 8) return true;
     }
+    if (!this.readyToFireAfterDeploy(e, type)) return true;
     if (e.cooldown <= 0) {
       this.fire(e, target, type, weapon);
       e.cooldown = weapon.cooldown;
     }
     return true;
+  }
+
+  private readyToFireAfterDeploy(e: Entity, type: UnitType): boolean {
+    const deployTime = type.deployTime ?? 0;
+    if (deployTime <= 0) return true;
+    if (e.deployed) return true;
+    if (e.deployTimer <= 0) e.deployTimer = deployTime;
+    e.deployTimer = Math.max(0, e.deployTimer - 1);
+    if (e.deployTimer === 0) e.deployed = true;
+    return e.deployed;
   }
 
   /** 攻击移动/巡逻在无敌情时推进：未到终点则（站定后）继续奔向终点；

@@ -36,7 +36,7 @@ import {
   type Material,
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import type { WeaponRole, World, UnitType } from '@ra2web/game';
+import type { Entity, WeaponRole, World, UnitType } from '@ra2web/game';
 import { ThreeAudioEventTracker, type ThreeAudioEvent, type ThreeAudioSnapshot, type ThreeProjectileAudioState } from './three-audio-events';
 import { cellToWorld3D, leptonToWorld3D, THREE_CELL_SIZE } from './three-coords';
 import { playerColorForOwner } from './player-colors';
@@ -46,6 +46,7 @@ interface EntityView {
   root: Group;
   visualRoot: Group;
   hpBar: Group;
+  statusBar: Group;
   selectionRing: Mesh;
 }
 
@@ -306,6 +307,27 @@ export function entityHpBarYaw3D(entityYaw: number): number {
 export function entityConstructionProgress3D(entity: { constructionProgress: number; constructionTotal: number }): number {
   if (entity.constructionTotal <= 0) return 1;
   return Math.max(0, Math.min(1, entity.constructionProgress / entity.constructionTotal));
+}
+
+export interface TacticalMissileStatus3D {
+  kind: 'deploy' | 'cooldown';
+  pct: number;
+}
+
+export function tacticalMissileStatus3D(
+  entity: Pick<Entity, 'deployed' | 'deployTimer' | 'cooldown'>,
+  type: { id: string; deployTime?: number; weapon?: { cooldown: number } | null },
+): TacticalMissileStatus3D | null {
+  if (type.id !== 'arty' && type.id !== 'tel') return null;
+  const deployTime = type.deployTime ?? 0;
+  if (!entity.deployed && deployTime > 0 && entity.deployTimer > 0) {
+    return { kind: 'deploy', pct: Math.max(0, Math.min(1, 1 - entity.deployTimer / deployTime)) };
+  }
+  const cooldown = type.weapon?.cooldown ?? 0;
+  if (entity.deployed && cooldown > 0 && entity.cooldown > 0) {
+    return { kind: 'cooldown', pct: Math.max(0, Math.min(1, 1 - entity.cooldown / cooldown)) };
+  }
+  return null;
 }
 
 export function entityConstructionOpacity3D(entity: { constructionProgress: number; constructionTotal: number }): number {
@@ -761,6 +783,8 @@ export class ThreeWorldRenderer {
   private readonly hpBackMat = new MeshBasicLike(0x101010);
   private readonly hpGoodMat = new MeshBasicLike(0x42d66d);
   private readonly hpConstructionMat = new MeshBasicLike(0xffd43b);
+  private readonly missileDeployMat = new MeshBasicLike(0xffb02e);
+  private readonly missileCooldownMat = new MeshBasicLike(0x62c8ff);
   private readonly hpOwnerMats = new Map<number, MeshBasicLike>();
   private readonly projectileMat = new MeshLambertMaterial({ color: 0x111111 });
   private readonly projectileTracerMat = new MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.92, depthWrite: false });
@@ -1406,7 +1430,13 @@ export class ThreeWorldRenderer {
       if (type.id === 'tel' || type.id === 'arty') {
         const launcher = view.visualRoot.getObjectByName('tel-launcher');
         if (launcher) {
-          const targetAngle = e.targetId !== null || e.groundTargetX !== null ? -Math.PI * 0.44 : 0;
+          const deployTime = type.deployTime ?? 0;
+          const deployProgress = e.deployed
+            ? 1
+            : deployTime > 0 && e.deployTimer > 0
+              ? 1 - e.deployTimer / deployTime
+              : 0;
+          const targetAngle = -Math.PI * 0.44 * Math.max(0, Math.min(1, deployProgress));
           // 平滑插值至目标角度
           const current = launcher.rotation.z;
           launcher.rotation.z = current + (targetAngle - current) * 0.15;
@@ -1433,6 +1463,14 @@ export class ThreeWorldRenderer {
         constructing ? constructionPct : e.hp / e.maxHp,
         constructing ? this.hpConstructionMat.mat : this.hpMaterialForOwner(e.owner),
         showHpBar,
+      );
+      const missileStatus = tacticalMissileStatus3D(e, type);
+      view.statusBar.rotation.y = entityHpBarYaw3D(view.root.rotation.y);
+      this.updateHpBar(
+        view.statusBar,
+        missileStatus?.pct ?? 0,
+        missileStatus?.kind === 'deploy' ? this.missileDeployMat.mat : this.missileCooldownMat.mat,
+        selected.has(e.id) && missileStatus !== null,
       );
     }
 
@@ -1573,16 +1611,17 @@ export class ThreeWorldRenderer {
 
     const hpProfile = entityHpBarProfile3D(type);
     const hpBar = this.createHpBar(hpProfile.width, hpProfile.y);
+    const statusBar = this.createHpBar(1.2, Math.max(1.45, hpProfile.y - 0.28));
     const selectionRing = new Mesh(this.selectionRingGeo, this.selectionRingMat);
     selectionRing.rotation.x = -Math.PI / 2;
     selectionRing.position.y = entitySelectionRingAltitude3D(type);
     selectionRing.scale.setScalar(entitySelectionRingScale3D(type));
     selectionRing.visible = false;
-    root.add(selectionRing, hpBar);
+    root.add(selectionRing, hpBar, statusBar);
     root.traverse((child) => {
       child.userData.entityId = entityId;
     });
-    return { root, visualRoot, hpBar, selectionRing };
+    return { root, visualRoot, hpBar, statusBar, selectionRing };
   }
 
   private createVehiclePlaceholder(ownerColor: number, armed: boolean): Object3D {
