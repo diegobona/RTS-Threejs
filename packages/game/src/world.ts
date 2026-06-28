@@ -2138,7 +2138,7 @@ export class World {
         if (e.id === target.id || e.owner === owner) continue;
         const type = this.rules.units.get(e.typeId);
         if (!type || !this.targetDomainsCanTarget(targetDomains, type.domain)) continue;
-        const d = dist(e.x - target.x, e.y - target.y);
+        const d = this.distanceToImpact(e, type, target.x, target.y);
         if (d <= splash) deal(e, Math.floor((damage * (splash - d)) / splash));
       }
     }

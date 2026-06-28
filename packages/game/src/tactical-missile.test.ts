@@ -37,6 +37,34 @@ describe('mobile tactical missile artillery', () => {
     expect(target.hp).toBeLessThan(startingHp);
   });
 
+  it('damages nearby small units with falloff when a tactical missile hits a selected unit', () => {
+    const w = new World(gridTerrain(80, 80), 20260628);
+    w.addPlayer(1, 'allied', 10000);
+    w.addPlayer(2, 'soviet', 10000);
+    const launcher = w.spawnUnit(1, 'arty', 8, 8)!;
+    const target = w.spawnUnit(2, 'grizzly', 34, 8)!;
+    const near = w.spawnUnit(2, 'grizzly', 35, 8)!;
+    const mid = w.spawnUnit(2, 'grizzly', 36, 8)!;
+    const far = w.spawnUnit(2, 'grizzly', 39, 8)!;
+    const nearHp = near.hp;
+    const midHp = mid.hp;
+    const farHp = far.hp;
+
+    launcher.deployed = true;
+    launcher.deployMode = null;
+    launcher.deployTimer = 0;
+    w.applyCommands([{ kind: 'attack', entityIds: [launcher.id], targetId: target.id }]);
+    runTicks(w, 180);
+
+    const nearDamage = nearHp - near.hp;
+    const midDamage = midHp - mid.hp;
+    const farDamage = farHp - far.hp;
+    expect(nearDamage).toBeGreaterThan(0);
+    expect(midDamage).toBeGreaterThan(0);
+    expect(nearDamage).toBeGreaterThan(midDamage);
+    expect(farDamage).toBe(0);
+  });
+
   it('must deploy before launching a tactical missile', () => {
     const w = new World(gridTerrain(80, 80), 20260628);
     w.addPlayer(1, 'allied', 10000);
