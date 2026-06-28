@@ -63,6 +63,7 @@ interface CombatEffect {
 
 interface InstancedModelPart {
   mesh: InstancedMesh;
+  partId: string;
   localMatrix: Matrix4;
 }
 
@@ -270,6 +271,85 @@ export const LOWPOLY_SOLDIER_PART_IDS = [
   'rifle-optic',
   'team-patch',
 ] as const;
+
+export interface InfantryWalkPartTransform3D {
+  translationY: number;
+  translationZ: number;
+  rotationX: number;
+  rotationZ: number;
+}
+
+const IDLE_INFANTRY_WALK_PART_TRANSFORM_3D: InfantryWalkPartTransform3D = {
+  translationY: 0,
+  translationZ: 0,
+  rotationX: 0,
+  rotationZ: 0,
+};
+
+export function infantryWalkPartTransform3D(
+  partId: string,
+  moving: boolean,
+  entityId: number,
+  timeSeconds: number,
+): InfantryWalkPartTransform3D {
+  if (!moving) return IDLE_INFANTRY_WALK_PART_TRANSFORM_3D;
+
+  const phase = timeSeconds * 8.6 + ((entityId * 0.731) % (Math.PI * 2));
+  const swing = Math.sin(phase);
+  const sideSwing = partId.includes('left') ? swing : partId.includes('right') ? -swing : 0;
+  const bob = Math.abs(Math.sin(phase * 2)) * 0.035;
+  let translationY = bob;
+  let translationZ = 0;
+  let rotationX = 0;
+  let rotationZ = 0;
+
+  if (partId.includes('thigh')) {
+    rotationX = sideSwing * 0.36;
+  } else if (partId.includes('shin')) {
+    rotationX = -sideSwing * 0.24;
+  } else if (partId.includes('knee-pad')) {
+    rotationX = sideSwing * 0.16;
+  } else if (partId.includes('boot')) {
+    rotationX = sideSwing * 0.24;
+    translationY += Math.max(0, sideSwing) * 0.035;
+    translationZ = sideSwing * 0.025;
+  } else if (partId.includes('upper-arm')) {
+    rotationX = -sideSwing * 0.14;
+    rotationZ = sideSwing * 0.04;
+  } else if (partId.includes('forearm') || partId.includes('glove')) {
+    rotationX = -sideSwing * 0.08;
+    translationY += Math.max(0, -sideSwing) * 0.012;
+  } else if (
+    partId === 'body' ||
+    partId.includes('armor') ||
+    partId.includes('plate') ||
+    partId.includes('rig') ||
+    partId.includes('pouch') ||
+    partId.includes('head') ||
+    partId.includes('helmet') ||
+    partId.includes('goggles') ||
+    partId.includes('mask') ||
+    partId.includes('backpack') ||
+    partId.includes('radio') ||
+    partId.includes('rifle') ||
+    partId.includes('team-patch')
+  ) {
+    rotationZ = swing * 0.018;
+  }
+
+  return { translationY, translationZ, rotationX, rotationZ };
+}
+
+function lowPolyPartId3D(meshName: string): string {
+  return meshName
+    .replace(/^infantry-/, '')
+    .replace(/^worker-/, '')
+    .replace(/^tank-/, '')
+    .replace(/^fighter-/, '')
+    .replace(/^aircraft-/, '')
+    .replace(/^vehicle-/, '')
+    .replace(/^tel-/, '');
+}
 
 export const LOWPOLY_TANK_UNIT_IDS = ['grizzly', 'rhino'] as const;
 
@@ -850,6 +930,9 @@ export class ThreeWorldRenderer {
   private readonly projectileMissileTracerMat = new MeshBasicMaterial({ color: 0xaedfff, transparent: true, opacity: 0.9, depthWrite: false });
   private readonly raycaster = new Raycaster();
   private readonly pointer = new Vector2();
+  private readonly instancedPartTranslateMatrix = new Matrix4();
+  private readonly instancedPartRotateXMatrix = new Matrix4();
+  private readonly instancedPartRotateZMatrix = new Matrix4();
 
   constructor(
     private readonly host: HTMLElement,
@@ -1546,10 +1629,10 @@ export class ThreeWorldRenderer {
         this.views.delete(id);
       }
     }
-    this.syncInstancedUnitModels(instanced);
+    this.syncInstancedUnitModels(instanced, nowSeconds);
   }
 
-  private syncInstancedUnitModels(groups: Map<string, { type: UnitType; owner: number; ids: number[] }>): void {
+  private syncInstancedUnitModels(groups: Map<string, { type: UnitType; owner: number; ids: number[] }>, timeSeconds: number): void {
     for (const [key, batch] of this.instancedBatches) {
       if (groups.has(key)) continue;
       this.disposeObject(batch.root);
@@ -1575,13 +1658,16 @@ export class ThreeWorldRenderer {
       }
 
       for (let i = 0; i < batch.ids.length; i++) {
-        const view = this.views.get(batch.ids[i]!);
+        const entityId = batch.ids[i]!;
+        const view = this.views.get(entityId);
         if (!view) continue;
+        const entity = this.world.entities.get(entityId);
         view.root.updateMatrixWorld(true);
         view.visualRoot.updateMatrixWorld(true);
         const base = view.visualRoot.matrixWorld;
         for (const part of batch.parts) {
-          const matrix = base.clone().multiply(part.localMatrix);
+          const local = this.instancedPartLocalMatrix(part, group.type, entity, view, timeSeconds);
+          const matrix = base.clone().multiply(local);
           part.mesh.setMatrixAt(i, matrix);
         }
       }
@@ -1610,10 +1696,50 @@ export class ThreeWorldRenderer {
       instanced.count = 0;
       instanced.userData.instancedEntityIds = [];
       configureInstancedUnitMesh3D(instanced, type.id);
-      parts.push({ mesh: instanced, localMatrix: mesh.matrixWorld.clone() });
+      parts.push({ mesh: instanced, partId: lowPolyPartId3D(mesh.name), localMatrix: mesh.matrixWorld.clone() });
       root.add(instanced);
     });
     return { root, typeId: type.id, owner, capacity, ids: [], parts };
+  }
+
+  private instancedPartLocalMatrix(
+    part: InstancedModelPart,
+    type: UnitType,
+    entity: Entity | undefined,
+    view: EntityView,
+    timeSeconds: number,
+  ): Matrix4 {
+    const local = part.localMatrix.clone();
+    if (type.id !== 'gi' || !entity) return local;
+
+    const moving = this.entityMovingForWalkAnimation(entity, view);
+    const transform = infantryWalkPartTransform3D(part.partId, moving, entity.id, timeSeconds);
+    if (
+      transform.translationY === 0 &&
+      transform.translationZ === 0 &&
+      transform.rotationX === 0 &&
+      transform.rotationZ === 0
+    ) {
+      return local;
+    }
+
+    if (transform.rotationX !== 0) {
+      local.multiply(this.instancedPartRotateXMatrix.makeRotationX(transform.rotationX));
+    }
+    if (transform.rotationZ !== 0) {
+      local.multiply(this.instancedPartRotateZMatrix.makeRotationZ(transform.rotationZ));
+    }
+    if (transform.translationY !== 0 || transform.translationZ !== 0) {
+      local.premultiply(this.instancedPartTranslateMatrix.makeTranslation(0, transform.translationY, transform.translationZ));
+    }
+    return local;
+  }
+
+  private entityMovingForWalkAnimation(entity: Entity, view: EntityView): boolean {
+    const last = view.root.userData.last as { x: number; y: number } | undefined;
+    const dx = entity.x - (last?.x ?? entity.x);
+    const dy = entity.y - (last?.y ?? entity.y);
+    return Math.hypot(dx, dy) > 0.5 || entity.path.length > 0 || entity.waypoint !== null || entity.goal !== null;
   }
 
   private createInstancedModelPrototype(type: UnitType, ownerColor: number): Object3D {

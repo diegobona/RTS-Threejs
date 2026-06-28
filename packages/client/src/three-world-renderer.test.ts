@@ -23,6 +23,7 @@ import {
   LOWPOLY_TANK_UNIT_IDS,
   LOWPOLY_SOLDIER_PART_IDS,
   LOWPOLY_WORKER_PART_IDS,
+  infantryWalkPartTransform3D,
   proceduralModelYawOffset3D,
   combatMuzzlePoint3D,
   consumeFrameVisualBudget3D,
@@ -276,6 +277,19 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     ]));
     expect(LOWPOLY_SOLDIER_PART_IDS.length).toBeGreaterThanOrEqual(28);
     expect(LOWPOLY_SOLDIER_PART_IDS.some((id) => /flag|ukraine|russia|nation/i.test(id))).toBe(false);
+  });
+
+  it('animates modern infantry with an offset walking gait only while moving', () => {
+    const idle = infantryWalkPartTransform3D('left-thigh', false, 7, 0.45);
+    const leftLeg = infantryWalkPartTransform3D('left-thigh', true, 7, 0.45);
+    const rightLeg = infantryWalkPartTransform3D('right-thigh', true, 7, 0.45);
+    const body = infantryWalkPartTransform3D('body', true, 7, 0.45);
+
+    expect(idle.rotationX).toBe(0);
+    expect(idle.translationY).toBe(0);
+    expect(Math.abs(leftLeg.rotationX)).toBeGreaterThan(0.1);
+    expect(leftLeg.rotationX).toBeCloseTo(-rightLeg.rotationX, 5);
+    expect(body.translationY).toBeGreaterThan(0);
   });
 
   it('scales the procedural fighter large enough for close inspection', () => {
