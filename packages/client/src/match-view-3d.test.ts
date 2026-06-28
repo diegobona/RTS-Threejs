@@ -279,6 +279,30 @@ describe('MatchView3D capacity HUD', () => {
       'aircraft',
     ]);
   });
+
+  it('shows tactical missile ammo fired and total as a non-selectable HUD segment', () => {
+    setLocaleForTests('en');
+
+    const segments = capacitySummarySegments3D({
+      building: { count: 3, limit: 20 },
+      worker: { count: 20, limit: 20 },
+      infantry: { count: 0, limit: 300 },
+      vehicle: { count: 100, limit: 100 },
+      missileTruck: { count: 4, limit: 10 },
+      aircraft: { count: 0, limit: 30 },
+    }, { fired: 12, total: 200 });
+
+    expect(segments.map((segment) => segment.text)).toContain('Missiles fired 12/200');
+    expect(segments.find((segment) => segment.text === 'Missiles fired 12/200')?.selectGroup).toBeUndefined();
+    expect(topHudText3D({
+      building: { count: 3, limit: 20 },
+      worker: { count: 20, limit: 20 },
+      infantry: { count: 0, limit: 300 },
+      vehicle: { count: 100, limit: 100 },
+      missileTruck: { count: 4, limit: 10 },
+      aircraft: { count: 0, limit: 30 },
+    }, { fired: 12, total: 200 })).toContain('Missiles fired 12/200');
+  });
 });
 
 describe('MatchView3D unit selection helpers', () => {

@@ -326,19 +326,23 @@ export function tacticalMissileStatus3D(
   if (type.id !== 'arty' && type.id !== 'tel') return null;
   const deployTime = type.deployTime ?? 0;
   if (entity.deployMode === 'deploy' && deployTime > 0 && entity.deployTimer > 0) {
-    return { kind: 'deploy', label: '展开中...', pct: Math.max(0, Math.min(1, 1 - entity.deployTimer / deployTime)) };
+    return { kind: 'deploy', label: 'Deploying...', pct: Math.max(0, Math.min(1, 1 - entity.deployTimer / deployTime)) };
   }
   if (entity.deployMode === 'undeploy' && deployTime > 0 && entity.deployTimer > 0) {
-    return { kind: 'undeploy', label: '收起中...', pct: Math.max(0, Math.min(1, 1 - entity.deployTimer / deployTime)) };
+    return { kind: 'undeploy', label: 'Packing up...', pct: Math.max(0, Math.min(1, 1 - entity.deployTimer / deployTime)) };
   }
   if (!entity.deployed && deployTime > 0 && entity.deployTimer > 0) {
-    return { kind: 'deploy', label: '展开中...', pct: Math.max(0, Math.min(1, 1 - entity.deployTimer / deployTime)) };
+    return { kind: 'deploy', label: 'Deploying...', pct: Math.max(0, Math.min(1, 1 - entity.deployTimer / deployTime)) };
   }
   const cooldown = type.weapon?.cooldown ?? 0;
   if (entity.deployed && cooldown > 0 && entity.cooldown > 0) {
-    return { kind: 'cooldown', label: '冷却中...', pct: Math.max(0, Math.min(1, 1 - entity.cooldown / cooldown)) };
+    return { kind: 'cooldown', label: 'Cooling down...', pct: Math.max(0, Math.min(1, 1 - entity.cooldown / cooldown)) };
   }
   return null;
+}
+
+export function tacticalMissileStatusLabelScale3D(): { x: number; y: number } {
+  return { x: 18, y: 4.2 };
 }
 
 export function entityConstructionOpacity3D(entity: { constructionProgress: number; constructionTotal: number }): number {
@@ -2894,8 +2898,9 @@ export class ThreeWorldRenderer {
   private createStatusLabel(y: number): Sprite {
     const material = new SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false });
     const sprite = new Sprite(material);
-    sprite.position.y = y;
-    sprite.scale.set(1.8, 0.42, 1);
+    const scale = tacticalMissileStatusLabelScale3D();
+    sprite.position.y = y + scale.y * 0.45;
+    sprite.scale.set(scale.x, scale.y, 1);
     sprite.visible = false;
     sprite.userData.pickable = false;
     return sprite;

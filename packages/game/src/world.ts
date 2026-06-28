@@ -42,6 +42,7 @@ export interface Player {
   /** 曾拥有过建筑 —— 据此判负（避免开局未落基地即判负）。 */
   everBuilt: boolean;
   defeated: boolean;
+  tacticalMissilesFired: number;
 }
 
 /** 生产分类：建筑/步兵/车辆各一条并行队列。 */
@@ -182,6 +183,7 @@ const CONYARD_INCOME_PER_SECOND = 150;
 const REFINERY_INCOME_PER_SECOND = 600;
 const AUTO_PRODUCTION_STEP = 2;
 const CONSTRUCTION_WORKER_COUNT = 1;
+export const TACTICAL_MISSILE_STOCKPILE = 200;
 export interface CapacitySlot {
   count: number;
   limit: number;
@@ -327,6 +329,7 @@ export class World {
       powerDrained: 0,
       everBuilt: false,
       defeated: false,
+      tacticalMissilesFired: 0,
     });
   }
 
@@ -747,6 +750,20 @@ export class World {
       if (type.weapon || type.antiAirWeapon) return true;
     }
     return false;
+  }
+
+  tacticalMissileAmmoFor(owner: number): { fired: number; total: number } {
+    const player = this.players.get(owner);
+    return {
+      fired: Math.max(0, Math.min(TACTICAL_MISSILE_STOCKPILE, player?.tacticalMissilesFired ?? 0)),
+      total: TACTICAL_MISSILE_STOCKPILE,
+    };
+  }
+
+  setTacticalMissilesFiredForTests(owner: number, fired: number): void {
+    const player = this.players.get(owner);
+    if (!player) return;
+    player.tacticalMissilesFired = Math.max(0, Math.min(TACTICAL_MISSILE_STOCKPILE, Math.trunc(fired)));
   }
 
   canBuild(owner: number, type: UnitType): boolean {
@@ -1809,7 +1826,7 @@ export class World {
     return target;
   }
 
-  private stepGroundAttack(e: Entity, type: UnitType): boolean {
+  private stepGroundAttack(e: Entity, type: UnitType, cooldownBlocked = false): boolean {
     const weapon = type.weapon;
     if (!weapon || e.groundTargetX === null || e.groundTargetY === null) return false;
     const dx = e.groundTargetX - e.x;
@@ -1836,18 +1853,19 @@ export class World {
       if (Math.abs(((aim - e.facing + 128) & 0xff) - 128) > 8) return true;
     }
     if (!this.readyToFireAfterDeploy(e, type)) return true;
+    if (cooldownBlocked) return true;
     if (e.cooldown <= 0) {
-      this.fireGround(e, e.groundTargetX, e.groundTargetY, type, weapon);
-      e.cooldown = weapon.cooldown;
+      if (this.fireGround(e, e.groundTargetX, e.groundTargetY, type, weapon)) e.cooldown = weapon.cooldown;
     }
     return true;
   }
 
   private stepCombat(e: Entity, type: UnitType): boolean {
     if (!this.hasWeapon(type)) return false;
-    if (e.cooldown > 0) e.cooldown--;
+    const cooldownBlocked = e.cooldown > 0;
+    if (cooldownBlocked) e.cooldown--;
     if (type.deployTime && e.deployMode === 'undeploy') return false;
-    if (e.groundTargetX !== null && e.groundTargetY !== null) return this.stepGroundAttack(e, type);
+    if (e.groundTargetX !== null && e.groundTargetY !== null) return this.stepGroundAttack(e, type, cooldownBlocked);
 
     let target: Entity | undefined;
     if (e.attackMove) {
@@ -1930,9 +1948,9 @@ export class World {
       if ((((aim - e.facing + 128) & 0xff) - 128) > 8) return true;
     }
     if (!this.readyToFireAfterDeploy(e, type)) return true;
+    if (cooldownBlocked) return true;
     if (e.cooldown <= 0) {
-      this.fire(e, target, type, weapon);
-      e.cooldown = weapon.cooldown;
+      if (this.fire(e, target, type, weapon)) e.cooldown = weapon.cooldown;
     }
     return true;
   }
@@ -1979,10 +1997,24 @@ export class World {
     return e.kills >= 5 ? 150 : e.kills >= 2 ? 125 : 100;
   }
 
-  private fire(shooter: Entity, target: Entity, shooterType: UnitType, weapon: WeaponSpec): void {
+  private isTacticalMissileShot(shooterType: UnitType, weapon: WeaponSpec): boolean {
+    return isMissileTruckType(shooterType) && weapon.role === 'missile';
+  }
+
+  private consumeTacticalMissile(shooterType: UnitType, weapon: WeaponSpec, owner: number): boolean {
+    if (!this.isTacticalMissileShot(shooterType, weapon)) return true;
+    const player = this.players.get(owner);
+    if (!player || player.tacticalMissilesFired >= TACTICAL_MISSILE_STOCKPILE) return false;
+    player.tacticalMissilesFired++;
+    return true;
+  }
+
+  private fire(shooter: Entity, target: Entity, shooterType: UnitType, weapon: WeaponSpec): boolean {
+    if (!this.consumeTacticalMissile(shooterType, weapon, shooter.owner)) return false;
     const dmg = Math.floor((weapon.damage * this.vetMul(shooter)) / 100); // 老兵加成
     if (weapon.projectileSpeed <= 0) {
       this.applyDamage(target, dmg, weapon.warhead, weapon.splash, shooter.owner, shooter.id, weapon.targetDomains);
+      return true;
     } else {
       this.projectiles.push({
         id: this.nextProjectileId++,
@@ -1998,13 +2030,16 @@ export class World {
         weaponRole: this.weaponRoleFor(shooterType, weapon),
         targetDomains: weapon.targetDomains ? [...weapon.targetDomains] : undefined,
       });
+      return true;
     }
   }
 
-  private fireGround(shooter: Entity, targetX: number, targetY: number, shooterType: UnitType, weapon: WeaponSpec): void {
+  private fireGround(shooter: Entity, targetX: number, targetY: number, shooterType: UnitType, weapon: WeaponSpec): boolean {
+    if (!this.consumeTacticalMissile(shooterType, weapon, shooter.owner)) return false;
     const dmg = Math.floor((weapon.damage * this.vetMul(shooter)) / 100);
     if (weapon.projectileSpeed <= 0) {
       this.applyGroundDamage(targetX, targetY, dmg, weapon.warhead, weapon.splash, shooter.owner, shooter.id, weapon.targetDomains);
+      return true;
     } else {
       this.projectiles.push({
         id: this.nextProjectileId++,
@@ -2022,6 +2057,7 @@ export class World {
         weaponRole: this.weaponRoleFor(shooterType, weapon),
         targetDomains: weapon.targetDomains ? [...weapon.targetDomains] : undefined,
       });
+      return true;
     }
   }
 
@@ -2190,7 +2226,7 @@ export class World {
     h.addInt(this.prng.getState());
     h.addInt(this.entities.size);
     for (const p of this.players.values()) {
-      h.addInt(p.id).addInt(p.credits).addInt(p.defeated ? 1 : 0);
+      h.addInt(p.id).addInt(p.credits).addInt(p.defeated ? 1 : 0).addInt(p.tacticalMissilesFired);
     }
     for (const e of this.entities.values()) {
       h.addInt(e.id).addInt(e.owner).addInt(e.x).addInt(e.y).addInt(e.facing).addInt(e.hp);

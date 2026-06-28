@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { gridTerrain } from './replay';
 import { DEFAULT_RULES } from './content';
+import { dirToBangle } from './fixed';
 import { World } from './world';
 
 function runTicks(w: World, ticks: number): void {
@@ -16,7 +17,7 @@ describe('mobile tactical missile artillery', () => {
     expect(arty?.weapon?.role).toBe('missile');
     expect(arty?.weapon?.range).toBeGreaterThanOrEqual(400 * 256);
     expect(arty?.weapon?.minRange).toBeGreaterThanOrEqual(8 * 256);
-    expect(arty?.weapon?.cooldown).toBeGreaterThanOrEqual(90);
+    expect(arty?.weapon?.cooldown).toBeGreaterThanOrEqual(225);
     expect(arty?.weapon?.targetDomains).toEqual(['infantry', 'vehicle', 'building']);
   });
 
@@ -76,6 +77,54 @@ describe('mobile tactical missile artillery', () => {
 
     expect(target.hp).toBe(hpAfterFirstImpact);
     expect(launcher.cooldown).toBeGreaterThan(0);
+  });
+
+  it('tracks fired tactical missiles per owner and blocks launches after the 200 missile stockpile is spent', () => {
+    const w = new World(gridTerrain(80, 80), 20260628);
+    w.addPlayer(1, 'allied', 10000);
+    w.addPlayer(2, 'soviet', 10000);
+    const launcher = w.spawnUnit(1, 'arty', 8, 8)!;
+    const target = w.spawnUnit(2, 'warfactory', 34, 8)!;
+
+    launcher.deployed = true;
+    launcher.deployMode = null;
+    launcher.deployTimer = 0;
+    w.applyCommands([{ kind: 'attack', entityIds: [launcher.id], targetId: target.id }]);
+
+    w.step();
+
+    expect(w.tacticalMissileAmmoFor(1)).toEqual({ fired: 1, total: 200 });
+
+    launcher.cooldown = 0;
+    w.setTacticalMissilesFiredForTests(1, 200);
+    w.step();
+
+    expect(w.tacticalMissileAmmoFor(1)).toEqual({ fired: 200, total: 200 });
+    expect(w.projectiles.filter((p) => p.shooterId === launcher.id)).toHaveLength(1);
+  });
+
+  it('does not fire on a tick that begins while cooldown is still active', () => {
+    const w = new World(gridTerrain(80, 80), 20260628);
+    w.addPlayer(1, 'allied', 10000);
+    w.addPlayer(2, 'soviet', 10000);
+    const launcher = w.spawnUnit(1, 'arty', 8, 8)!;
+    const target = w.spawnUnit(2, 'warfactory', 34, 8)!;
+
+    launcher.deployed = true;
+    launcher.deployMode = null;
+    launcher.deployTimer = 0;
+    launcher.cooldown = 1;
+    launcher.facing = dirToBangle(target.x - launcher.x, target.y - launcher.y);
+    w.applyCommands([{ kind: 'attack', entityIds: [launcher.id], targetId: target.id }]);
+
+    w.step();
+
+    expect(launcher.cooldown).toBe(0);
+    expect(w.projectiles).toHaveLength(0);
+
+    w.step();
+
+    expect(w.projectiles.length).toBeGreaterThan(0);
   });
 
   it('packs up before moving after it has deployed', () => {

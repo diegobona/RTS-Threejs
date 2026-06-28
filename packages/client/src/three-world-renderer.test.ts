@@ -29,6 +29,7 @@ import {
   projectileTracerEnd3D,
   projectileImpactKind3D,
   tacticalMissileLookTarget3D,
+  tacticalMissileStatusLabelScale3D,
   tacticalMissileStatus3D,
   projectileVisualProfile3D,
   projectileVisualPoint3D,
@@ -170,20 +171,27 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
 
     expect(tacticalMissileStatus3D({ deployed: false, deployTimer: 30, deployMode: 'deploy', cooldown: 0 }, type)).toEqual({
       kind: 'deploy',
-      label: '展开中...',
+      label: 'Deploying...',
       pct: 0.5,
     });
     expect(tacticalMissileStatus3D({ deployed: true, deployTimer: 30, deployMode: 'undeploy', cooldown: 0 }, type)).toEqual({
       kind: 'undeploy',
-      label: '收起中...',
+      label: 'Packing up...',
       pct: 0.5,
     });
     expect(tacticalMissileStatus3D({ deployed: true, deployTimer: 0, deployMode: null, cooldown: 25 }, type)).toEqual({
       kind: 'cooldown',
-      label: '冷却中...',
+      label: 'Cooling down...',
       pct: 0.75,
     });
     expect(tacticalMissileStatus3D({ deployed: true, deployTimer: 0, deployMode: null, cooldown: 0 }, type)).toBeNull();
+  });
+
+  it('renders tactical missile status text ten times larger for battlefield readability', () => {
+    const scale = tacticalMissileStatusLabelScale3D();
+
+    expect(scale.x).toBeCloseTo(18);
+    expect(scale.y).toBeCloseTo(4.2);
   });
 
   it('marks aircraft bomb impacts with a dedicated audible impact instead of muted generic explosions', () => {

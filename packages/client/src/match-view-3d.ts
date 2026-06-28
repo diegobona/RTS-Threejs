@@ -132,11 +132,16 @@ export interface CapacitySummarySegment3D {
   selectGroup?: CapacitySelectionGroup3D;
 }
 
+export interface TacticalMissileAmmoSummary3D {
+  fired: number;
+  total: number;
+}
+
 function isMissileTruckUnitType3D(typeId: string, type: UnitType): boolean {
   return type.domain === 'vehicle' && (typeId === 'arty' || typeId === 'tel');
 }
 
-export function capacitySummarySegments3D(capacity: CapacitySnapshot): CapacitySummarySegment3D[] {
+export function capacitySummarySegments3D(capacity: CapacitySnapshot, missileAmmo?: TacticalMissileAmmoSummary3D): CapacitySummarySegment3D[] {
   const labels = uiText().capacity;
   const missileTruckLabel = (labels as { missileTruck?: string }).missileTruck ?? '\u5bfc\u5f39\u8f66';
   const segments: CapacitySummarySegment3D[] = [
@@ -151,15 +156,18 @@ export function capacitySummarySegments3D(capacity: CapacitySnapshot): CapacityS
       selectGroup: 'missileTruck',
     });
   }
+  if (missileAmmo) {
+    segments.push({ text: uiText().hud.missileAmmo(missileAmmo.fired, missileAmmo.total) });
+  }
   segments.push({ text: `${labels.aircraft} ${capacity.aircraft.count}/${capacity.aircraft.limit}`, selectGroup: 'aircraft' });
   return segments;
 }
-export function capacitySummaryText3D(capacity: CapacitySnapshot): string {
-  return capacitySummarySegments3D(capacity).map((segment) => segment.text).join(' | ');
+export function capacitySummaryText3D(capacity: CapacitySnapshot, missileAmmo?: TacticalMissileAmmoSummary3D): string {
+  return capacitySummarySegments3D(capacity, missileAmmo).map((segment) => segment.text).join(' | ');
 }
 
-export function topHudText3D(capacity: CapacitySnapshot): string {
-  return capacitySummaryText3D(capacity);
+export function topHudText3D(capacity: CapacitySnapshot, missileAmmo?: TacticalMissileAmmoSummary3D): string {
+  return capacitySummaryText3D(capacity, missileAmmo);
 }
 
 export interface RulesAndControlsSection3D {
@@ -653,7 +661,7 @@ export class MatchView3D {
   }
 
   private updateCapacityHud(): void {
-    const segments = capacitySummarySegments3D(this.world.capacityFor(this.localPlayerId));
+    const segments = capacitySummarySegments3D(this.world.capacityFor(this.localPlayerId), this.world.tacticalMissileAmmoFor(this.localPlayerId));
     const key = segments.map((segment) => `${segment.selectGroup ?? '-'}:${segment.text}`).join('|');
     if (key === this.capacityHudKey) return;
     this.capacityHudKey = key;
