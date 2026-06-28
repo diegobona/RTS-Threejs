@@ -70,6 +70,10 @@ export function buildButtonMeta3D(type: Pick<UnitType, 'id' | 'name'>): BuildBut
   const known = text[type.id as keyof Omit<typeof text, 'fallback'>];
   return known ?? { icon: text.fallback.icon, label: type.name, hint: text.fallback.hint };
 }
+
+export function buildButtonTitle3D(meta: Pick<BuildButtonMeta3D, 'hint'>): string {
+  return meta.hint;
+}
 export interface ProductionClickPlan3D {
   commands: Command[];
   placingTypeId: string | null;
@@ -762,7 +766,7 @@ export class MatchView3D {
       const meta = buildButtonMeta3D(type);
       const button = document.createElement('button');
       button.type = 'button';
-      button.title = `${meta.label} - ${meta.hint}`;
+      button.title = buildButtonTitle3D(meta);
       const icon = document.createElement('span');
       icon.className = 'mv3-prod-icon';
       icon.textContent = meta.icon;

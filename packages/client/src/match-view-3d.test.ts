@@ -8,6 +8,7 @@ import {
   ATTACK_MODE_HUD_LABEL_3D,
   bindAudioUnlock,
   buildButtonMeta3D,
+  buildButtonTitle3D,
   BUILD_PANEL_PLACEMENT_CLASS_3D,
   capacitySummarySegments3D,
   capacitySummaryText3D,
@@ -86,20 +87,28 @@ describe('MatchView3D production tabs', () => {
     expect(buildButtonMeta3D({ id: 'barracks', name: 'Barracks' })).toEqual({
       icon: '\u25a5',
       label: '\u5175\u8425',
-      hint: '\u81ea\u52a8\u751f\u4ea7\u58eb\u5175',
+      hint: '\u53ef\u751f\u4ea7\uff1asoldier',
     });
     expect(buildButtonMeta3D({ id: 'warfactory', name: 'War Factory' })).toEqual({
       icon: '\u25b0',
       label: '\u6218\u8f66\u5de5\u5382',
-      hint: '\u81ea\u52a8\u751f\u4ea7\u5766\u514b',
+      hint: '\u53ef\u751f\u4ea7\uff1atank\u3001missile truck',
     });
     expect(buildButtonMeta3D({ id: 'airbase', name: 'Airbase' })).toEqual({
       icon: '\u2708',
       label: '\u7a7a\u519b\u57fa\u5730',
-      hint: '\u81ea\u52a8\u751f\u4ea7\u98de\u673a',
+      hint: '\u53ef\u751f\u4ea7\uff1afighter',
     });
     expect(buildButtonMeta3D({ id: 'pillbox', name: 'Pillbox' }).icon).toBe('\u2b1f');
     expect(buildButtonMeta3D({ id: 'battlelab', name: 'Battle Lab' }).hint).toBe('\u79d1\u6280\u89e3\u9501');
+  });
+
+  it('uses concise production hints as build button hover titles', () => {
+    setLocaleForTests('en');
+
+    expect(buildButtonTitle3D(buildButtonMeta3D({ id: 'barracks', name: 'Barracks' }))).toBe('Produces: soldier');
+    expect(buildButtonTitle3D(buildButtonMeta3D({ id: 'warfactory', name: 'War Factory' }))).toBe('Produces: tank, missile truck');
+    expect(buildButtonTitle3D(buildButtonMeta3D({ id: 'airbase', name: 'Airbase' }))).toBe('Produces: fighter');
   });
   it('switches the current pending building instead of queuing behind the previous pending building', () => {
     const world = new World(gridTerrain(20, 20), 7);
