@@ -21,6 +21,7 @@ import {
   LOWPOLY_FIGHTER_PART_IDS,
   LOWPOLY_FIGHTER_MODEL_SCALE,
   LOWPOLY_TANK_UNIT_IDS,
+  LOWPOLY_SOLDIER_PART_IDS,
   LOWPOLY_WORKER_PART_IDS,
   proceduralModelYawOffset3D,
   combatMuzzlePoint3D,
@@ -187,6 +188,29 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(tacticalMissileStatus3D({ deployed: true, deployTimer: 0, deployMode: null, cooldown: 0 }, type)).toBeNull();
   });
 
+  it('hides tactical missile deploy and cooldown status for non-local missile trucks', () => {
+    const type = { id: 'arty', deployTime: 60, weapon: { cooldown: 100 } };
+
+    expect(tacticalMissileStatus3D({
+      owner: 2,
+      deployed: true,
+      deployTimer: 30,
+      deployMode: 'undeploy',
+      cooldown: 0,
+    } as any, type, 1)).toBeNull();
+    expect(tacticalMissileStatus3D({
+      owner: 1,
+      deployed: true,
+      deployTimer: 30,
+      deployMode: 'undeploy',
+      cooldown: 0,
+    } as any, type, 1)).toEqual({
+      kind: 'undeploy',
+      label: 'Packing up...',
+      pct: 0.5,
+    });
+  });
+
   it('renders tactical missile status text ten times larger for battlefield readability', () => {
     const scale = tacticalMissileStatusLabelScale3D();
 
@@ -231,6 +255,27 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
   it('builds workers without rifle-like parts', () => {
     expect(LOWPOLY_WORKER_PART_IDS).toEqual(expect.arrayContaining(['hardhat', 'toolbox', 'team-patch']));
     expect(LOWPOLY_WORKER_PART_IDS.some((id) => /rifle|barrel|gun/i.test(id))).toBe(false);
+  });
+
+  it('builds modern neutral soldiers from detailed tactical low-poly parts', () => {
+    expect(LOWPOLY_SOLDIER_PART_IDS).toEqual(expect.arrayContaining([
+      'helmet-shell',
+      'helmet-rail-left',
+      'goggles',
+      'face-mask',
+      'plate-carrier-front',
+      'chest-rig',
+      'ammo-pouch-left',
+      'backpack',
+      'radio',
+      'knee-pad-left',
+      'boot-right',
+      'rifle-body',
+      'rifle-magazine',
+      'rifle-optic',
+    ]));
+    expect(LOWPOLY_SOLDIER_PART_IDS.length).toBeGreaterThanOrEqual(28);
+    expect(LOWPOLY_SOLDIER_PART_IDS.some((id) => /flag|ukraine|russia|nation/i.test(id))).toBe(false);
   });
 
   it('scales the procedural fighter large enough for close inspection', () => {

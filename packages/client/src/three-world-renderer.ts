@@ -229,6 +229,48 @@ export const LOWPOLY_WORKER_PART_IDS = [
   'team-patch',
 ] as const;
 
+export const LOWPOLY_SOLDIER_PART_IDS = [
+  'body',
+  'torso-armor',
+  'plate-carrier-front',
+  'plate-carrier-back',
+  'chest-rig',
+  'ammo-pouch-left',
+  'ammo-pouch-center',
+  'ammo-pouch-right',
+  'head',
+  'helmet-shell',
+  'helmet-rim',
+  'helmet-rail-left',
+  'helmet-rail-right',
+  'goggles',
+  'face-mask',
+  'backpack',
+  'radio',
+  'radio-antenna',
+  'left-upper-arm',
+  'left-forearm',
+  'right-upper-arm',
+  'right-forearm',
+  'left-glove',
+  'right-glove',
+  'left-thigh',
+  'left-shin',
+  'right-thigh',
+  'right-shin',
+  'knee-pad-left',
+  'knee-pad-right',
+  'boot-left',
+  'boot-right',
+  'rifle-stock',
+  'rifle-body',
+  'rifle-barrel',
+  'rifle-muzzle',
+  'rifle-magazine',
+  'rifle-optic',
+  'team-patch',
+] as const;
+
 export const LOWPOLY_TANK_UNIT_IDS = ['grizzly', 'rhino'] as const;
 
 export function usesLowPolyTankModel3D(type: Pick<UnitType, 'id' | 'domain'>): boolean {
@@ -320,10 +362,12 @@ export interface TacticalMissileStatus3D {
 }
 
 export function tacticalMissileStatus3D(
-  entity: Pick<Entity, 'deployed' | 'deployMode' | 'deployTimer' | 'cooldown'>,
+  entity: Pick<Entity, 'deployed' | 'deployMode' | 'deployTimer' | 'cooldown'> & Partial<Pick<Entity, 'owner'>>,
   type: { id: string; deployTime?: number; weapon?: { cooldown: number } | null },
+  localPlayerId?: number,
 ): TacticalMissileStatus3D | null {
   if (type.id !== 'arty' && type.id !== 'tel') return null;
+  if (localPlayerId !== undefined && entity.owner !== undefined && entity.owner !== localPlayerId) return null;
   const deployTime = type.deployTime ?? 0;
   if (entity.deployMode === 'deploy' && deployTime > 0 && entity.deployTimer > 0) {
     return { kind: 'deploy', label: 'Deploying...', pct: Math.max(0, Math.min(1, 1 - entity.deployTimer / deployTime)) };
@@ -1481,7 +1525,7 @@ export class ThreeWorldRenderer {
         constructing ? this.hpConstructionMat.mat : this.hpMaterialForOwner(e.owner),
         showHpBar,
       );
-      const missileStatus = tacticalMissileStatus3D(e, type);
+      const missileStatus = tacticalMissileStatus3D(e, type, this.localPlayerId);
       view.statusBar.rotation.y = entityHpBarYaw3D(view.root.rotation.y);
       this.updateHpBar(
         view.statusBar,
@@ -2346,12 +2390,16 @@ export class ThreeWorldRenderer {
   private createInfantry(ownerColor: number): Object3D {
     const root = new Group();
     root.name = 'lowpoly-infantry';
-    const uniformMat = new MeshLambertMaterial({ color: 0x59634d });
-    const darkUniformMat = new MeshLambertMaterial({ color: 0x394235 });
+    const uniformMat = new MeshLambertMaterial({ color: 0x59644f });
+    const darkUniformMat = new MeshLambertMaterial({ color: 0x333c32 });
+    const armorMat = new MeshLambertMaterial({ color: 0x48513f });
+    const pouchMat = new MeshLambertMaterial({ color: 0x77705c });
     const skinMat = new MeshLambertMaterial({ color: 0xb08a65 });
-    const helmetMat = new MeshLambertMaterial({ color: 0x465143 });
-    const rifleMat = new MeshLambertMaterial({ color: 0x2e302c });
-    const woodMat = new MeshLambertMaterial({ color: 0x6c4e30 });
+    const helmetMat = new MeshLambertMaterial({ color: 0x4c5647 });
+    const bootMat = new MeshLambertMaterial({ color: 0x242a25 });
+    const rifleMat = new MeshLambertMaterial({ color: 0x202622 });
+    const rifleDarkMat = new MeshLambertMaterial({ color: 0x111614 });
+    const lensMat = new MeshLambertMaterial({ color: 0x161f22 });
     const accentMat = new MeshLambertMaterial({ color: ownerColor });
     const addPart = (name: string, mesh: Mesh): Mesh => {
       mesh.name = `infantry-${name}`;
@@ -2360,43 +2408,105 @@ export class ThreeWorldRenderer {
     };
 
     const body = addPart('body', new Mesh(this.soldierGeo, uniformMat));
-    body.position.y = 0.68;
-    body.scale.set(0.88, 0.92, 0.78);
+    body.position.y = 0.71;
+    body.scale.set(0.9, 0.98, 0.72);
+
+    const torsoArmor = addPart('torso-armor', new Mesh(new BoxGeometry(0.45, 0.56, 0.26), armorMat));
+    torsoArmor.position.set(0, 0.82, -0.04);
+    const plateFront = addPart('plate-carrier-front', new Mesh(new BoxGeometry(0.38, 0.43, 0.08), darkUniformMat));
+    plateFront.position.set(0, 0.88, -0.22);
+    const plateBack = addPart('plate-carrier-back', new Mesh(new BoxGeometry(0.36, 0.42, 0.08), darkUniformMat));
+    plateBack.position.set(0, 0.88, 0.19);
+    const chestRig = addPart('chest-rig', new Mesh(new BoxGeometry(0.5, 0.07, 0.06), pouchMat));
+    chestRig.position.set(0, 1.02, -0.28);
+    for (const [name, x] of [
+      ['ammo-pouch-left', -0.16],
+      ['ammo-pouch-center', 0],
+      ['ammo-pouch-right', 0.16],
+    ] as const) {
+      const pouch = addPart(name, new Mesh(new BoxGeometry(0.12, 0.18, 0.08), pouchMat));
+      pouch.position.set(x, 0.82, -0.29);
+    }
 
     const head = addPart('head', new Mesh(new SphereGeometry(0.18, 8, 8), skinMat));
-    head.position.set(0, 1.24, -0.03);
-    const helmet = addPart('helmet', new Mesh(new ConeGeometry(0.23, 0.16, 8), helmetMat));
-    helmet.position.set(0, 1.39, -0.03);
-    helmet.rotation.y = Math.PI / 8;
+    head.position.set(0, 1.24, -0.04);
+    head.scale.set(0.92, 0.96, 0.86);
+    const helmetShell = addPart('helmet-shell', new Mesh(new SphereGeometry(0.24, 8, 6), helmetMat));
+    helmetShell.position.set(0, 1.38, -0.035);
+    helmetShell.scale.set(1, 0.58, 0.88);
+    const helmetRim = addPart('helmet-rim', new Mesh(new BoxGeometry(0.5, 0.05, 0.34), helmetMat));
+    helmetRim.position.set(0, 1.31, -0.02);
+    const railLeft = addPart('helmet-rail-left', new Mesh(new BoxGeometry(0.04, 0.045, 0.3), bootMat));
+    railLeft.position.set(-0.23, 1.36, -0.02);
+    const railRight = addPart('helmet-rail-right', new Mesh(new BoxGeometry(0.04, 0.045, 0.3), bootMat));
+    railRight.position.set(0.23, 1.36, -0.02);
+    const goggles = addPart('goggles', new Mesh(new BoxGeometry(0.32, 0.075, 0.04), lensMat));
+    goggles.position.set(0, 1.26, -0.205);
+    const mask = addPart('face-mask', new Mesh(new BoxGeometry(0.24, 0.11, 0.055), darkUniformMat));
+    mask.position.set(0, 1.17, -0.2);
 
-    const backpack = addPart('backpack', new Mesh(new BoxGeometry(0.28, 0.38, 0.16), darkUniformMat));
-    backpack.position.set(0, 0.78, 0.24);
+    const backpack = addPart('backpack', new Mesh(new BoxGeometry(0.34, 0.48, 0.2), darkUniformMat));
+    backpack.position.set(0, 0.82, 0.3);
+    const radio = addPart('radio', new Mesh(new BoxGeometry(0.11, 0.22, 0.06), rifleDarkMat));
+    radio.position.set(0.23, 1.02, 0.31);
+    const antenna = addPart('radio-antenna', new Mesh(new CylinderGeometry(0.012, 0.012, 0.48, 5), rifleDarkMat));
+    antenna.position.set(0.29, 1.29, 0.33);
+    antenna.rotation.z = -0.1;
 
-    const leftArm = addPart('left-arm', new Mesh(new BoxGeometry(0.12, 0.5, 0.12), darkUniformMat));
-    leftArm.position.set(-0.28, 0.82, -0.08);
-    leftArm.rotation.x = -0.75;
-    leftArm.rotation.z = -0.16;
-    const rightArm = addPart('right-arm', new Mesh(new BoxGeometry(0.12, 0.5, 0.12), darkUniformMat));
-    rightArm.position.set(0.28, 0.82, -0.1);
-    rightArm.rotation.x = -0.65;
-    rightArm.rotation.z = 0.18;
+    const leftUpperArm = addPart('left-upper-arm', new Mesh(new BoxGeometry(0.12, 0.3, 0.12), uniformMat));
+    leftUpperArm.position.set(-0.3, 0.98, -0.04);
+    leftUpperArm.rotation.x = -0.64;
+    leftUpperArm.rotation.z = -0.24;
+    const leftForearm = addPart('left-forearm', new Mesh(new BoxGeometry(0.11, 0.28, 0.11), darkUniformMat));
+    leftForearm.position.set(-0.24, 0.76, -0.24);
+    leftForearm.rotation.x = -0.9;
+    leftForearm.rotation.z = 0.1;
+    const rightUpperArm = addPart('right-upper-arm', new Mesh(new BoxGeometry(0.12, 0.3, 0.12), uniformMat));
+    rightUpperArm.position.set(0.31, 0.98, -0.05);
+    rightUpperArm.rotation.x = -0.56;
+    rightUpperArm.rotation.z = 0.26;
+    const rightForearm = addPart('right-forearm', new Mesh(new BoxGeometry(0.11, 0.28, 0.11), darkUniformMat));
+    rightForearm.position.set(0.22, 0.77, -0.25);
+    rightForearm.rotation.x = -0.86;
+    rightForearm.rotation.z = -0.12;
+    const leftGlove = addPart('left-glove', new Mesh(new BoxGeometry(0.12, 0.09, 0.12), bootMat));
+    leftGlove.position.set(-0.19, 0.65, -0.39);
+    const rightGlove = addPart('right-glove', new Mesh(new BoxGeometry(0.12, 0.09, 0.12), bootMat));
+    rightGlove.position.set(0.18, 0.65, -0.38);
 
-    const leftLeg = addPart('left-leg', new Mesh(new BoxGeometry(0.13, 0.48, 0.13), darkUniformMat));
-    leftLeg.position.set(-0.11, 0.25, 0.02);
-    leftLeg.rotation.x = -0.12;
-    const rightLeg = addPart('right-leg', new Mesh(new BoxGeometry(0.13, 0.48, 0.13), darkUniformMat));
-    rightLeg.position.set(0.11, 0.25, -0.02);
-    rightLeg.rotation.x = 0.12;
+    for (const side of [-1, 1] as const) {
+      const suffix = side < 0 ? 'left' : 'right';
+      const thigh = addPart(`${suffix}-thigh`, new Mesh(new BoxGeometry(0.14, 0.32, 0.14), uniformMat));
+      thigh.position.set(side * 0.11, 0.42, side < 0 ? 0.025 : -0.02);
+      thigh.rotation.x = side < 0 ? -0.08 : 0.08;
+      const shin = addPart(`${suffix}-shin`, new Mesh(new BoxGeometry(0.12, 0.34, 0.12), darkUniformMat));
+      shin.position.set(side * 0.11, 0.18, side < 0 ? -0.005 : 0.025);
+      shin.rotation.x = side < 0 ? 0.08 : -0.08;
+      const knee = addPart(`knee-pad-${suffix}`, new Mesh(new BoxGeometry(0.15, 0.085, 0.055), armorMat));
+      knee.position.set(side * 0.11, 0.31, -0.095);
+      const boot = addPart(`boot-${suffix}`, new Mesh(new BoxGeometry(0.16, 0.09, 0.25), bootMat));
+      boot.position.set(side * 0.11, 0.025, -0.045);
+    }
 
-    const rifleStock = addPart('rifle-stock', new Mesh(new BoxGeometry(0.12, 0.1, 0.3), woodMat));
-    rifleStock.position.set(0.2, 0.86, -0.31);
-    rifleStock.rotation.x = -0.15;
-    const rifleBarrel = addPart('rifle-barrel', new Mesh(new BoxGeometry(0.06, 0.06, 0.72), rifleMat));
-    rifleBarrel.position.set(0.14, 0.9, -0.72);
-    rifleBarrel.rotation.x = -0.06;
+    const rifleStock = addPart('rifle-stock', new Mesh(new BoxGeometry(0.13, 0.11, 0.28), rifleDarkMat));
+    rifleStock.position.set(0.16, 0.78, -0.28);
+    rifleStock.rotation.x = -0.1;
+    const rifleBody = addPart('rifle-body', new Mesh(new BoxGeometry(0.12, 0.12, 0.42), rifleMat));
+    rifleBody.position.set(0.08, 0.82, -0.5);
+    rifleBody.rotation.x = -0.07;
+    const rifleBarrel = addPart('rifle-barrel', new Mesh(new BoxGeometry(0.045, 0.045, 0.58), rifleDarkMat));
+    rifleBarrel.position.set(0.05, 0.84, -0.96);
+    rifleBarrel.rotation.x = -0.045;
+    const rifleMuzzle = addPart('rifle-muzzle', new Mesh(new BoxGeometry(0.07, 0.06, 0.08), rifleDarkMat));
+    rifleMuzzle.position.set(0.05, 0.845, -1.29);
+    const rifleMagazine = addPart('rifle-magazine', new Mesh(new BoxGeometry(0.1, 0.24, 0.08), rifleDarkMat));
+    rifleMagazine.position.set(0.08, 0.66, -0.52);
+    rifleMagazine.rotation.x = 0.14;
+    const rifleOptic = addPart('rifle-optic', new Mesh(new BoxGeometry(0.11, 0.07, 0.14), lensMat));
+    rifleOptic.position.set(0.08, 0.93, -0.55);
 
     const teamPatch = addPart('team-patch', new Mesh(new BoxGeometry(0.08, 0.16, 0.035), accentMat));
-    teamPatch.position.set(0.24, 0.96, -0.21);
+    teamPatch.position.set(0.27, 1.02, -0.17);
 
     return root;
   }
