@@ -73,6 +73,7 @@ export interface HarvesterState {
 /** 作战姿态：进攻=更大半径主动出击；警戒=默认，警戒半径内迎击；
  *  坚守=只打武器射程内、绝不移动追击；不还火=不自动索敌也不还击（仅听显式命令）。 */
 export type Stance = 'aggressive' | 'guard' | 'holdground' | 'holdfire';
+export type DeployMode = 'deploy' | 'undeploy' | null;
 
 export interface Entity {
   id: number;
@@ -124,6 +125,7 @@ export interface Entity {
   producerExit: { x: number; y: number } | null;
   /** 展开状态：true=已展开可开火，false=已收起可移动。仅 deployTime 单位使用。 */
   deployed: boolean;
+  deployMode: DeployMode;
   /** 展开/收起倒计时（tick）。>0 表示正在转换中。 */
   deployTimer: number;
 }
@@ -626,6 +628,7 @@ export class World {
       producer: null,
       producerExit: null,
       deployed: false,
+      deployMode: null,
       deployTimer: 0,
     };
     this.entities.set(id, e);
@@ -1494,8 +1497,13 @@ export class World {
   private orderMove(e: Entity, cellX: number, cellY: number): void {
     const type = this.rules.units.get(e.typeId);
     if (type?.deployTime) {
-      e.deployed = false;
-      e.deployTimer = 0;
+      if (e.deployed) {
+        e.deployMode = 'undeploy';
+        e.deployTimer = Math.max(1, type.deployTime);
+      } else {
+        e.deployMode = null;
+        e.deployTimer = 0;
+      }
     }
     const canFly = type?.domain === 'aircraft';
     const grid: PathGrid = {
@@ -1511,9 +1519,11 @@ export class World {
 
   private stepMovement(e: Entity, type: UnitType): void {
     if (type.domain === 'building') return;
-    if (type.deployTime && (e.goal || e.waypoint || e.path.length > 0)) {
+    if (type.deployTime && e.deployMode === 'undeploy') {
+      e.deployTimer = Math.max(0, e.deployTimer - 1);
+      if (e.deployTimer > 0) return;
       e.deployed = false;
-      e.deployTimer = 0;
+      e.deployMode = null;
     }
     if (!e.waypoint) {
       const next = e.path.pop();
@@ -1836,6 +1846,7 @@ export class World {
   private stepCombat(e: Entity, type: UnitType): boolean {
     if (!this.hasWeapon(type)) return false;
     if (e.cooldown > 0) e.cooldown--;
+    if (type.deployTime && e.deployMode === 'undeploy') return false;
     if (e.groundTargetX !== null && e.groundTargetY !== null) return this.stepGroundAttack(e, type);
 
     let target: Entity | undefined;
@@ -1929,10 +1940,17 @@ export class World {
   private readyToFireAfterDeploy(e: Entity, type: UnitType): boolean {
     const deployTime = type.deployTime ?? 0;
     if (deployTime <= 0) return true;
+    if (e.deployMode === 'undeploy') return false;
     if (e.deployed) return true;
-    if (e.deployTimer <= 0) e.deployTimer = deployTime;
+    if (e.deployMode !== 'deploy') {
+      e.deployMode = 'deploy';
+      e.deployTimer = deployTime;
+    }
     e.deployTimer = Math.max(0, e.deployTimer - 1);
-    if (e.deployTimer === 0) e.deployed = true;
+    if (e.deployTimer === 0) {
+      e.deployed = true;
+      e.deployMode = null;
+    }
     return e.deployed;
   }
 
@@ -2187,7 +2205,9 @@ export class World {
       addHashString(h, e.producer?.paidTypeId ?? '');
       h.addInt(e.producerExit?.x ?? -1)
         .addInt(e.producerExit?.y ?? -1);
-      h.addInt(e.deployed ? 1 : 0).addInt(e.deployTimer);
+      h.addInt(e.deployed ? 1 : 0)
+        .addInt(e.deployTimer)
+        .addInt(e.deployMode === 'deploy' ? 1 : e.deployMode === 'undeploy' ? 2 : 0);
     }
     h.addInt(this.projectiles.length);
     for (const p of this.projectiles) {

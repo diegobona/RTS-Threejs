@@ -168,15 +168,22 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
   it('reports visible tactical missile deploy and cooldown status', () => {
     const type = { id: 'arty', deployTime: 60, weapon: { cooldown: 100 } };
 
-    expect(tacticalMissileStatus3D({ deployed: false, deployTimer: 30, cooldown: 0 }, type)).toEqual({
+    expect(tacticalMissileStatus3D({ deployed: false, deployTimer: 30, deployMode: 'deploy', cooldown: 0 }, type)).toEqual({
       kind: 'deploy',
+      label: '展开中...',
       pct: 0.5,
     });
-    expect(tacticalMissileStatus3D({ deployed: true, deployTimer: 0, cooldown: 25 }, type)).toEqual({
+    expect(tacticalMissileStatus3D({ deployed: true, deployTimer: 30, deployMode: 'undeploy', cooldown: 0 }, type)).toEqual({
+      kind: 'undeploy',
+      label: '收起中...',
+      pct: 0.5,
+    });
+    expect(tacticalMissileStatus3D({ deployed: true, deployTimer: 0, deployMode: null, cooldown: 25 }, type)).toEqual({
       kind: 'cooldown',
+      label: '冷却中...',
       pct: 0.75,
     });
-    expect(tacticalMissileStatus3D({ deployed: true, deployTimer: 0, cooldown: 0 }, type)).toBeNull();
+    expect(tacticalMissileStatus3D({ deployed: true, deployTimer: 0, deployMode: null, cooldown: 0 }, type)).toBeNull();
   });
 
   it('marks aircraft bomb impacts with a dedicated audible impact instead of muted generic explosions', () => {

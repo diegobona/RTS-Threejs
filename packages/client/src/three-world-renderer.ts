@@ -2,6 +2,7 @@ import {
   AmbientLight,
   Box3,
   BoxGeometry,
+  CanvasTexture,
   CatmullRomCurve3,
   type Camera,
   CapsuleGeometry,
@@ -28,6 +29,8 @@ import {
   Shape,
   ShapeGeometry,
   SphereGeometry,
+  Sprite,
+  SpriteMaterial,
   TorusGeometry,
   Vector2,
   Vector3,
@@ -47,6 +50,7 @@ interface EntityView {
   visualRoot: Group;
   hpBar: Group;
   statusBar: Group;
+  statusLabel: Sprite;
   selectionRing: Mesh;
 }
 
@@ -310,22 +314,29 @@ export function entityConstructionProgress3D(entity: { constructionProgress: num
 }
 
 export interface TacticalMissileStatus3D {
-  kind: 'deploy' | 'cooldown';
+  kind: 'deploy' | 'undeploy' | 'cooldown';
+  label: string;
   pct: number;
 }
 
 export function tacticalMissileStatus3D(
-  entity: Pick<Entity, 'deployed' | 'deployTimer' | 'cooldown'>,
+  entity: Pick<Entity, 'deployed' | 'deployMode' | 'deployTimer' | 'cooldown'>,
   type: { id: string; deployTime?: number; weapon?: { cooldown: number } | null },
 ): TacticalMissileStatus3D | null {
   if (type.id !== 'arty' && type.id !== 'tel') return null;
   const deployTime = type.deployTime ?? 0;
+  if (entity.deployMode === 'deploy' && deployTime > 0 && entity.deployTimer > 0) {
+    return { kind: 'deploy', label: '展开中...', pct: Math.max(0, Math.min(1, 1 - entity.deployTimer / deployTime)) };
+  }
+  if (entity.deployMode === 'undeploy' && deployTime > 0 && entity.deployTimer > 0) {
+    return { kind: 'undeploy', label: '收起中...', pct: Math.max(0, Math.min(1, 1 - entity.deployTimer / deployTime)) };
+  }
   if (!entity.deployed && deployTime > 0 && entity.deployTimer > 0) {
-    return { kind: 'deploy', pct: Math.max(0, Math.min(1, 1 - entity.deployTimer / deployTime)) };
+    return { kind: 'deploy', label: '展开中...', pct: Math.max(0, Math.min(1, 1 - entity.deployTimer / deployTime)) };
   }
   const cooldown = type.weapon?.cooldown ?? 0;
   if (entity.deployed && cooldown > 0 && entity.cooldown > 0) {
-    return { kind: 'cooldown', pct: Math.max(0, Math.min(1, 1 - entity.cooldown / cooldown)) };
+    return { kind: 'cooldown', label: '冷却中...', pct: Math.max(0, Math.min(1, 1 - entity.cooldown / cooldown)) };
   }
   return null;
 }
@@ -1431,9 +1442,11 @@ export class ThreeWorldRenderer {
         const launcher = view.visualRoot.getObjectByName('tel-launcher');
         if (launcher) {
           const deployTime = type.deployTime ?? 0;
-          const deployProgress = e.deployed
+          const deployProgress = e.deployMode === 'undeploy' && deployTime > 0
+            ? e.deployTimer / deployTime
+            : e.deployed
             ? 1
-            : deployTime > 0 && e.deployTimer > 0
+            : e.deployMode === 'deploy' && deployTime > 0 && e.deployTimer > 0
               ? 1 - e.deployTimer / deployTime
               : 0;
           const targetAngle = -Math.PI * 0.44 * Math.max(0, Math.min(1, deployProgress));
@@ -1469,8 +1482,13 @@ export class ThreeWorldRenderer {
       this.updateHpBar(
         view.statusBar,
         missileStatus?.pct ?? 0,
-        missileStatus?.kind === 'deploy' ? this.missileDeployMat.mat : this.missileCooldownMat.mat,
-        selected.has(e.id) && missileStatus !== null,
+        missileStatus?.kind === 'cooldown' ? this.missileCooldownMat.mat : this.missileDeployMat.mat,
+        missileStatus !== null,
+      );
+      this.updateStatusLabel(
+        view.statusLabel,
+        missileStatus?.label ?? '',
+        missileStatus !== null,
       );
     }
 
@@ -1612,16 +1630,17 @@ export class ThreeWorldRenderer {
     const hpProfile = entityHpBarProfile3D(type);
     const hpBar = this.createHpBar(hpProfile.width, hpProfile.y);
     const statusBar = this.createHpBar(1.2, Math.max(1.45, hpProfile.y - 0.28));
+    const statusLabel = this.createStatusLabel(Math.max(1.95, hpProfile.y + 0.42));
     const selectionRing = new Mesh(this.selectionRingGeo, this.selectionRingMat);
     selectionRing.rotation.x = -Math.PI / 2;
     selectionRing.position.y = entitySelectionRingAltitude3D(type);
     selectionRing.scale.setScalar(entitySelectionRingScale3D(type));
     selectionRing.visible = false;
-    root.add(selectionRing, hpBar, statusBar);
+    root.add(selectionRing, hpBar, statusBar, statusLabel);
     root.traverse((child) => {
       child.userData.entityId = entityId;
     });
-    return { root, visualRoot, hpBar, statusBar, selectionRing };
+    return { root, visualRoot, hpBar, statusBar, statusLabel, selectionRing };
   }
 
   private createVehiclePlaceholder(ownerColor: number, armed: boolean): Object3D {
@@ -2872,6 +2891,64 @@ export class ThreeWorldRenderer {
     return root;
   }
 
+  private createStatusLabel(y: number): Sprite {
+    const material = new SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false });
+    const sprite = new Sprite(material);
+    sprite.position.y = y;
+    sprite.scale.set(1.8, 0.42, 1);
+    sprite.visible = false;
+    sprite.userData.pickable = false;
+    return sprite;
+  }
+
+  private updateStatusLabel(label: Sprite, text: string, visible: boolean): void {
+    label.visible = visible;
+    if (!visible || !text) return;
+    if (label.userData.statusText === text) return;
+    const material = label.material as SpriteMaterial;
+    material.map?.dispose();
+    material.map = this.createStatusLabelTexture(text);
+    material.needsUpdate = true;
+    label.userData.statusText = text;
+  }
+
+  private createStatusLabelTexture(text: string): CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(7, 12, 16, 0.82)';
+    ctx.strokeStyle = 'rgba(255, 216, 96, 0.88)';
+    ctx.lineWidth = 3;
+    this.roundRect(ctx, 7, 9, 242, 46, 13);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = 'bold 28px system-ui, "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff2b2';
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 1);
+    const texture = new CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  private roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number): void {
+    const r = Math.min(radius, width / 2, height / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + width - r, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    ctx.lineTo(x + width, y + height - r);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    ctx.lineTo(x + r, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
   private applyHpBarProfile(bar: Group, profile: EntityConstructionBarProfile3D | null): void {
     if (!profile) {
       bar.position.y = typeof bar.userData.baseY === 'number' ? bar.userData.baseY : bar.position.y;
@@ -3296,10 +3373,15 @@ export class ThreeWorldRenderer {
       const geo = mesh.geometry as BufferGeometry | undefined;
       geo?.dispose();
       const mat = mesh.material as Material | Material[] | undefined;
-      if (Array.isArray(mat)) for (const m of mat) m.dispose();
-      else mat?.dispose();
+      if (Array.isArray(mat)) for (const m of mat) this.disposeMaterial(m);
+      else if (mat) this.disposeMaterial(mat);
     });
     obj.removeFromParent();
+  }
+
+  private disposeMaterial(material: Material): void {
+    if (material instanceof SpriteMaterial) material.map?.dispose();
+    material.dispose();
   }
 
   private setPointerFromClient(clientX: number, clientY: number): void {
