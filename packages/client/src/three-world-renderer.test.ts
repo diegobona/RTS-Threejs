@@ -20,6 +20,7 @@ import {
   isPickableEntityPart3D,
   LOWPOLY_FIGHTER_PART_IDS,
   LOWPOLY_FIGHTER_MODEL_SCALE,
+  LOWPOLY_TANK_PART_IDS,
   LOWPOLY_TANK_UNIT_IDS,
   LOWPOLY_SOLDIER_PART_IDS,
   LOWPOLY_WORKER_PART_IDS,
@@ -268,6 +269,33 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     );
     expect(LOWPOLY_FIGHTER_PART_IDS.length).toBeGreaterThanOrEqual(24);
     expect(LOWPOLY_FIGHTER_PART_IDS.some((id) => id.includes('leading-edge'))).toBe(false);
+  });
+
+  it('builds modern main battle tanks from detailed low-poly armor parts', () => {
+    expect(LOWPOLY_TANK_PART_IDS).toEqual(
+      expect.arrayContaining([
+        'left-track',
+        'right-track',
+        'side-skirt-left',
+        'side-skirt-right',
+        'sloped-glacis',
+        'rear-engine-deck',
+        'wedge-turret',
+        'turret-cheek-left',
+        'turret-cheek-right',
+        'main-gun',
+        'thermal-sleeve',
+        'muzzle-brake',
+        'remote-weapon-station',
+        'smoke-launcher-left',
+        'smoke-launcher-right',
+        'commander-optic',
+        'gunner-sight',
+        'team-panel-left',
+        'team-panel-right',
+      ]),
+    );
+    expect(LOWPOLY_TANK_PART_IDS.length).toBeGreaterThanOrEqual(30);
   });
 
   it('builds workers without rifle-like parts', () => {

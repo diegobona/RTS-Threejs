@@ -412,6 +412,57 @@ function lowPolyPartId3D(meshName: string): string {
 
 export const LOWPOLY_TANK_UNIT_IDS = ['grizzly', 'rhino'] as const;
 
+export const LOWPOLY_TANK_PART_IDS = [
+  'left-track',
+  'right-track',
+  'left-roadwheel-0',
+  'left-roadwheel-1',
+  'left-roadwheel-2',
+  'left-roadwheel-3',
+  'left-roadwheel-4',
+  'right-roadwheel-0',
+  'right-roadwheel-1',
+  'right-roadwheel-2',
+  'right-roadwheel-3',
+  'right-roadwheel-4',
+  'side-skirt-left',
+  'side-skirt-right',
+  'reactive-armor-left',
+  'reactive-armor-right',
+  'lower-hull',
+  'sloped-glacis',
+  'front-lower-plate',
+  'rear-engine-deck',
+  'engine-vent-left',
+  'engine-vent-right',
+  'turret-base',
+  'wedge-turret',
+  'turret-cheek-left',
+  'turret-cheek-right',
+  'turret-mantlet',
+  'turret-bustle',
+  'main-gun',
+  'thermal-sleeve',
+  'muzzle-brake',
+  'coax-machine-gun',
+  'remote-weapon-station',
+  'remote-weapon-barrel',
+  'commander-optic',
+  'gunner-sight',
+  'smoke-launcher-left',
+  'smoke-launcher-right',
+  'smoke-tube-left-0',
+  'smoke-tube-left-1',
+  'smoke-tube-left-2',
+  'smoke-tube-right-0',
+  'smoke-tube-right-1',
+  'smoke-tube-right-2',
+  'radio-antenna',
+  'team-panel-left',
+  'team-panel-right',
+  'front-team-panel',
+] as const;
+
 export function usesLowPolyTankModel3D(type: Pick<UnitType, 'id' | 'domain'>): boolean {
   return type.domain === 'vehicle' && (LOWPOLY_TANK_UNIT_IDS as readonly string[]).includes(type.id);
 }
@@ -2975,12 +3026,17 @@ export class ThreeWorldRenderer {
 
   private createTank(ownerColor: number): Object3D {
     const root = new Group();
-    root.name = 'lowpoly-tank';
-    const hullMat = new MeshLambertMaterial({ color: 0x566356 });
-    const armorMat = new MeshLambertMaterial({ color: 0x465248 });
-    const darkMat = new MeshLambertMaterial({ color: 0x2d3435 });
-    const trackMat = new MeshLambertMaterial({ color: 0x272b2b });
-    const metalMat = new MeshLambertMaterial({ color: 0x353c3d });
+    root.name = 'lowpoly-modern-main-battle-tank';
+    root.scale.setScalar(1.08);
+    const hullMat = new MeshLambertMaterial({ color: 0x596756 });
+    const upperArmorMat = new MeshLambertMaterial({ color: 0x6b7568 });
+    const armorMat = new MeshLambertMaterial({ color: 0x48554d });
+    const panelMat = new MeshLambertMaterial({ color: 0x39423e });
+    const darkMat = new MeshLambertMaterial({ color: 0x202728 });
+    const trackMat = new MeshLambertMaterial({ color: 0x1d2222 });
+    const rubberMat = new MeshLambertMaterial({ color: 0x151919 });
+    const metalMat = new MeshLambertMaterial({ color: 0x303a3b });
+    const opticMat = new MeshLambertMaterial({ color: 0x182b36 });
     const accentMat = new MeshLambertMaterial({ color: ownerColor });
     const addPart = (name: string, mesh: Mesh): Mesh => {
       mesh.name = `tank-${name}`;
@@ -2988,52 +3044,108 @@ export class ThreeWorldRenderer {
       return mesh;
     };
 
-    const leftTrack = addPart('left-track', new Mesh(new BoxGeometry(0.3, 0.34, 1.8), trackMat));
-    leftTrack.position.set(-0.54, 0.26, 0);
-    const rightTrack = addPart('right-track', new Mesh(new BoxGeometry(0.3, 0.34, 1.8), trackMat));
-    rightTrack.position.set(0.54, 0.26, 0);
+    const leftTrack = addPart('left-track', new Mesh(new BoxGeometry(0.36, 0.36, 2.1), trackMat));
+    leftTrack.position.set(-0.68, 0.25, 0);
+    const rightTrack = addPart('right-track', new Mesh(new BoxGeometry(0.36, 0.36, 2.1), trackMat));
+    rightTrack.position.set(0.68, 0.25, 0);
 
-    for (let i = 0; i < 4; i++) {
-      const z = -0.62 + i * 0.42;
-      const wheelL = addPart(`left-roadwheel-${i}`, new Mesh(new BoxGeometry(0.34, 0.17, 0.16), metalMat));
-      wheelL.position.set(-0.55, 0.28, z);
-      const wheelR = addPart(`right-roadwheel-${i}`, new Mesh(new BoxGeometry(0.34, 0.17, 0.16), metalMat));
-      wheelR.position.set(0.55, 0.28, z);
+    for (let i = 0; i < 5; i++) {
+      const z = -0.78 + i * 0.39;
+      const wheelL = addPart(`left-roadwheel-${i}`, new Mesh(new CylinderGeometry(0.15, 0.15, 0.08, 10), metalMat));
+      wheelL.position.set(-0.78, 0.26, z);
+      wheelL.rotation.z = Math.PI / 2;
+      const wheelR = addPart(`right-roadwheel-${i}`, new Mesh(new CylinderGeometry(0.15, 0.15, 0.08, 10), metalMat));
+      wheelR.position.set(0.78, 0.26, z);
+      wheelR.rotation.z = Math.PI / 2;
     }
 
-    const hull = addPart('hull', new Mesh(this.vehicleGeo, hullMat));
-    hull.position.y = 0.48;
-    hull.scale.set(1.25, 1.08, 1.18);
+    const sideSkirtLeft = addPart('side-skirt-left', new Mesh(new BoxGeometry(0.12, 0.32, 1.92), armorMat));
+    sideSkirtLeft.position.set(-0.68, 0.5, 0);
+    const sideSkirtRight = addPart('side-skirt-right', new Mesh(new BoxGeometry(0.12, 0.32, 1.92), armorMat));
+    sideSkirtRight.position.set(0.68, 0.5, 0);
+    const reactiveArmorLeft = addPart('reactive-armor-left', new Mesh(new BoxGeometry(0.08, 0.2, 1.32), panelMat));
+    reactiveArmorLeft.position.set(-0.76, 0.64, -0.12);
+    const reactiveArmorRight = addPart('reactive-armor-right', new Mesh(new BoxGeometry(0.08, 0.2, 1.32), panelMat));
+    reactiveArmorRight.position.set(0.76, 0.64, -0.12);
 
-    const frontArmor = addPart('front-armor', new Mesh(new BoxGeometry(0.92, 0.28, 0.18), armorMat));
-    frontArmor.position.set(0, 0.6, -0.78);
-    frontArmor.rotation.x = -0.18;
+    const lowerHull = addPart('lower-hull', new Mesh(this.vehicleGeo, hullMat));
+    lowerHull.position.set(0, 0.5, 0.05);
+    lowerHull.scale.set(1.5, 1.05, 1.38);
+
+    const glacis = addPart('sloped-glacis', new Mesh(new BoxGeometry(1.16, 0.18, 0.58), upperArmorMat));
+    glacis.position.set(0, 0.7, -0.6);
+    glacis.rotation.x = -0.26;
+    const frontLowerPlate = addPart('front-lower-plate', new Mesh(new BoxGeometry(1.24, 0.2, 0.18), armorMat));
+    frontLowerPlate.position.set(0, 0.46, -1.02);
+    frontLowerPlate.rotation.x = 0.16;
     const rearDeck = addPart('rear-engine-deck', new Mesh(new BoxGeometry(0.72, 0.12, 0.38), darkMat));
-    rearDeck.position.set(0, 0.72, 0.54);
+    rearDeck.position.set(0, 0.76, 0.62);
+    const ventLeft = addPart('engine-vent-left', new Mesh(new BoxGeometry(0.42, 0.04, 0.36), trackMat));
+    ventLeft.position.set(-0.27, 0.85, 0.62);
+    const ventRight = addPart('engine-vent-right', new Mesh(new BoxGeometry(0.42, 0.04, 0.36), trackMat));
+    ventRight.position.set(0.27, 0.85, 0.62);
 
-    const turret = addPart('turret', new Mesh(new BoxGeometry(0.74, 0.32, 0.62), armorMat));
-    turret.position.set(0, 0.86, -0.12);
-    turret.rotation.y = 0;
-    const turretSlope = addPart('turret-front-slope', new Mesh(new BoxGeometry(0.58, 0.22, 0.16), armorMat));
-    turretSlope.position.set(0, 0.86, -0.5);
-    turretSlope.rotation.x = -0.12;
+    const turretBase = addPart('turret-base', new Mesh(new BoxGeometry(0.94, 0.16, 0.72), panelMat));
+    turretBase.position.set(0, 0.86, -0.08);
+    const wedgeTurret = addPart('wedge-turret', new Mesh(new BoxGeometry(0.78, 0.34, 0.72), armorMat));
+    wedgeTurret.position.set(0, 1.02, -0.12);
+    const cheekLeft = addPart('turret-cheek-left', new Mesh(new BoxGeometry(0.24, 0.3, 0.62), upperArmorMat));
+    cheekLeft.position.set(-0.46, 1.02, -0.2);
+    cheekLeft.rotation.y = -0.34;
+    const cheekRight = addPart('turret-cheek-right', new Mesh(new BoxGeometry(0.24, 0.3, 0.62), upperArmorMat));
+    cheekRight.position.set(0.46, 1.02, -0.2);
+    cheekRight.rotation.y = 0.34;
+    const mantlet = addPart('turret-mantlet', new Mesh(new BoxGeometry(0.42, 0.22, 0.18), darkMat));
+    mantlet.position.set(0, 1.02, -0.56);
+    const bustle = addPart('turret-bustle', new Mesh(new BoxGeometry(0.76, 0.2, 0.32), armorMat));
+    bustle.position.set(0, 0.98, 0.33);
 
-    const barrel = addPart('barrel', new Mesh(this.barrelGeo, metalMat));
-    barrel.position.set(0, 0.88, -0.86);
-    const muzzle = addPart('muzzle-brake', new Mesh(new BoxGeometry(0.22, 0.16, 0.12), darkMat));
-    muzzle.position.set(0, 0.88, -1.3);
+    const mainGun = addPart('main-gun', new Mesh(new BoxGeometry(0.13, 0.13, 1.46), metalMat));
+    mainGun.position.set(0, 1.04, -1.22);
+    const sleeve = addPart('thermal-sleeve', new Mesh(new BoxGeometry(0.2, 0.18, 0.44), panelMat));
+    sleeve.position.set(0, 1.04, -0.98);
+    const muzzle = addPart('muzzle-brake', new Mesh(new BoxGeometry(0.3, 0.18, 0.16), darkMat));
+    muzzle.position.set(0, 1.04, -1.98);
+    const coaxGun = addPart('coax-machine-gun', new Mesh(new BoxGeometry(0.045, 0.045, 0.78), darkMat));
+    coaxGun.position.set(0.23, 1.07, -0.98);
 
-    const hatch = addPart('commander-hatch', new Mesh(new BoxGeometry(0.28, 0.12, 0.28), darkMat));
-    hatch.position.set(-0.2, 1.08, 0.05);
-    const antenna = addPart('radio-antenna', new Mesh(new BoxGeometry(0.035, 0.82, 0.035), darkMat));
-    antenna.position.set(0.34, 1.34, 0.18);
+    const remoteWeapon = addPart('remote-weapon-station', new Mesh(new BoxGeometry(0.28, 0.16, 0.24), darkMat));
+    remoteWeapon.position.set(-0.18, 1.28, 0.12);
+    const remoteBarrel = addPart('remote-weapon-barrel', new Mesh(new BoxGeometry(0.055, 0.055, 0.62), darkMat));
+    remoteBarrel.position.set(-0.18, 1.3, -0.25);
+    const commanderOptic = addPart('commander-optic', new Mesh(new BoxGeometry(0.18, 0.18, 0.16), opticMat));
+    commanderOptic.position.set(0.22, 1.27, 0.08);
+    const gunnerSight = addPart('gunner-sight', new Mesh(new BoxGeometry(0.18, 0.08, 0.16), opticMat));
+    gunnerSight.position.set(0.28, 1.2, -0.38);
 
-    const teamPlate = addPart('team-plate', new Mesh(new BoxGeometry(0.42, 0.08, 0.12), accentMat));
-    teamPlate.position.set(0, 0.72, -0.69);
-    const sideMarkL = addPart('left-team-mark', new Mesh(new BoxGeometry(0.05, 0.18, 0.34), accentMat));
-    sideMarkL.position.set(-0.72, 0.52, -0.18);
-    const sideMarkR = addPart('right-team-mark', new Mesh(new BoxGeometry(0.05, 0.18, 0.34), accentMat));
-    sideMarkR.position.set(0.72, 0.52, -0.18);
+    const smokeLauncherLeft = addPart('smoke-launcher-left', new Mesh(new BoxGeometry(0.18, 0.14, 0.2), darkMat));
+    smokeLauncherLeft.position.set(-0.46, 1.04, -0.5);
+    smokeLauncherLeft.rotation.y = -0.28;
+    const smokeLauncherRight = addPart('smoke-launcher-right', new Mesh(new BoxGeometry(0.18, 0.14, 0.2), darkMat));
+    smokeLauncherRight.position.set(0.46, 1.04, -0.5);
+    smokeLauncherRight.rotation.y = 0.28;
+    for (const side of [-1, 1] as const) {
+      for (let i = 0; i < 3; i++) {
+        const tube = addPart(
+          `smoke-tube-${side < 0 ? 'left' : 'right'}-${i}`,
+          new Mesh(new CylinderGeometry(0.034, 0.034, 0.26, 6), rubberMat),
+        );
+        tube.position.set(side * (0.43 + i * 0.06), 1.1 + i * 0.015, -0.64);
+        tube.rotation.x = Math.PI / 2;
+        tube.rotation.y = side * 0.22;
+      }
+    }
+
+    const antenna = addPart('radio-antenna', new Mesh(new BoxGeometry(0.026, 0.78, 0.026), darkMat));
+    antenna.position.set(0.38, 1.36, 0.28);
+    antenna.rotation.x = -0.12;
+
+    const teamPanelLeft = addPart('team-panel-left', new Mesh(new BoxGeometry(0.05, 0.2, 0.36), accentMat));
+    teamPanelLeft.position.set(-0.86, 0.62, -0.25);
+    const teamPanelRight = addPart('team-panel-right', new Mesh(new BoxGeometry(0.05, 0.2, 0.36), accentMat));
+    teamPanelRight.position.set(0.86, 0.62, -0.25);
+    const frontTeamPanel = addPart('front-team-panel', new Mesh(new BoxGeometry(0.44, 0.07, 0.08), accentMat));
+    frontTeamPanel.position.set(0, 0.72, -0.94);
 
     return root;
   }
