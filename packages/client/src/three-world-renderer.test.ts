@@ -24,6 +24,8 @@ import {
   LOWPOLY_TANK_UNIT_IDS,
   LOWPOLY_SOLDIER_PART_IDS,
   LOWPOLY_WORKER_PART_IDS,
+  LOWPOLY_WORKER_OWNER_COLOR_PART_IDS,
+  engineerWalkPartTransform3D,
   infantryFirePartTransform3D,
   infantryWalkPartTransform3D,
   proceduralModelYawOffset3D,
@@ -298,9 +300,36 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
     expect(LOWPOLY_TANK_PART_IDS.length).toBeGreaterThanOrEqual(30);
   });
 
-  it('builds workers without rifle-like parts', () => {
-    expect(LOWPOLY_WORKER_PART_IDS).toEqual(expect.arrayContaining(['hardhat', 'toolbox', 'team-patch']));
+  it('builds engineers without rifle-like parts and gives their hardhat the owner color', () => {
+    expect(LOWPOLY_WORKER_PART_IDS).toEqual(expect.arrayContaining([
+      'hardhat',
+      'hardhat-brim',
+      'safety-vest',
+      'utility-belt',
+      'toolbox',
+      'rolled-blueprint',
+      'team-patch',
+    ]));
+    expect(LOWPOLY_WORKER_OWNER_COLOR_PART_IDS).toEqual(expect.arrayContaining(['hardhat', 'hardhat-brim', 'team-patch']));
     expect(LOWPOLY_WORKER_PART_IDS.some((id) => /rifle|barrel|gun/i.test(id))).toBe(false);
+  });
+
+  it('animates engineers with a walking gait and carried-tool sway only while moving', () => {
+    const time = (Math.PI / 4) / 7.4;
+    const idle = engineerWalkPartTransform3D('left-leg', false, 0, time);
+    const leftLeg = engineerWalkPartTransform3D('left-leg', true, 0, time);
+    const rightLeg = engineerWalkPartTransform3D('right-leg', true, 0, time);
+    const leftArm = engineerWalkPartTransform3D('left-arm', true, 0, time);
+    const toolbox = engineerWalkPartTransform3D('toolbox', true, 0, time);
+    const body = engineerWalkPartTransform3D('body', true, 0, time);
+
+    expect(idle.rotationX).toBe(0);
+    expect(idle.translationY).toBe(0);
+    expect(Math.abs(leftLeg.rotationX)).toBeGreaterThan(0.1);
+    expect(leftLeg.rotationX).toBeCloseTo(-rightLeg.rotationX, 5);
+    expect(leftArm.rotationX).toBeLessThan(0);
+    expect(Math.abs(toolbox.rotationZ)).toBeGreaterThan(0.02);
+    expect(body.translationY).toBeGreaterThan(0);
   });
 
   it('builds modern neutral soldiers from detailed tactical low-poly parts', () => {

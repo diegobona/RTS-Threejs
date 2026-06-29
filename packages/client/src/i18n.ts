@@ -113,7 +113,7 @@ export const UI_TEXT = {
     } satisfies Record<GroundMoveMode, { label: string; title: string }>,
     capacity: {
       building: '建筑',
-      worker: '工人',
+      worker: '工程师',
       infantry: '士兵',
       vehicle: '坦克',
       aircraft: '飞机',
@@ -128,7 +128,7 @@ export const UI_TEXT = {
       pillbox: { icon: '⬟', label: '碉堡', hint: '固定防御' },
       battlelab: { icon: '✚', label: '实验室', hint: '科技解锁' },
       patriot: { icon: '◬', label: '防空导弹阵地', hint: '反导防空' },
-      worker: { icon: '⚒', label: '工人', hint: '采集维修' },
+      worker: { icon: '⚒', label: '工程师', hint: '施工维修' },
       gi: { icon: '步兵', label: '士兵', hint: '基础步兵' },
       engineer: { icon: '🔧', label: '工程师', hint: '占领维修' },
       grizzly: { icon: '▰', label: '坦克', hint: '主战坦克' },
@@ -139,7 +139,7 @@ export const UI_TEXT = {
       fallback: { icon: '◆', hint: '建筑' },
     },
     unitLabels: {
-      worker: '工人',
+      worker: '工程师',
       gi: '士兵',
       engineer: '工程师',
       grizzly: '坦克',
@@ -152,11 +152,11 @@ export const UI_TEXT = {
       sections: [
         {
           title: '胜利条件',
-          items: ['消灭敌方全部建筑和战斗单位（不包括工人）。'],
+          items: ['消灭敌方全部建筑和战斗单位（不包括工程师）。'],
         },
         {
           title: '建造',
-          items: ['有工人才能新建建筑。', '点击建筑后再右键空地，可设置集结点。', '按住鼠标中键，可平移地图。'],
+          items: ['有工程师才能新建建筑。', '点击建筑后再右键空地，可设置集结点。', '按住鼠标中键，可平移地图。'],
         },
         {
           title: '选择',
@@ -239,7 +239,7 @@ export const UI_TEXT = {
     } satisfies Record<GroundMoveMode, { label: string; title: string }>,
     capacity: {
       building: 'Buildings',
-      worker: 'Workers',
+      worker: 'Engineers',
       infantry: 'Soldiers',
       vehicle: 'Tanks',
       missileTruck: 'Missile Trucks',
@@ -255,7 +255,7 @@ export const UI_TEXT = {
       pillbox: { icon: '⬟', label: 'Pillbox', hint: 'Static defense' },
       battlelab: { icon: '✚', label: 'Battle Lab', hint: 'Tech unlocks' },
       patriot: { icon: '◬', label: 'Air Defense Site', hint: 'Anti-air missile' },
-      worker: { icon: '⚒', label: 'Worker', hint: 'Gather repair' },
+      worker: { icon: '⚒', label: 'Engineer', hint: 'Build and repair' },
       gi: { icon: 'GI', label: 'Soldier', hint: 'Basic infantry' },
       engineer: { icon: '🔧', label: 'Engineer', hint: 'Capture repair' },
       grizzly: { icon: '▰', label: 'Tank', hint: 'Main battle tank' },
@@ -266,7 +266,7 @@ export const UI_TEXT = {
       fallback: { icon: '◆', hint: 'Structure' },
     },
     unitLabels: {
-      worker: 'Worker',
+      worker: 'Engineer',
       gi: 'Soldier',
       engineer: 'Engineer',
       grizzly: 'Tank',
@@ -279,11 +279,11 @@ export const UI_TEXT = {
       sections: [
         {
           title: 'Victory',
-          items: ['Destroy every enemy building and combat unit. Workers do not count.'],
+          items: ['Destroy every enemy building and combat unit. Engineers do not count.'],
         },
         {
           title: 'Building',
-          items: ['You need at least one worker to place new buildings.', 'Select a building, then right-click ground to set a rally point.', 'Hold the middle mouse button to pan the map.'],
+          items: ['You need at least one engineer to place new buildings.', 'Select a building, then right-click ground to set a rally point.', 'Hold the middle mouse button to pan the map.'],
         },
         {
           title: 'Selection',

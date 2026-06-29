@@ -174,8 +174,8 @@ describe('MatchView3D rules and controls help', () => {
 
     expect(sections.map((section) => section.title)).toEqual(['胜利条件', '建造', '选择', '编队']);
     expect(sections.flatMap((section) => section.items)).toEqual([
-      '消灭敌方全部建筑和战斗单位（不包括工人）。',
-      '有工人才能新建建筑。',
+      '消灭敌方全部建筑和战斗单位（不包括工程师）。',
+      '有工程师才能新建建筑。',
       '点击建筑后再右键空地，可设置集结点。',
       '按住鼠标中键，可平移地图。',
       '拖框或按 Ctrl 选择：多选单位。',
@@ -197,7 +197,7 @@ describe('MatchView3D capacity HUD', () => {
         vehicle: { count: 76, limit: 100 },
         aircraft: { count: 31, limit: 30 },
       }),
-    ).toBe('建筑 12/20 | 工人 12/20 | 士兵 340/300 | 坦克 76/100 | 飞机 31/30');
+    ).toBe('建筑 12/20 | 工程师 12/20 | 士兵 340/300 | 坦克 76/100 | 飞机 31/30');
   });
 
   it('does not expose credits in the top HUD summary', () => {
@@ -209,7 +209,7 @@ describe('MatchView3D capacity HUD', () => {
       aircraft: { count: 23, limit: 30 },
     });
 
-    expect(text).toBe('建筑 4/20 | 工人 8/20 | 士兵 117/300 | 坦克 48/100 | 飞机 23/30');
+    expect(text).toBe('建筑 4/20 | 工程师 8/20 | 士兵 117/300 | 坦克 48/100 | 飞机 23/30');
     expect(text).not.toContain('Credits');
     expect(text).not.toContain('$');
   });
@@ -223,7 +223,7 @@ describe('MatchView3D capacity HUD', () => {
       aircraft: { count: 23, limit: 30 },
     });
 
-    expect(segments.map((segment) => segment.text).join(' | ')).toBe('建筑 4/20 | 工人 8/20 | 士兵 117/300 | 坦克 48/100 | 飞机 23/30');
+    expect(segments.map((segment) => segment.text).join(' | ')).toBe('建筑 4/20 | 工程师 8/20 | 士兵 117/300 | 坦克 48/100 | 飞机 23/30');
     expect(segments.map((segment) => segment.selectGroup ?? null)).toEqual([null, 'worker', 'infantry', 'vehicle', 'aircraft']);
   });
 
@@ -238,7 +238,7 @@ describe('MatchView3D capacity HUD', () => {
       }),
     ).toEqual([
       { text: '建筑 4/20' },
-      { text: '工人 8/20', selectGroup: 'worker' },
+      { text: '工程师 8/20', selectGroup: 'worker' },
       { text: '士兵 117/300', selectGroup: 'infantry' },
       { text: '坦克 48/100', selectGroup: 'vehicle' },
       { text: '飞机 23/30', selectGroup: 'aircraft' },
@@ -254,7 +254,7 @@ describe('MatchView3D capacity HUD', () => {
       worker: { count: 8, limit: 20 },
       vehicle: { count: 48, limit: 100 },
       aircraft: { count: 23, limit: 30 },
-    })).toBe('Buildings 4/20 | Workers 8/20 | Soldiers 117/300 | Tanks 48/100 | Aircraft 23/30');
+    })).toBe('Buildings 4/20 | Engineers 8/20 | Soldiers 117/300 | Tanks 48/100 | Aircraft 23/30');
     expect(groundMoveModeButtons3D()[1]?.label).toBe('Attack while moving');
     expect(rulesAndControlsSections3D()[0]?.title).toBe('Victory');
   });
@@ -273,7 +273,7 @@ describe('MatchView3D capacity HUD', () => {
 
     expect(segments.map((segment) => segment.text)).toEqual([
       'Buildings 3/20',
-      'Workers 20/20',
+      'Engineers 20/20',
       'Soldiers 0/300',
       'Tanks 100/100',
       'Missile Trucks 4/10',
@@ -423,7 +423,7 @@ describe('MatchView3D control groups', () => {
     const fighter = world.spawnUnit(1, 'fighter', 7, 3)!;
 
     expect(controlGroupButtonLabel3D(world, 2, [fighter.id, tank.id, giA.id, worker.id, giB.id])).toBe(
-      '2 工人 1 · 士兵 2 · 坦克 1 · 飞机 1',
+      '2 工程师 1 · 士兵 2 · 坦克 1 · 飞机 1',
     );
   });
 

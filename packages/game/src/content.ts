@@ -291,7 +291,7 @@ const UNIT_LIST: UnitType[] = [
   },
   {
     id: 'worker',
-    name: 'Worker',
+    name: 'Engineer',
     side: 'allied',
     domain: 'infantry',
     cost: 0,

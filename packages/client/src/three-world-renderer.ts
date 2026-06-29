@@ -11,6 +11,7 @@ import {
   CylinderGeometry,
   DirectionalLight,
   DoubleSide,
+  type Euler,
   Fog,
   Group,
   HemisphereLight,
@@ -74,6 +75,11 @@ interface InstancedModelBatch {
   capacity: number;
   ids: number[];
   parts: InstancedModelPart[];
+}
+
+interface EngineerWalkBaseTransform3D {
+  position: Vector3;
+  rotation: Euler;
 }
 
 export type CommandIndicatorKind3D = 'move' | 'attack';
@@ -230,17 +236,32 @@ export const LOWPOLY_FIGHTER_PART_IDS = [
 
 export const LOWPOLY_WORKER_PART_IDS = [
   'body',
+  'safety-vest',
+  'vest-stripe-left',
+  'vest-stripe-right',
   'head',
   'hardhat',
   'hardhat-brim',
+  'hardhat-lamp',
+  'goggles',
   'toolpack',
+  'radio-pack',
+  'utility-belt',
   'left-arm',
   'right-arm',
+  'left-glove',
+  'right-glove',
   'left-leg',
   'right-leg',
+  'left-knee-pad',
+  'right-knee-pad',
   'toolbox',
+  'toolbox-handle',
+  'rolled-blueprint',
   'team-patch',
 ] as const;
+
+export const LOWPOLY_WORKER_OWNER_COLOR_PART_IDS = ['hardhat', 'hardhat-brim', 'team-patch'] as const;
 
 export const LOWPOLY_SOLDIER_PART_IDS = [
   'body',
@@ -347,6 +368,58 @@ export function infantryWalkPartTransform3D(
     partId.includes('team-patch')
   ) {
     rotationZ = swing * 0.018;
+  }
+
+  return { translationY, translationZ, rotationX, rotationZ };
+}
+
+export function engineerWalkPartTransform3D(
+  partId: string,
+  moving: boolean,
+  entityId: number,
+  timeSeconds: number,
+): InfantryWalkPartTransform3D {
+  if (!moving) return IDLE_INFANTRY_WALK_PART_TRANSFORM_3D;
+
+  const phase = timeSeconds * 7.4 + ((entityId * 0.617) % (Math.PI * 2));
+  const swing = Math.sin(phase);
+  const sideSwing = partId.includes('left') ? swing : partId.includes('right') ? -swing : 0;
+  const bob = Math.abs(Math.sin(phase * 2)) * 0.032;
+  let translationY = bob;
+  let translationZ = 0;
+  let rotationX = 0;
+  let rotationZ = 0;
+
+  if (partId.includes('leg')) {
+    rotationX = sideSwing * 0.32;
+    translationZ = sideSwing * 0.018;
+  } else if (partId.includes('knee-pad')) {
+    rotationX = sideSwing * 0.18;
+  } else if (partId.includes('arm')) {
+    rotationX = -sideSwing * 0.2;
+    rotationZ = sideSwing * 0.045;
+  } else if (partId.includes('glove')) {
+    rotationX = -sideSwing * 0.12;
+    translationY += Math.max(0, -sideSwing) * 0.014;
+  } else if (partId === 'toolbox' || partId === 'toolbox-handle') {
+    rotationZ = swing * 0.085;
+    translationY += Math.max(0, swing) * 0.022;
+    translationZ = -swing * 0.018;
+  } else if (partId === 'rolled-blueprint') {
+    rotationZ = -swing * 0.06;
+    translationY += Math.max(0, -swing) * 0.014;
+  } else if (
+    partId === 'body' ||
+    partId.includes('vest') ||
+    partId.includes('belt') ||
+    partId.includes('head') ||
+    partId.includes('hardhat') ||
+    partId.includes('goggles') ||
+    partId.includes('toolpack') ||
+    partId.includes('radio') ||
+    partId.includes('team-patch')
+  ) {
+    rotationZ = swing * 0.016;
   }
 
   return { translationY, translationZ, rotationX, rotationZ };
@@ -1696,6 +1769,7 @@ export class ThreeWorldRenderer {
           launcher.rotation.z = current + (targetAngle - current) * 0.15;
         }
       }
+      if (type.id === 'worker') this.applyEngineerWalkAnimation(view, e, nowSeconds);
       const constructionPct = entityConstructionProgress3D(e);
       const constructing = type.domain === 'building' && constructionPct < 1;
       const selectedScale = selected.has(e.id) ? 1.12 : 1;
@@ -1862,6 +1936,27 @@ export class ThreeWorldRenderer {
 
   private entityFiringForInfantryAnimation(entity: Entity): boolean {
     return entity.cooldown > 0 || entity.targetId !== null;
+  }
+
+  private applyEngineerWalkAnimation(view: EntityView, entity: Entity, timeSeconds: number): void {
+    const moving = this.entityMovingForWalkAnimation(entity, view);
+    view.visualRoot.traverse((child) => {
+      if (!child.name.startsWith('worker-')) return;
+      if (!child.userData.engineerWalkBase) {
+        child.userData.engineerWalkBase = {
+          position: child.position.clone(),
+          rotation: child.rotation.clone(),
+        } satisfies EngineerWalkBaseTransform3D;
+      }
+      const base = child.userData.engineerWalkBase as EngineerWalkBaseTransform3D;
+      child.position.copy(base.position);
+      child.rotation.copy(base.rotation);
+      const transform = engineerWalkPartTransform3D(lowPolyPartId3D(child.name), moving, entity.id, timeSeconds);
+      child.position.y += transform.translationY;
+      child.position.z += transform.translationZ;
+      child.rotation.x += transform.rotationX;
+      child.rotation.z += transform.rotationZ;
+    });
   }
 
   private createInstancedModelPrototype(type: UnitType, ownerColor: number): Object3D {
@@ -2761,22 +2856,36 @@ export class ThreeWorldRenderer {
 
   private createWorker(ownerColor: number): Object3D {
     const root = new Group();
-    root.name = 'lowpoly-worker';
-    const shirtMat = new MeshLambertMaterial({ color: 0x5f7456 });
-    const pantsMat = new MeshLambertMaterial({ color: 0x35433a });
+    root.name = 'lowpoly-engineer';
+    const uniformMat = new MeshLambertMaterial({ color: 0x66735d });
+    const vestMat = new MeshLambertMaterial({ color: 0xb6a86a });
+    const stripeMat = new MeshLambertMaterial({ color: 0xd8e0c9 });
+    const pantsMat = new MeshLambertMaterial({ color: 0x364237 });
     const skinMat = new MeshLambertMaterial({ color: 0xb08a65 });
-    const helmetMat = new MeshLambertMaterial({ color: 0xe0b23c });
-    const crateMat = new MeshLambertMaterial({ color: 0x8b6a3d });
+    const toolMat = new MeshLambertMaterial({ color: 0x6d5537 });
+    const darkMat = new MeshLambertMaterial({ color: 0x202829 });
+    const lensMat = new MeshLambertMaterial({ color: 0x253d4d });
     const accentMat = new MeshLambertMaterial({ color: ownerColor });
+    const helmetMat = accentMat;
     const addPart = (name: string, mesh: Mesh): Mesh => {
       mesh.name = `worker-${name}`;
       root.add(mesh);
       return mesh;
     };
 
-    const body = addPart('body', new Mesh(this.soldierGeo, shirtMat));
+    const body = addPart('body', new Mesh(this.soldierGeo, uniformMat));
     body.position.y = 0.66;
-    body.scale.set(0.82, 0.86, 0.74);
+    body.scale.set(0.86, 0.88, 0.76);
+    const vest = addPart('safety-vest', new Mesh(new BoxGeometry(0.42, 0.45, 0.14), vestMat));
+    vest.position.set(0, 0.77, -0.18);
+    const vestStripeLeft = addPart('vest-stripe-left', new Mesh(new BoxGeometry(0.055, 0.48, 0.035), stripeMat));
+    vestStripeLeft.position.set(-0.12, 0.79, -0.255);
+    vestStripeLeft.rotation.z = -0.18;
+    const vestStripeRight = addPart('vest-stripe-right', new Mesh(new BoxGeometry(0.055, 0.48, 0.035), stripeMat));
+    vestStripeRight.position.set(0.12, 0.79, -0.255);
+    vestStripeRight.rotation.z = 0.18;
+    const belt = addPart('utility-belt', new Mesh(new BoxGeometry(0.48, 0.08, 0.18), darkMat));
+    belt.position.set(0, 0.54, -0.1);
 
     const head = addPart('head', new Mesh(new SphereGeometry(0.17, 8, 8), skinMat));
     head.position.set(0, 1.2, -0.02);
@@ -2784,18 +2893,30 @@ export class ThreeWorldRenderer {
     helmet.position.set(0, 1.36, -0.02);
     const brim = addPart('hardhat-brim', new Mesh(new BoxGeometry(0.38, 0.035, 0.18), helmetMat));
     brim.position.set(0, 1.3, -0.15);
+    const lamp = addPart('hardhat-lamp', new Mesh(new BoxGeometry(0.1, 0.07, 0.05), stripeMat));
+    lamp.position.set(0, 1.36, -0.24);
+    const goggles = addPart('goggles', new Mesh(new BoxGeometry(0.28, 0.07, 0.045), lensMat));
+    goggles.position.set(0, 1.21, -0.18);
 
-    const backpack = addPart('toolpack', new Mesh(new BoxGeometry(0.26, 0.34, 0.16), crateMat));
+    const backpack = addPart('toolpack', new Mesh(new BoxGeometry(0.28, 0.36, 0.17), toolMat));
     backpack.position.set(0, 0.76, 0.24);
+    const radioPack = addPart('radio-pack', new Mesh(new BoxGeometry(0.12, 0.18, 0.08), darkMat));
+    radioPack.position.set(-0.18, 0.9, 0.31);
 
-    const leftArm = addPart('left-arm', new Mesh(new BoxGeometry(0.12, 0.46, 0.12), shirtMat));
+    const leftArm = addPart('left-arm', new Mesh(new BoxGeometry(0.12, 0.46, 0.12), uniformMat));
     leftArm.position.set(-0.27, 0.78, -0.05);
     leftArm.rotation.x = -0.35;
     leftArm.rotation.z = -0.2;
-    const rightArm = addPart('right-arm', new Mesh(new BoxGeometry(0.12, 0.46, 0.12), shirtMat));
+    const rightArm = addPart('right-arm', new Mesh(new BoxGeometry(0.12, 0.46, 0.12), uniformMat));
     rightArm.position.set(0.28, 0.8, -0.1);
     rightArm.rotation.x = -0.7;
     rightArm.rotation.z = 0.2;
+    const leftGlove = addPart('left-glove', new Mesh(new BoxGeometry(0.13, 0.1, 0.13), darkMat));
+    leftGlove.position.set(-0.33, 0.55, -0.2);
+    leftGlove.rotation.x = -0.35;
+    const rightGlove = addPart('right-glove', new Mesh(new BoxGeometry(0.13, 0.1, 0.13), darkMat));
+    rightGlove.position.set(0.34, 0.56, -0.3);
+    rightGlove.rotation.x = -0.55;
 
     const leftLeg = addPart('left-leg', new Mesh(new BoxGeometry(0.13, 0.46, 0.13), pantsMat));
     leftLeg.position.set(-0.1, 0.24, 0.03);
@@ -2803,10 +2924,21 @@ export class ThreeWorldRenderer {
     const rightLeg = addPart('right-leg', new Mesh(new BoxGeometry(0.13, 0.46, 0.13), pantsMat));
     rightLeg.position.set(0.1, 0.24, -0.03);
     rightLeg.rotation.x = 0.1;
+    const leftKnee = addPart('left-knee-pad', new Mesh(new BoxGeometry(0.16, 0.08, 0.04), darkMat));
+    leftKnee.position.set(-0.1, 0.3, -0.07);
+    const rightKnee = addPart('right-knee-pad', new Mesh(new BoxGeometry(0.16, 0.08, 0.04), darkMat));
+    rightKnee.position.set(0.1, 0.3, -0.13);
 
-    const toolbox = addPart('toolbox', new Mesh(new BoxGeometry(0.32, 0.22, 0.2), crateMat));
+    const toolbox = addPart('toolbox', new Mesh(new BoxGeometry(0.34, 0.22, 0.2), toolMat));
     toolbox.position.set(0.34, 0.52, -0.18);
     toolbox.rotation.z = 0.08;
+    const toolboxHandle = addPart('toolbox-handle', new Mesh(new BoxGeometry(0.22, 0.035, 0.05), darkMat));
+    toolboxHandle.position.set(0.34, 0.66, -0.18);
+    toolboxHandle.rotation.z = 0.08;
+    const blueprint = addPart('rolled-blueprint', new Mesh(new CylinderGeometry(0.05, 0.05, 0.42, 8), stripeMat));
+    blueprint.position.set(-0.26, 0.62, -0.2);
+    blueprint.rotation.z = Math.PI / 2;
+    blueprint.rotation.y = -0.2;
 
     const patch = addPart('team-patch', new Mesh(new BoxGeometry(0.08, 0.15, 0.035), accentMat));
     patch.position.set(0.23, 0.92, -0.2);
