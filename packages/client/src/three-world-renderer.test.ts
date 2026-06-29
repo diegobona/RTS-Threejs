@@ -249,9 +249,25 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
 
   it('builds the procedural fighter from detailed low-poly parts', () => {
     expect(LOWPOLY_FIGHTER_PART_IDS).toEqual(
-      expect.arrayContaining(['fuselage', 'nose', 'cockpit', 'main-wing', 'tail-wing', 'vertical-tail', 'intake', 'hardpoint']),
+      expect.arrayContaining([
+        'fuselage',
+        'faceted-nose',
+        'chine-left',
+        'chine-right',
+        'bubble-canopy',
+        'trapezoid-wing-left',
+        'trapezoid-wing-right',
+        'diverterless-intake-left',
+        'diverterless-intake-right',
+        'single-engine-nozzle',
+        'canted-tail-left',
+        'canted-tail-right',
+        'weapon-bay-left',
+        'weapon-bay-right',
+      ]),
     );
-    expect(LOWPOLY_FIGHTER_PART_IDS.length).toBeGreaterThanOrEqual(12);
+    expect(LOWPOLY_FIGHTER_PART_IDS.length).toBeGreaterThanOrEqual(24);
+    expect(LOWPOLY_FIGHTER_PART_IDS.some((id) => id.includes('leading-edge'))).toBe(false);
   });
 
   it('builds workers without rifle-like parts', () => {

@@ -192,28 +192,40 @@ export const LOWPOLY_FIGHTER_MODEL_SCALE = 1.45;
 export const LOWPOLY_FIGHTER_PART_IDS = [
   'fuselage',
   'spine',
-  'nose',
-  'cockpit',
-  'canopy',
-  'main-wing',
-  'main-wing-left',
-  'main-wing-right',
-  'tail-wing',
-  'tail-wing-left',
-  'tail-wing-right',
-  'vertical-tail',
-  'intake',
-  'intake-left',
-  'intake-right',
-  'engine-nozzle',
-  'hardpoint',
-  'hardpoint-left-inner',
-  'hardpoint-left-outer',
-  'hardpoint-right-inner',
-  'hardpoint-right-outer',
+  'faceted-nose',
+  'nose-sensor',
+  'chine-left',
+  'chine-right',
+  'shoulder-left',
+  'shoulder-right',
+  'bubble-canopy',
+  'canopy-spine',
+  'trapezoid-wing-left',
+  'trapezoid-wing-right',
+  'wing-thickness-left',
+  'wing-thickness-right',
+  'wing-panel-line-left',
+  'wing-panel-line-right',
+  'diverterless-intake-left',
+  'diverterless-intake-right',
+  'intake-lip-left',
+  'intake-lip-right',
+  'tailplane-left',
+  'tailplane-right',
+  'canted-tail-left',
+  'canted-tail-right',
+  'single-engine-nozzle',
+  'exhaust-ring',
+  'weapon-bay-left',
+  'weapon-bay-right',
+  'bay-line-center',
+  'formation-light-left',
+  'formation-light-right',
   'wingtip-left',
   'wingtip-right',
   'team-stripe',
+  'team-fin-left',
+  'team-fin-right',
 ] as const;
 
 export const LOWPOLY_WORKER_PART_IDS = [
@@ -3030,85 +3042,163 @@ export class ThreeWorldRenderer {
     const root = new Group();
     root.name = 'lowpoly-strike-fighter';
     root.scale.setScalar(LOWPOLY_FIGHTER_MODEL_SCALE);
-    const hullMat = new MeshLambertMaterial({ color: 0x7f897b });
-    const panelMat = new MeshLambertMaterial({ color: 0x5f6a62 });
-    const darkMat = new MeshLambertMaterial({ color: 0x30383b });
-    const canopyMat = new MeshLambertMaterial({ color: 0x26394b });
-    const hardpointMat = new MeshLambertMaterial({ color: 0xd0d0bc });
+    const hullMat = new MeshLambertMaterial({ color: 0x778176 });
+    const panelMat = new MeshLambertMaterial({ color: 0x5d6861 });
+    const edgeMat = new MeshLambertMaterial({ color: 0x4d5955 });
+    const darkMat = new MeshLambertMaterial({ color: 0x252d31 });
+    const canopyMat = new MeshLambertMaterial({ color: 0x20364a });
+    const bayMat = new MeshLambertMaterial({ color: 0x39413f });
+    const lightMat = new MeshLambertMaterial({ color: 0xcfd8c7 });
+    const wingMat = new MeshLambertMaterial({ color: 0x738078, side: DoubleSide });
     const accentMat = new MeshLambertMaterial({ color: ownerColor });
     const addPart = (id: string, mesh: Mesh): Mesh => {
       mesh.name = id;
       root.add(mesh);
       return mesh;
     };
+    const addFlatWing = (id: string, side: -1 | 1): Mesh => {
+      const shape = new Shape();
+      shape.moveTo(0.48, side * 0.2);
+      shape.lineTo(0.02, side * 1.38);
+      shape.lineTo(-0.98, side * 1.04);
+      shape.lineTo(-0.46, side * 0.16);
+      shape.lineTo(0.48, side * 0.2);
+      const wing = addPart(id, new Mesh(new ShapeGeometry(shape), wingMat));
+      wing.rotation.x = Math.PI / 2;
+      wing.position.y = 0.33;
+      return wing;
+    };
 
     const fuselage = addPart('fuselage', new Mesh(this.fighterFuselageGeo, hullMat));
-    fuselage.position.y = 0.36;
+    fuselage.position.set(-0.04, 0.36, 0);
+    fuselage.scale.set(1.25, 0.9, 1.42);
 
     const spine = addPart('spine', new Mesh(this.fighterSpineGeo, panelMat));
-    spine.position.set(-0.18, 0.56, 0);
+    spine.position.set(-0.22, 0.55, 0);
+    spine.scale.set(1.18, 0.82, 1.2);
 
-    const nose = addPart('nose', new Mesh(this.fighterNoseGeo, darkMat));
+    const nose = addPart('faceted-nose', new Mesh(this.fighterNoseGeo, hullMat));
     nose.rotation.z = -Math.PI / 2;
-    nose.position.set(1.14, 0.36, 0);
+    nose.position.set(1.28, 0.36, 0);
+    nose.scale.set(1.35, 0.82, 0.92);
+    const noseSensor = addPart('nose-sensor', new Mesh(this.fighterHardpointNoseGeo, darkMat));
+    noseSensor.rotation.z = -Math.PI / 2;
+    noseSensor.position.set(1.66, 0.36, 0);
+    noseSensor.scale.set(0.85, 0.72, 0.72);
 
-    const cockpit = addPart('cockpit', new Mesh(this.fighterCockpitGeo, canopyMat));
-    cockpit.position.set(0.34, 0.58, 0);
-    cockpit.rotation.z = -0.08;
+    const shoulderLeft = addPart('shoulder-left', new Mesh(new BoxGeometry(0.92, 0.12, 0.26), edgeMat));
+    shoulderLeft.position.set(0.2, 0.45, 0.35);
+    shoulderLeft.rotation.y = -0.12;
+    const shoulderRight = addPart('shoulder-right', new Mesh(new BoxGeometry(0.92, 0.12, 0.26), edgeMat));
+    shoulderRight.position.set(0.2, 0.45, -0.35);
+    shoulderRight.rotation.y = 0.12;
+    const chineLeft = addPart('chine-left', new Mesh(new BoxGeometry(1.05, 0.07, 0.08), edgeMat));
+    chineLeft.position.set(0.64, 0.36, 0.31);
+    chineLeft.rotation.y = -0.17;
+    const chineRight = addPart('chine-right', new Mesh(new BoxGeometry(1.05, 0.07, 0.08), edgeMat));
+    chineRight.position.set(0.64, 0.36, -0.31);
+    chineRight.rotation.y = 0.17;
 
-    const canopy = addPart('canopy', new Mesh(this.fighterCockpitGeo, canopyMat));
-    canopy.position.set(0.16, 0.7, 0);
-    canopy.scale.set(0.55, 0.58, 0.72);
+    const canopy = addPart('bubble-canopy', new Mesh(new SphereGeometry(0.28, 8, 5), canopyMat));
+    canopy.position.set(0.36, 0.63, 0);
+    canopy.scale.set(1.18, 0.42, 0.72);
+    const canopySpine = addPart('canopy-spine', new Mesh(this.fighterCockpitGeo, darkMat));
+    canopySpine.position.set(0.08, 0.62, 0);
+    canopySpine.scale.set(0.52, 0.42, 0.55);
+    canopySpine.rotation.z = -0.08;
 
-    const mainWingLeft = addPart('main-wing-left', new Mesh(this.fighterWingGeo, hullMat));
-    mainWingLeft.position.set(-0.08, 0.33, 0.62);
-    mainWingLeft.rotation.y = -0.35;
+    addFlatWing('trapezoid-wing-left', 1);
+    addFlatWing('trapezoid-wing-right', -1);
 
-    const mainWingRight = addPart('main-wing-right', new Mesh(this.fighterWingGeo, hullMat));
-    mainWingRight.position.set(-0.08, 0.33, -0.62);
-    mainWingRight.rotation.y = 0.35;
+    const wingThicknessLeft = addPart('wing-thickness-left', new Mesh(this.fighterWingGeo, edgeMat));
+    wingThicknessLeft.position.set(-0.2, 0.31, 0.74);
+    wingThicknessLeft.rotation.y = -0.3;
+    wingThicknessLeft.scale.set(1.1, 0.52, 0.24);
+    const wingThicknessRight = addPart('wing-thickness-right', new Mesh(this.fighterWingGeo, edgeMat));
+    wingThicknessRight.position.set(-0.2, 0.31, -0.74);
+    wingThicknessRight.rotation.y = 0.3;
+    wingThicknessRight.scale.set(1.1, 0.52, 0.24);
+    const wingPanelLineLeft = addPart('wing-panel-line-left', new Mesh(new BoxGeometry(0.62, 0.035, 0.045), edgeMat));
+    wingPanelLineLeft.position.set(0.02, 0.365, 0.78);
+    wingPanelLineLeft.rotation.y = -0.38;
+    const wingPanelLineRight = addPart('wing-panel-line-right', new Mesh(new BoxGeometry(0.62, 0.035, 0.045), edgeMat));
+    wingPanelLineRight.position.set(0.02, 0.365, -0.78);
+    wingPanelLineRight.rotation.y = 0.38;
 
-    const tailWingLeft = addPart('tail-wing-left', new Mesh(this.fighterTailWingGeo, panelMat));
-    tailWingLeft.position.set(-0.72, 0.46, 0.38);
-    tailWingLeft.rotation.y = -0.25;
+    const intakeLeft = addPart('diverterless-intake-left', new Mesh(this.fighterIntakeGeo, darkMat));
+    intakeLeft.position.set(0.36, 0.27, 0.45);
+    intakeLeft.rotation.y = -0.28;
+    intakeLeft.scale.set(1.1, 0.95, 1.15);
+    const intakeRight = addPart('diverterless-intake-right', new Mesh(this.fighterIntakeGeo, darkMat));
+    intakeRight.position.set(0.36, 0.27, -0.45);
+    intakeRight.rotation.y = 0.28;
+    intakeRight.scale.set(1.1, 0.95, 1.15);
+    const intakeLipLeft = addPart('intake-lip-left', new Mesh(new BoxGeometry(0.32, 0.06, 0.08), edgeMat));
+    intakeLipLeft.position.set(0.58, 0.34, 0.52);
+    intakeLipLeft.rotation.y = -0.28;
+    const intakeLipRight = addPart('intake-lip-right', new Mesh(new BoxGeometry(0.32, 0.06, 0.08), edgeMat));
+    intakeLipRight.position.set(0.58, 0.34, -0.52);
+    intakeLipRight.rotation.y = 0.28;
 
-    const tailWingRight = addPart('tail-wing-right', new Mesh(this.fighterTailWingGeo, panelMat));
-    tailWingRight.position.set(-0.72, 0.46, -0.38);
-    tailWingRight.rotation.y = 0.25;
+    const tailplaneLeft = addPart('tailplane-left', new Mesh(this.fighterTailWingGeo, panelMat));
+    tailplaneLeft.position.set(-0.86, 0.42, 0.48);
+    tailplaneLeft.rotation.y = -0.34;
+    tailplaneLeft.scale.set(1.12, 1, 1.15);
+    const tailplaneRight = addPart('tailplane-right', new Mesh(this.fighterTailWingGeo, panelMat));
+    tailplaneRight.position.set(-0.86, 0.42, -0.48);
+    tailplaneRight.rotation.y = 0.34;
+    tailplaneRight.scale.set(1.12, 1, 1.15);
 
-    const verticalTail = addPart('vertical-tail', new Mesh(this.fighterVerticalTailGeo, panelMat));
-    verticalTail.position.set(-0.78, 0.76, 0);
-    verticalTail.rotation.z = 0.1;
+    const cantedTailLeft = addPart('canted-tail-left', new Mesh(this.fighterVerticalTailGeo, panelMat));
+    cantedTailLeft.position.set(-0.88, 0.78, 0.38);
+    cantedTailLeft.rotation.x = 0.42;
+    cantedTailLeft.rotation.y = -0.08;
+    cantedTailLeft.rotation.z = -0.08;
+    cantedTailLeft.scale.set(1.12, 1.32, 1.08);
+    const cantedTailRight = addPart('canted-tail-right', new Mesh(this.fighterVerticalTailGeo, panelMat));
+    cantedTailRight.position.set(-0.88, 0.78, -0.38);
+    cantedTailRight.rotation.x = -0.42;
+    cantedTailRight.rotation.y = 0.08;
+    cantedTailRight.rotation.z = -0.08;
+    cantedTailRight.scale.set(1.12, 1.32, 1.08);
 
-    const intakeLeft = addPart('intake-left', new Mesh(this.fighterIntakeGeo, darkMat));
-    intakeLeft.position.set(0.28, 0.27, 0.33);
-
-    const intakeRight = addPart('intake-right', new Mesh(this.fighterIntakeGeo, darkMat));
-    intakeRight.position.set(0.28, 0.27, -0.33);
-
-    const nozzle = addPart('engine-nozzle', new Mesh(this.fighterNozzleGeo, darkMat));
+    const nozzle = addPart('single-engine-nozzle', new Mesh(this.fighterNozzleGeo, darkMat));
     nozzle.rotation.z = Math.PI / 2;
-    nozzle.position.set(-1.02, 0.36, 0);
+    nozzle.position.set(-1.16, 0.36, 0);
+    nozzle.scale.set(1.2, 1.05, 1.05);
+    const exhaustRing = addPart('exhaust-ring', new Mesh(new TorusGeometry(0.18, 0.025, 6, 12), edgeMat));
+    exhaustRing.rotation.y = Math.PI / 2;
+    exhaustRing.position.set(-1.2, 0.36, 0);
 
-    const addHardpoint = (id: string, x: number, z: number): void => {
-      const body = addPart(id, new Mesh(this.fighterHardpointGeo, hardpointMat));
-      body.position.set(x, 0.21, z);
-      const tip = addPart(`${id}-nose`, new Mesh(this.fighterHardpointNoseGeo, darkMat));
-      tip.rotation.z = -Math.PI / 2;
-      tip.position.set(x + 0.23, 0.21, z);
-    };
-    addHardpoint('hardpoint-left-inner', 0.04, 0.58);
-    addHardpoint('hardpoint-left-outer', -0.34, 0.82);
-    addHardpoint('hardpoint-right-inner', 0.04, -0.58);
-    addHardpoint('hardpoint-right-outer', -0.34, -0.82);
+    const weaponBayLeft = addPart('weapon-bay-left', new Mesh(this.fighterHardpointGeo, bayMat));
+    weaponBayLeft.position.set(-0.05, 0.16, 0.16);
+    weaponBayLeft.scale.set(1.2, 0.6, 0.55);
+    const weaponBayRight = addPart('weapon-bay-right', new Mesh(this.fighterHardpointGeo, bayMat));
+    weaponBayRight.position.set(-0.05, 0.16, -0.16);
+    weaponBayRight.scale.set(1.2, 0.6, 0.55);
+    const bayLine = addPart('bay-line-center', new Mesh(new BoxGeometry(0.72, 0.035, 0.035), lightMat));
+    bayLine.position.set(-0.06, 0.145, 0);
 
+    const formationLightLeft = addPart('formation-light-left', new Mesh(new BoxGeometry(0.05, 0.04, 0.28), accentMat));
+    formationLightLeft.position.set(-0.18, 0.43, 0.52);
+    const formationLightRight = addPart('formation-light-right', new Mesh(new BoxGeometry(0.05, 0.04, 0.28), accentMat));
+    formationLightRight.position.set(-0.18, 0.43, -0.52);
     const wingtipLeft = addPart('wingtip-left', new Mesh(this.fighterWingtipGeo, accentMat));
-    wingtipLeft.position.set(-0.06, 0.36, 1.13);
+    wingtipLeft.position.set(-0.1, 0.36, 1.2);
+    wingtipLeft.scale.set(0.8, 0.8, 0.8);
     const wingtipRight = addPart('wingtip-right', new Mesh(this.fighterWingtipGeo, accentMat));
-    wingtipRight.position.set(-0.06, 0.36, -1.13);
+    wingtipRight.position.set(-0.1, 0.36, -1.2);
+    wingtipRight.scale.set(0.8, 0.8, 0.8);
 
     const stripe = addPart('team-stripe', new Mesh(this.fighterStripeGeo, accentMat));
     stripe.position.set(-0.44, 0.53, 0);
+    stripe.scale.set(0.72, 0.82, 0.55);
+    const teamFinLeft = addPart('team-fin-left', new Mesh(new BoxGeometry(0.05, 0.2, 0.08), accentMat));
+    teamFinLeft.position.set(-0.88, 0.88, 0.43);
+    teamFinLeft.rotation.x = 0.42;
+    const teamFinRight = addPart('team-fin-right', new Mesh(new BoxGeometry(0.05, 0.2, 0.08), accentMat));
+    teamFinRight.position.set(-0.88, 0.88, -0.43);
+    teamFinRight.rotation.x = -0.42;
     return root;
   }
 
