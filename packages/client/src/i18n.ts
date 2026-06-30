@@ -57,6 +57,11 @@ export const UI_TEXT = {
         ],
         browserNote: 'Play in browser, no download required.',
         nav: ['Play Now', 'Choose Map'],
+        showcaseLabels: {
+          mass: '人海战术',
+          air: '空战',
+          missile: '导弹',
+        },
       },
       aiDifficulty: 'AI 难度',
       battlefield: 'Choose Map',
@@ -183,6 +188,11 @@ export const UI_TEXT = {
         ],
         browserNote: 'Play in browser, no download required.',
         nav: ['Play Now', 'Choose Map'],
+        showcaseLabels: {
+          mass: 'Mass Tactics',
+          air: 'Air Combat',
+          missile: 'Missiles',
+        },
       },
       aiDifficulty: 'AI Difficulty',
       battlefield: 'Choose Map',

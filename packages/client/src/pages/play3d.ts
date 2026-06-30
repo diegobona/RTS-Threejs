@@ -45,6 +45,7 @@ const SETUP_3D_STYLE = `
 .p3-showcase { position: relative; min-height: 386px; perspective: 1100px; }
 .p3-shot { position: absolute; overflow: hidden; border: 1px solid rgba(129, 178, 201, .34); border-radius: 12px;
   background: #8fbf7f; box-shadow: 0 24px 70px rgba(0,0,0,.42); }
+.p3-shot.has-image { background: #071014; }
 .p3-shot-main { inset: 16px 34px 74px 0; transform: rotateX(2deg) rotateY(-8deg); }
 .p3-shot-small { width: 46%; aspect-ratio: 16 / 9; right: 0; bottom: 0; transform: rotateX(2deg) rotateY(-10deg); }
 .p3-shot-air { width: 40%; aspect-ratio: 16 / 10; right: 26px; top: 0; transform: rotateX(1deg) rotateY(-10deg) translateY(-4px); }
@@ -73,6 +74,9 @@ const SETUP_3D_STYLE = `
   repeating-linear-gradient(0deg, rgba(255,255,255,.055) 0 1px, transparent 1px 26px),
   repeating-linear-gradient(90deg, rgba(255,255,255,.045) 0 1px, transparent 1px 26px),
   linear-gradient(180deg, #a4d492, #82b974); }
+.p3-shot.has-image::before, .p3-shot.has-image::after { content: none; }
+.p3-shot-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center;
+  display: block; }
 .p3-shot-label { position: absolute; left: 12px; bottom: 10px; z-index: 1; padding: 5px 9px; border-radius: 999px;
   background: rgba(5, 10, 13, .72); color: #f2fbff; font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
 .p3-section { scroll-margin-top: 18px; }
@@ -160,9 +164,18 @@ export async function renderPlay3D(root: HTMLElement): Promise<void> {
             <p class="p3-browser-note">${hero.browserNote}</p>
           </div>
           <div class="p3-showcase" aria-label="Gameplay screenshots">
-            <div class="p3-shot p3-shot-main"><span class="p3-shot-label">Base assault</span></div>
-            <div class="p3-shot p3-shot-air"><span class="p3-shot-label">Air strike</span></div>
-            <div class="p3-shot p3-shot-small"><span class="p3-shot-label">Mass attack</span></div>
+            <div class="p3-shot p3-shot-main has-image">
+              <img class="p3-shot-img" src="/landing/mass-tactics.webp" alt="${hero.showcaseLabels.mass}" />
+              <span class="p3-shot-label">${hero.showcaseLabels.mass}</span>
+            </div>
+            <div class="p3-shot p3-shot-air has-image">
+              <img class="p3-shot-img" src="/landing/air-combat.webp" alt="${hero.showcaseLabels.air}" />
+              <span class="p3-shot-label">${hero.showcaseLabels.air}</span>
+            </div>
+            <div class="p3-shot p3-shot-small has-image">
+              <img class="p3-shot-img" src="/landing/missiles.webp" alt="${hero.showcaseLabels.missile}" />
+              <span class="p3-shot-label">${hero.showcaseLabels.missile}</span>
+            </div>
           </div>
         </section>
         <section class="p3-section p3-controls" id="choose-map">

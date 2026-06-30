@@ -42,6 +42,7 @@ import {
   RALLY_VISUAL_STYLE_3D,
   configureInstancedUnitMesh3D,
   shouldUseInstancedUnitModel3D,
+  usesLowPolyInfantryModel3D,
   usesLowPolyTankModel3D,
 } from './three-world-renderer';
 
@@ -399,12 +400,20 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
 
   it('uses instanced rendering only for repeated procedural combat units', () => {
     expect(shouldUseInstancedUnitModel3D({ id: 'gi', domain: 'infantry' })).toBe(true);
+    expect(shouldUseInstancedUnitModel3D({ id: 'conscript', domain: 'infantry' })).toBe(true);
     expect(shouldUseInstancedUnitModel3D({ id: 'grizzly', domain: 'vehicle' })).toBe(true);
     expect(shouldUseInstancedUnitModel3D({ id: 'rhino', domain: 'vehicle' })).toBe(true);
     expect(shouldUseInstancedUnitModel3D({ id: 'fighter', domain: 'aircraft' })).toBe(true);
     expect(shouldUseInstancedUnitModel3D({ id: 'worker', domain: 'infantry' })).toBe(false);
     expect(shouldUseInstancedUnitModel3D({ id: 'barracks', domain: 'building' })).toBe(false);
     expect(shouldUseInstancedUnitModel3D({ id: 'fighter', domain: 'aircraft' }, true)).toBe(false);
+  });
+
+  it('maps both player and AI rifle infantry to the animated low-poly soldier model', () => {
+    expect(usesLowPolyInfantryModel3D({ id: 'gi', domain: 'infantry' })).toBe(true);
+    expect(usesLowPolyInfantryModel3D({ id: 'conscript', domain: 'infantry' })).toBe(true);
+    expect(usesLowPolyInfantryModel3D({ id: 'worker', domain: 'infantry' })).toBe(false);
+    expect(usesLowPolyInfantryModel3D({ id: 'grizzly', domain: 'vehicle' })).toBe(false);
   });
 
   it('disables frustum culling on instanced unit meshes because instances spread across the whole battlefield', () => {

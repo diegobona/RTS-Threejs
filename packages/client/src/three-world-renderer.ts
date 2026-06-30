@@ -484,6 +484,7 @@ function lowPolyPartId3D(meshName: string): string {
 }
 
 export const LOWPOLY_TANK_UNIT_IDS = ['grizzly', 'rhino'] as const;
+export const LOWPOLY_INFANTRY_UNIT_IDS = ['gi', 'conscript'] as const;
 
 export const LOWPOLY_TANK_PART_IDS = [
   'left-track',
@@ -538,6 +539,10 @@ export const LOWPOLY_TANK_PART_IDS = [
 
 export function usesLowPolyTankModel3D(type: Pick<UnitType, 'id' | 'domain'>): boolean {
   return type.domain === 'vehicle' && (LOWPOLY_TANK_UNIT_IDS as readonly string[]).includes(type.id);
+}
+
+export function usesLowPolyInfantryModel3D(type: Pick<UnitType, 'id' | 'domain'>): boolean {
+  return type.domain === 'infantry' && (LOWPOLY_INFANTRY_UNIT_IDS as readonly string[]).includes(type.id);
 }
 
 export function entityRootAltitude3D(_type: Pick<UnitType, 'domain'>): number {
@@ -685,7 +690,7 @@ export function proceduralModelYawOffset3D(
 
 export function shouldUseInstancedUnitModel3D(type: Pick<UnitType, 'id' | 'domain'>, hasExternalModel = false): boolean {
   if (hasExternalModel || type.domain === 'building') return false;
-  return type.id === 'gi' || usesLowPolyTankModel3D(type) || type.id === 'fighter';
+  return usesLowPolyInfantryModel3D(type) || usesLowPolyTankModel3D(type) || type.id === 'fighter';
 }
 
 export function configureInstancedUnitMesh3D(mesh: InstancedMesh, typeId: string): void {
@@ -1894,7 +1899,7 @@ export class ThreeWorldRenderer {
     timeSeconds: number,
   ): Matrix4 {
     const local = part.localMatrix.clone();
-    if (type.id !== 'gi' || !entity) return local;
+    if (!usesLowPolyInfantryModel3D(type) || !entity) return local;
 
     const moving = this.entityMovingForWalkAnimation(entity, view);
     const firing = this.entityFiringForInfantryAnimation(entity);
@@ -1960,7 +1965,7 @@ export class ThreeWorldRenderer {
   }
 
   private createInstancedModelPrototype(type: UnitType, ownerColor: number): Object3D {
-    if (type.id === 'gi') return this.createInfantry(ownerColor);
+    if (usesLowPolyInfantryModel3D(type)) return this.createInfantry(ownerColor);
     if (usesLowPolyTankModel3D(type)) return this.createTank(ownerColor);
     if (type.id === 'fighter') return this.createAircraft(ownerColor);
     return this.createVehiclePlaceholder(ownerColor, !!type.weapon);
