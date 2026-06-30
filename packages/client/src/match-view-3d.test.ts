@@ -7,6 +7,7 @@ import {
   allOwnedUnitIdsInCapacityGroup3D,
   ATTACK_MODE_HUD_LABEL_3D,
   bindAudioUnlock,
+  bindBuildButtonActivation3D,
   buildButtonMeta3D,
   buildButtonTitle3D,
   BUILD_PANEL_PLACEMENT_CLASS_3D,
@@ -110,6 +111,27 @@ describe('MatchView3D production tabs', () => {
     expect(buildButtonTitle3D(buildButtonMeta3D({ id: 'warfactory', name: 'War Factory' }))).toBe('Produces: tank, missile truck');
     expect(buildButtonTitle3D(buildButtonMeta3D({ id: 'airbase', name: 'Airbase' }))).toBe('Produces: fighter');
   });
+
+  it('activates build buttons on pointer down without firing the following click twice', () => {
+    const button = new EventTarget();
+    let activations = 0;
+
+    bindBuildButtonActivation3D(button, () => {
+      activations++;
+    });
+
+    const pointerDown = new Event('pointerdown') as Event & { button: number };
+    Object.defineProperty(pointerDown, 'button', { value: 0 });
+    button.dispatchEvent(pointerDown);
+    button.dispatchEvent(new Event('click'));
+
+    expect(activations).toBe(1);
+
+    button.dispatchEvent(new Event('click'));
+
+    expect(activations).toBe(2);
+  });
+
   it('switches the current pending building instead of queuing behind the previous pending building', () => {
     const world = new World(gridTerrain(20, 20), 7);
     world.addPlayer(1, 'allied', 0);

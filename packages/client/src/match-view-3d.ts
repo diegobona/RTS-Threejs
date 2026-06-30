@@ -317,6 +317,24 @@ export function bindAudioUnlock(pointerTarget: EventTarget, keyboardTarget: Even
   keyboardTarget?.addEventListener('keydown', resume, { once: true });
 }
 
+export function bindBuildButtonActivation3D(target: EventTarget, activate: () => void): void {
+  let skipNextClick = false;
+  target.addEventListener('pointerdown', (event) => {
+    const pointer = event as PointerEvent;
+    if (pointer.button !== 0) return;
+    skipNextClick = true;
+    activate();
+  });
+  target.addEventListener('click', (event) => {
+    event.preventDefault();
+    if (skipNextClick) {
+      skipNextClick = false;
+      return;
+    }
+    activate();
+  });
+}
+
 export const MATCH_3D_STYLE = `
 .mv3-root { position: fixed; inset: 0; overflow: hidden; background: #070b0d;
   --hud-bg: rgba(9, 15, 18, .84);
@@ -785,7 +803,7 @@ export class MatchView3D {
       progress.className = 'mv3-prod-progress';
       progress.appendChild(document.createElement('span'));
       button.append(icon, main, state, progress);
-      button.addEventListener('click', () => this.onProductionButton(type));
+      bindBuildButtonActivation3D(button, () => this.onProductionButton(type));
       this.buildEl.appendChild(button);
       this.buildButtons.push({ button, state, type });
     }
@@ -828,6 +846,7 @@ export class MatchView3D {
     const plan = productionClickPlan3D(this.localPlayerId, type, q, this.placingType?.id ?? null);
     if (plan.placingTypeId === null && this.placingType?.id === type.id) {
       this.cancelPlacement();
+      this.refreshBuildPanel();
       return;
     }
     this.localCommands.push(...plan.commands);
@@ -835,6 +854,7 @@ export class MatchView3D {
       this.placingType = plan.placingTypeId === type.id ? type : null;
       this.selected.clear();
       audioBus.play('build');
+      this.refreshBuildPanel();
       return;
     }
     audioBus.play('select');
