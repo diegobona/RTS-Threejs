@@ -96,6 +96,14 @@ const SETUP_3D_STYLE = `
 .p3-map-card:disabled.on { border-color: #2a3a48; box-shadow: none; color: #c8d2da; }
 .p3-map-preview { height: 64px; margin-bottom: 10px; border-radius: 7px; border: 1px solid #263946; overflow: hidden;
   background: repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 2px, transparent 2px 6px), #789b68; }
+.p3-map-card[data-v="verdant"] .p3-map-preview { background:
+  linear-gradient(23deg, transparent 0 40%, #b8aa83 41% 43%, #c0b48d 44% 45%, transparent 46% 100%),
+  linear-gradient(75deg, transparent 0 30%, #b8aa83 31% 33%, transparent 34% 100%),
+  radial-gradient(ellipse at 72% 28%, #79c8cd 0 12%, #d9e7c3 13% 18%, transparent 19%),
+  radial-gradient(ellipse at 23% 72%, #79c8cd 0 10%, #d9e7c3 11% 16%, transparent 17%),
+  radial-gradient(ellipse at 78% 68%, rgba(120, 154, 91, .86) 0 18%, transparent 19%),
+  repeating-linear-gradient(0deg, rgba(255,255,255,.055) 0 2px, transparent 2px 6px),
+  linear-gradient(180deg, #86b777, #729f65); }
 .p3-map-card[data-v="lakeland"] .p3-map-preview { background:
   linear-gradient(24deg, transparent 0 36%, #b7aa83 37% 39%, #b9aa90 40% 42%, transparent 43% 100%),
   radial-gradient(ellipse at 48% 50%, transparent 0 10%, #367fa5 11% 28%, transparent 29%),

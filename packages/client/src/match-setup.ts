@@ -111,6 +111,26 @@ function baseOre(): { cellX: number; cellY: number }[] {
   ];
 }
 
+const verdantWater = merge(
+  ellipse(76, 20, 7, 4),
+  ellipse(25, 64, 6, 4),
+  ellipse(86, 58, 5, 3),
+  lineBand([{ x: 9, y: 44 }, { x: 21, y: 48 }, { x: 33, y: 55 }, { x: 43, y: 66 }], 1),
+);
+const verdantShore = subtract(grow(verdantWater, 2), verdantWater);
+const verdantRoads = subtract(
+  merge(
+    lineBand([{ x: 0, y: 72 }, { x: 20, y: 63 }, { x: 42, y: 54 }, { x: 70, y: 44 }, { x: 107, y: 33 }], 1),
+    lineBand([{ x: 7, y: 17 }, { x: 27, y: 21 }, { x: 48, y: 34 }, { x: 64, y: 51 }, { x: 81, y: 72 }], 1),
+    lineBand([{ x: 46, y: 0 }, { x: 50, y: 21 }, { x: 54, y: 44 }, { x: 59, y: 70 }, { x: 63, y: 87 }], 1),
+  ),
+  verdantWater,
+);
+const verdantMarsh = subtract(
+  merge(ellipse(17, 49, 10, 5), ellipse(78, 28, 12, 5), ellipse(86, 65, 10, 5), ellipse(32, 70, 8, 4)),
+  merge(verdantWater, verdantRoads),
+);
+
 const lakelandMainWaterRaw = merge(
   ellipse(50, 40, 20, 11),
   ellipse(35, 28, 11, 7),
@@ -164,8 +184,13 @@ export const SKIRMISH_MAP_PRESETS: readonly SkirmishMapPreset[] = [
     width: MAP_W,
     height: MAP_H,
     seed: 20260610,
-    blockedCells: [],
-    terrainCells: {},
+    blockedCells: verdantWater,
+    terrainCells: {
+      marsh: verdantMarsh,
+      shore: verdantShore,
+      road: verdantRoads,
+      water: verdantWater,
+    },
     orePatches: baseOre(),
   },
   {

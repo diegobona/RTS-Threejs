@@ -67,4 +67,24 @@ describe('local skirmish map presets', () => {
       expect(world.terrain.passable(spawn.cellX, spawn.cellY)).toBe(true);
     }
   });
+
+  it('designs Verdant as an open natural battlefield with roads, small water features, and safe spawns', () => {
+    const preset = skirmishMapPreset('verdant');
+    const water = preset.terrainCells.water ?? [];
+    const shore = preset.terrainCells.shore ?? [];
+    const road = preset.terrainCells.road ?? [];
+    const marsh = preset.terrainCells.marsh ?? [];
+    const config = localSkirmishConfig(0, 'verdant');
+    const world = createWorldFromConfig(config);
+
+    expect(water.length).toBeGreaterThan(80);
+    expect(shore.length).toBeGreaterThan(120);
+    expect(road.length).toBeGreaterThan(140);
+    expect(marsh.length).toBeGreaterThan(80);
+    expect(world.terrain.passable(54, 44)).toBe(true);
+    expect(world.terrain.terrainAt?.(54, 44)).not.toBe('water');
+    for (const spawn of config.spawns) {
+      expect(world.terrain.passable(spawn.cellX, spawn.cellY)).toBe(true);
+    }
+  });
 });
