@@ -1054,6 +1054,110 @@ function commandArrowGeometry3D(): ShapeGeometry {
   return new ShapeGeometry(shape);
 }
 
+export interface TerrainTileProfile3D {
+  color: number;
+  opacity: number;
+}
+
+export interface TerrainSoftOverlayProfile3D {
+  color: number;
+  opacity: number;
+  radius: number;
+  y: number;
+}
+
+export interface TerrainWideGrassBandProfile3D {
+  count: number;
+  opacityA: number;
+  opacityB: number;
+}
+
+export interface TerrainLayerProfile3D {
+  largeGroundY: number;
+  surfaceY: number;
+  tileY: number;
+  waterRippleY: number;
+}
+
+export function terrainTileProfile3D(terrain: string | undefined, passable: boolean, checker: boolean): TerrainTileProfile3D {
+  switch (terrain) {
+    case 'water': return { color: 0x3e91ad, opacity: 0.03 };
+    case 'ridge': return { color: 0x7e857c, opacity: 0.48 };
+    case 'sand': return { color: 0xaa9a66, opacity: 0.28 };
+    case 'scorched': return { color: 0x493f32, opacity: 0.36 };
+    case 'shore': return { color: 0xd7dcc2, opacity: 0.035 };
+    case 'road': return { color: 0xc0b196, opacity: 0.08 };
+    case 'marsh': return { color: 0x73906a, opacity: 0.06 };
+    default:
+      if (!passable) return { color: 0x8b8063, opacity: 0.42 };
+      return checker ? { color: 0x8aaa78, opacity: 0 } : { color: 0x6f9568, opacity: 0 };
+  }
+}
+
+export function terrainWideGrassBandProfile3D(): TerrainWideGrassBandProfile3D {
+  return { count: 0, opacityA: 0, opacityB: 0 };
+}
+
+export function terrainLayerProfile3D(): TerrainLayerProfile3D {
+  return {
+    largeGroundY: -1.2,
+    surfaceY: -0.02,
+    tileY: 0.03,
+    waterRippleY: 0.08,
+  };
+}
+
+export function terrainSoftOverlayProfile3D(terrain: string | undefined): TerrainSoftOverlayProfile3D | null {
+  switch (terrain) {
+    default: return null;
+  }
+}
+
+export function terrainGrassTextureColor3D(x: number, y: number): { r: number; g: number; b: number } {
+  const waveA = Math.sin(x * 0.047 + y * 0.031 + Math.sin((x - y) * 0.013) * 1.2);
+  const waveB = Math.sin(x * 0.111 - y * 0.067 + Math.sin((x + y) * 0.019) * 0.9);
+  const waveC = Math.sin((x + y) * 0.027 + Math.sin(x * 0.021) * 0.7);
+  const noise = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+  const grain = noise - Math.floor(noise);
+  const lift = waveA * 3.8 + waveB * 2.8 + waveC * 2.2 + grain * 11 - 5.5;
+  return {
+    r: Math.round(Math.max(92, Math.min(150, 126 + lift * 0.7))),
+    g: Math.round(Math.max(130, Math.min(184, 158 + lift))),
+    b: Math.round(Math.max(96, Math.min(137, 112 + lift * 0.55))),
+  };
+}
+
+export interface TerrainSurfaceInfluence3D {
+  water: number;
+  shore: number;
+  road: number;
+  marsh: number;
+}
+
+function blendChannel3D(a: number, b: number, t: number): number {
+  return Math.round(a + (b - a) * Math.max(0, Math.min(1, t)));
+}
+
+function blendColor3D(a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }, t: number): { r: number; g: number; b: number } {
+  return {
+    r: blendChannel3D(a.r, b.r, t),
+    g: blendChannel3D(a.g, b.g, t),
+    b: blendChannel3D(a.b, b.b, t),
+  };
+}
+
+export function terrainSurfaceTextureColor3D(x: number, y: number, influence: TerrainSurfaceInfluence3D): { r: number; g: number; b: number } {
+  let color = terrainGrassTextureColor3D(x, y);
+  const grassShade = Math.sin(x * 0.048 + y * 0.031) * 0.035 + Math.sin((x - y) * 0.021) * 0.025;
+  color = blendColor3D(color, { r: 103, g: 137, b: 102 }, Math.max(0, grassShade));
+  color = blendColor3D(color, { r: 98, g: 137, b: 91 }, influence.marsh * 0.55);
+  color = blendColor3D(color, { r: 180, g: 168, b: 140 }, influence.road * 0.86);
+  color = blendColor3D(color, { r: 188, g: 194, b: 154 }, influence.shore * 0.72);
+  const waterNoise = Math.sin(x * 0.18 + y * 0.07) * 8 + Math.sin((x - y) * 0.09) * 5;
+  color = blendColor3D(color, { r: 77 + waterNoise * 0.35, g: 137 + waterNoise * 0.45, b: 157 + waterNoise }, influence.water * 0.9);
+  return color;
+}
+
 export class ThreeWorldRenderer {
   readonly renderer: WebGLRenderer;
   readonly scene = new Scene();
@@ -1072,6 +1176,7 @@ export class ThreeWorldRenderer {
   private readonly audioEvents = new ThreeAudioEventTracker();
   private frameVisualBudget = createFrameVisualBudget3D();
   private readonly tileGeo = new PlaneGeometry(THREE_CELL_SIZE, THREE_CELL_SIZE);
+  private readonly waterRippleGeo = new PlaneGeometry(0.9, 0.045);
   private readonly oreGeo = new OctahedronGeometry(0.18, 0);
   private readonly projectileGeo = new SphereGeometry(0.12, 8, 8);
   private readonly projectileTracerGeo = new BoxGeometry(0.045, 0.045, 1);
@@ -1428,49 +1533,45 @@ export class ThreeWorldRenderer {
   private drawTerrain(): void {
     const ground = new Mesh(this.largeGroundGeo(), this.largeGroundMat());
     const center = cellToWorld3D((this.world.terrain.width - 1) / 2, (this.world.terrain.height - 1) / 2);
+    const layers = terrainLayerProfile3D();
     ground.rotation.x = -Math.PI / 2;
-    ground.position.set(center.x, -0.035, center.z);
+    ground.position.set(center.x, layers.largeGroundY, center.z);
     this.scene.add(ground);
+    this.drawTerrainSurface(center.x, center.z, layers);
 
-    const passMatA = new MeshLambertMaterial({ color: 0x7f9f70, transparent: true, opacity: 0.16 });
-    const passMatB = new MeshLambertMaterial({ color: 0x729568, transparent: true, opacity: 0.12 });
-    const blockMat = new MeshLambertMaterial({ color: 0x8b8063, transparent: true, opacity: 0.48 });
-    const waterMat = new MeshLambertMaterial({ color: 0x357ca0, transparent: true, opacity: 0.58 });
-    const ridgeMat = new MeshLambertMaterial({ color: 0x7e857c, transparent: true, opacity: 0.58 });
-    const sandMat = new MeshLambertMaterial({ color: 0xaa9a66, transparent: true, opacity: 0.34 });
-    const scorchedMat = new MeshLambertMaterial({ color: 0x493f32, transparent: true, opacity: 0.4 });
-    const shoreMat = new MeshLambertMaterial({ color: 0xb7aa83, transparent: true, opacity: 0.5 });
-    const roadMat = new MeshLambertMaterial({ color: 0xb9aa90, transparent: true, opacity: 0.66 });
-    const marshMat = new MeshLambertMaterial({ color: 0x6f8f68, transparent: true, opacity: 0.42 });
+    const tileMats = new Map<string, MeshLambertMaterial>();
+    const tileMat = (terrain: string | undefined, passable: boolean, checker: boolean): MeshLambertMaterial => {
+      const profile = terrainTileProfile3D(terrain, passable, checker);
+      const key = `${terrain ?? 'grass'}:${passable ? 1 : 0}:${checker ? 1 : 0}`;
+      let mat = tileMats.get(key);
+      if (!mat) {
+        mat = new MeshLambertMaterial({
+          color: profile.color,
+          transparent: true,
+          opacity: profile.opacity,
+          depthWrite: false,
+        });
+        tileMats.set(key, mat);
+      }
+      return mat;
+    };
     for (let y = 0; y < this.world.terrain.height; y++) {
       for (let x = 0; x < this.world.terrain.width; x++) {
         const terrain = this.world.terrain.terrainAt?.(x, y);
-        const m =
-          terrain === 'water'
-            ? waterMat
-            : terrain === 'ridge'
-              ? ridgeMat
-              : terrain === 'sand'
-                ? sandMat
-                : terrain === 'scorched'
-                  ? scorchedMat
-                  : terrain === 'shore'
-                    ? shoreMat
-                    : terrain === 'road'
-                      ? roadMat
-                      : terrain === 'marsh'
-                        ? marshMat
-                        : this.world.terrain.passable(x, y)
-                          ? ((x + y) % 2 === 0 ? passMatA : passMatB)
-                          : blockMat;
+        const passable = this.world.terrain.passable(x, y);
+        if (terrainTileProfile3D(terrain, passable, (x + y) % 2 === 0).opacity <= 0) continue;
+        const m = tileMat(terrain, passable, (x + y) % 2 === 0);
         const tile = new Mesh(this.tileGeo, m);
         const pos = cellToWorld3D(x, y);
         tile.rotation.x = -Math.PI / 2;
-        tile.position.set(pos.x, -0.01, pos.z);
+        tile.position.set(pos.x, layers.tileY, pos.z);
         this.scene.add(tile);
       }
     }
-    this.drawGrassBands(center.x, center.z);
+    const grassBandProfile = terrainWideGrassBandProfile3D();
+    if (grassBandProfile.count > 0 && Math.max(grassBandProfile.opacityA, grassBandProfile.opacityB) > 0) {
+      this.drawGrassBands(center.x, center.z, grassBandProfile);
+    }
     if (!this.hasTerrainKind('road')) this.drawRoads();
     this.drawLandscapeProps();
   }
@@ -1489,15 +1590,116 @@ export class ThreeWorldRenderer {
   }
 
   private largeGroundMat(): MeshLambertMaterial {
-    return new MeshLambertMaterial({ color: 0x779868 });
+    return new MeshLambertMaterial({ color: 0x8cad78 });
   }
 
-  private drawGrassBands(centerX: number, centerZ: number): void {
+  private drawTerrainSurface(centerX: number, centerZ: number, layers: TerrainLayerProfile3D): void {
+    const texture = this.createTerrainSurfaceTexture();
+    if (!texture) return;
+    const mat = new MeshLambertMaterial({ map: texture });
     const mapW = this.world.terrain.width * THREE_CELL_SIZE;
     const mapH = this.world.terrain.height * THREE_CELL_SIZE;
-    const bandMatA = new MeshLambertMaterial({ color: 0x8cad78, transparent: true, opacity: 0.16, depthWrite: false });
-    const bandMatB = new MeshLambertMaterial({ color: 0x66895e, transparent: true, opacity: 0.1, depthWrite: false });
-    for (let i = 0; i < 10; i++) {
+    const surface = new Mesh(new PlaneGeometry(mapW, mapH), mat);
+    surface.rotation.x = -Math.PI / 2;
+    surface.position.set(centerX, layers.surfaceY, centerZ);
+    this.scene.add(surface);
+    this.drawWaterRipples(this.terrainCellsOf('water'), layers.waterRippleY);
+  }
+
+  private createTerrainSurfaceTexture(): CanvasTexture | null {
+    if (typeof document === 'undefined') return null;
+    const scale = 8;
+    const width = this.world.terrain.width * scale;
+    const height = this.world.terrain.height * scale;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    const image = ctx.createImageData(width, height);
+    for (let py = 0; py < height; py++) {
+      for (let px = 0; px < width; px++) {
+        const cellX = px / scale;
+        const cellY = py / scale;
+        const color = terrainSurfaceTextureColor3D(px, py, this.terrainSurfaceInfluence(cellX, cellY));
+        const i = (py * width + px) * 4;
+        image.data[i] = color.r;
+        image.data[i + 1] = color.g;
+        image.data[i + 2] = color.b;
+        image.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+    const texture = new CanvasTexture(canvas);
+    texture.anisotropy = Math.min(4, this.renderer.capabilities.getMaxAnisotropy());
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  private terrainSurfaceInfluence(cellX: number, cellY: number): TerrainSurfaceInfluence3D {
+    return {
+      water: this.terrainInfluence(cellX, cellY, 'water', 1.85),
+      shore: this.terrainInfluence(cellX, cellY, 'shore', 1.65),
+      road: this.terrainInfluence(cellX, cellY, 'road', 1.28),
+      marsh: this.terrainInfluence(cellX, cellY, 'marsh', 1.35),
+    };
+  }
+
+  private terrainInfluence(cellX: number, cellY: number, kind: string, radius: number): number {
+    const ix = Math.floor(cellX);
+    const iy = Math.floor(cellY);
+    const reach = Math.ceil(radius);
+    let influence = 0;
+    for (let y = iy - reach; y <= iy + reach; y++) {
+      for (let x = ix - reach; x <= ix + reach; x++) {
+        if (x < 0 || y < 0 || x >= this.world.terrain.width || y >= this.world.terrain.height) continue;
+        if (this.world.terrain.terrainAt?.(x, y) !== kind) continue;
+        const dist = Math.hypot(cellX - (x + 0.5), cellY - (y + 0.5));
+        const t = Math.max(0, Math.min(1, 1 - dist / radius));
+        influence = Math.max(influence, t * t * (3 - 2 * t));
+      }
+    }
+    return influence;
+  }
+
+  private terrainCellsOf(kind: string): { x: number; y: number }[] {
+    const cells: { x: number; y: number }[] = [];
+    for (let y = 0; y < this.world.terrain.height; y++) {
+      for (let x = 0; x < this.world.terrain.width; x++) {
+        if (this.world.terrain.terrainAt?.(x, y) === kind) cells.push({ x, y });
+      }
+    }
+    return cells;
+  }
+
+  private drawWaterRipples(cells: readonly { x: number; y: number }[], y: number): void {
+    const chosen = cells.filter((cell) => this.randCell(cell.x, cell.y, 101) < 0.28);
+    if (chosen.length === 0) return;
+    const mat = new MeshBasicMaterial({ color: 0xd6eff2, transparent: true, opacity: 0.16, depthWrite: false, side: DoubleSide });
+    const mesh = new InstancedMesh(this.waterRippleGeo, mat, chosen.length);
+    mesh.frustumCulled = false;
+    const dummy = new Object3D();
+    chosen.forEach((cell, index) => {
+      const pos = cellToWorld3D(
+        cell.x + this.randCell(cell.x, cell.y, 102) * 0.7 - 0.35,
+        cell.y + this.randCell(cell.x, cell.y, 103) * 0.7 - 0.35,
+      );
+      dummy.position.set(pos.x, y, pos.z);
+      dummy.rotation.set(-Math.PI / 2, 0, -0.2 + this.randCell(cell.x, cell.y, 104) * 0.4);
+      dummy.scale.set(0.65 + this.randCell(cell.x, cell.y, 105) * 0.8, 1, 1);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(index, dummy.matrix);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    this.scene.add(mesh);
+  }
+
+  private drawGrassBands(centerX: number, centerZ: number, profile: TerrainWideGrassBandProfile3D): void {
+    const mapW = this.world.terrain.width * THREE_CELL_SIZE;
+    const mapH = this.world.terrain.height * THREE_CELL_SIZE;
+    const bandMatA = new MeshLambertMaterial({ color: 0x8cad78, transparent: true, opacity: profile.opacityA, depthWrite: false });
+    const bandMatB = new MeshLambertMaterial({ color: 0x66895e, transparent: true, opacity: profile.opacityB, depthWrite: false });
+    for (let i = 0; i < profile.count; i++) {
       const band = new Mesh(new PlaneGeometry(mapW * 1.8, 6 + (i % 3) * 2), i % 2 === 0 ? bandMatA : bandMatB);
       band.rotation.x = -Math.PI / 2;
       band.rotation.z = -0.08 + i * 0.014;
@@ -1586,12 +1788,11 @@ export class ThreeWorldRenderer {
         if (
           !this.world.terrain.passable(x, y) ||
           terrain === 'road' ||
-          terrain === 'shore' ||
           this.world.oreAt(x, y) > 0 ||
           this.nearInitialEntityCell(x, y, 5)
         ) continue;
         const r = this.randCell(x, y);
-        const limit = terrain === 'marsh' ? 0.42 : 0.24;
+        const limit = terrain === 'marsh' ? 0.42 : terrain === 'shore' ? 0.36 : 0.24;
         if (r > limit) continue;
         const pos = cellToWorld3D(x + this.randCell(x, y, 2) * 1.4 - 0.7, y + this.randCell(x, y, 3) * 1.4 - 0.7);
         if (r < 0.075) {
@@ -4019,7 +4220,8 @@ export class ThreeWorldRenderer {
   }
 
   private disposeMaterial(material: Material): void {
-    if (material instanceof SpriteMaterial) material.map?.dispose();
+    const maybeMapped = material as Material & { map?: { dispose(): void } | null };
+    maybeMapped.map?.dispose();
     material.dispose();
   }
 

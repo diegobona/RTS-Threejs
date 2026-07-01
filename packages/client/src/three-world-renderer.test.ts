@@ -41,10 +41,65 @@ import {
   projectileVisualPoint3D,
   RALLY_VISUAL_STYLE_3D,
   configureInstancedUnitMesh3D,
+  terrainGrassTextureColor3D,
+  terrainLayerProfile3D,
+  terrainSoftOverlayProfile3D,
+  terrainSurfaceTextureColor3D,
+  terrainTileProfile3D,
+  terrainWideGrassBandProfile3D,
   shouldUseInstancedUnitModel3D,
   usesLowPolyInfantryModel3D,
   usesLowPolyTankModel3D,
 } from './three-world-renderer';
+
+describe('ThreeWorldRenderer terrain visuals', () => {
+  const brightness = (color: { r: number; g: number; b: number }): number => (color.r + color.g + color.b) / 3;
+
+  it('keeps lake and shore cell overlays nearly invisible so terrain is not visibly tiled', () => {
+    expect(terrainTileProfile3D('water', false, true).opacity).toBeLessThan(0.08);
+    expect(terrainTileProfile3D('shore', true, true).opacity).toBeLessThan(0.08);
+    expect(terrainTileProfile3D(undefined, true, true).opacity).toBe(0);
+    expect(terrainSoftOverlayProfile3D('water')).toBeNull();
+    expect(terrainSoftOverlayProfile3D('shore')).toBeNull();
+    expect(terrainSoftOverlayProfile3D(undefined)).toBeNull();
+  });
+
+  it('uses a continuous terrain texture for varied grass, soft shore, and water colors', () => {
+    expect(terrainGrassTextureColor3D(12, 18)).not.toEqual(terrainGrassTextureColor3D(92, 44));
+    expect(terrainSurfaceTextureColor3D(12, 18, { water: 1, shore: 0, road: 0, marsh: 0 }).b).toBeGreaterThan(
+      terrainSurfaceTextureColor3D(12, 18, { water: 0, shore: 0, road: 0, marsh: 0 }).b,
+    );
+    expect(terrainSurfaceTextureColor3D(12, 18, { water: 0.45, shore: 0.75, road: 0, marsh: 0 }).r).toBeGreaterThan(
+      terrainSurfaceTextureColor3D(12, 18, { water: 1, shore: 0, road: 0, marsh: 0 }).r,
+    );
+  });
+
+  it('does not draw wide grass bands over distant terrain', () => {
+    const profile = terrainWideGrassBandProfile3D();
+    expect(profile.count).toBe(0);
+    expect(profile.opacityA).toBe(0);
+    expect(profile.opacityB).toBe(0);
+  });
+
+  it('keeps terrain render layers far enough apart to avoid distant z-fighting stripes', () => {
+    const layers = terrainLayerProfile3D();
+    expect(layers.surfaceY - layers.largeGroundY).toBeGreaterThanOrEqual(0.5);
+    expect(layers.tileY - layers.surfaceY).toBeGreaterThanOrEqual(0.035);
+    expect(layers.waterRippleY - layers.tileY).toBeGreaterThanOrEqual(0.035);
+  });
+
+  it('avoids screen-wide horizontal bands in the procedural grass texture', () => {
+    const rowAverages: number[] = [];
+    for (let y = 0; y < 192; y++) {
+      let total = 0;
+      for (let x = 0; x < 192; x++) {
+        total += brightness(terrainSurfaceTextureColor3D(x, y, { water: 0, shore: 0, road: 0, marsh: 0 }));
+      }
+      rowAverages.push(total / 192);
+    }
+    expect(Math.max(...rowAverages) - Math.min(...rowAverages)).toBeLessThan(5);
+  });
+});
 
 describe('ThreeWorldRenderer aircraft altitude', () => {
   it('derives construction progress and ghost opacity from map construction state', () => {
