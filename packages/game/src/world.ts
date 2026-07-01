@@ -23,7 +23,7 @@ import { StateHash } from './hash';
 import { findPath, type PathGrid } from './pathfind';
 import { Prng } from './prng';
 
-export type TerrainKind = 'grass' | 'water' | 'ridge' | 'sand' | 'scorched' | 'shore' | 'road' | 'marsh';
+export type TerrainKind = 'grass' | 'water' | 'ridge' | 'sand' | 'scorched' | 'shore' | 'road' | 'marsh' | 'highground';
 
 export interface TerrainInfo extends PathGrid {
   width: number;
@@ -2009,9 +2009,33 @@ export class World {
     return true;
   }
 
+  private isHighgroundCombatUnit(type: UnitType): boolean {
+    return (type.domain === 'infantry' || type.domain === 'vehicle') && (type.weapon !== undefined || type.antiAirWeapon !== undefined);
+  }
+
+  private isOnHighground(e: Entity, type: UnitType): boolean {
+    return this.isHighgroundCombatUnit(type) && this.terrain.terrainAt?.(e.cellX, e.cellY) === 'highground';
+  }
+
+  private highgroundAttackDamage(shooter: Entity, shooterType: UnitType, targetType: UnitType | null, damage: number): number {
+    if (!this.isOnHighground(shooter, shooterType)) return damage;
+    if (targetType?.domain === 'aircraft') return damage;
+    return Math.max(1, Math.floor((damage * 115) / 100));
+  }
+
+  private highgroundIncomingDamage(target: Entity, targetType: UnitType | undefined, damage: number, attackerId: number): number {
+    if (!targetType || !this.isOnHighground(target, targetType)) return damage;
+    const attacker = attackerId >= 0 ? this.entities.get(attackerId) : undefined;
+    const attackerType = attacker ? this.rules.units.get(attacker.typeId) : undefined;
+    if (!attackerType || attackerType.domain === 'aircraft') return damage;
+    return Math.max(1, Math.floor((damage * 75) / 100));
+  }
+
   private fire(shooter: Entity, target: Entity, shooterType: UnitType, weapon: WeaponSpec): boolean {
     if (!this.consumeTacticalMissile(shooterType, weapon, shooter.owner)) return false;
-    const dmg = Math.floor((weapon.damage * this.vetMul(shooter)) / 100); // 老兵加成
+    const targetType = this.rules.units.get(target.typeId) ?? null;
+    const baseDmg = Math.floor((weapon.damage * this.vetMul(shooter)) / 100); // 老兵加成
+    const dmg = this.highgroundAttackDamage(shooter, shooterType, targetType, baseDmg);
     if (weapon.projectileSpeed <= 0) {
       this.applyDamage(target, dmg, weapon.warhead, weapon.splash, shooter.owner, shooter.id, weapon.targetDomains);
       return true;
@@ -2036,7 +2060,8 @@ export class World {
 
   private fireGround(shooter: Entity, targetX: number, targetY: number, shooterType: UnitType, weapon: WeaponSpec): boolean {
     if (!this.consumeTacticalMissile(shooterType, weapon, shooter.owner)) return false;
-    const dmg = Math.floor((weapon.damage * this.vetMul(shooter)) / 100);
+    const baseDmg = Math.floor((weapon.damage * this.vetMul(shooter)) / 100);
+    const dmg = this.highgroundAttackDamage(shooter, shooterType, null, baseDmg);
     if (weapon.projectileSpeed <= 0) {
       this.applyGroundDamage(targetX, targetY, dmg, weapon.warhead, weapon.splash, shooter.owner, shooter.id, weapon.targetDomains);
       return true;
@@ -2086,7 +2111,8 @@ export class World {
       const base = splash > 0 ? Math.floor((damage * (splash - d)) / splash) : damage;
       const pct = verses[this.armorOf(e)];
       const before = e.hp;
-      e.hp -= Math.max(1, Math.floor((base * pct) / 100));
+      const rawDamage = Math.max(1, Math.floor((base * pct) / 100));
+      e.hp -= this.highgroundIncomingDamage(e, type, rawDamage, attackerId);
       if (before > 0 && e.hp <= 0 && attackerId >= 0) {
         const killer = this.entities.get(attackerId);
         if (killer && killer.owner !== e.owner) killer.kills++;
@@ -2115,8 +2141,10 @@ export class World {
   ): void {
     const verses = this.rules.resolveVerses(warhead);
     const deal = (e: Entity, base: number): void => {
+      const type = this.rules.units.get(e.typeId);
       const pct = verses[this.armorOf(e)];
-      e.hp -= Math.max(1, Math.floor((base * pct) / 100));
+      const rawDamage = Math.max(1, Math.floor((base * pct) / 100));
+      e.hp -= this.highgroundIncomingDamage(e, type, rawDamage, attackerId);
     };
     const before = target.hp;
     deal(target, damage);

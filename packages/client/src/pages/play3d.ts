@@ -8,7 +8,7 @@ import { MATCH_3D_STYLE, MatchView3D } from '../match-view-3d';
 const TICK_MS = 1000 / SIM_TICKS_PER_SECOND;
 const HUMAN = 1;
 const AI_ID = 2;
-const DISABLED_MAP_IDS = new Set<SkirmishMapId>(['highlands', 'badlands', 'delta']);
+const DISABLED_MAP_IDS = new Set<SkirmishMapId>(['badlands', 'delta']);
 
 const SETUP_3D_STYLE = `
 .p3-setup { position: fixed; inset: 0; overflow: auto; display: flex; align-items: flex-start; justify-content: center;
@@ -113,8 +113,12 @@ const SETUP_3D_STYLE = `
   linear-gradient(105deg, transparent 0 72%, #367fa5 73% 77%, transparent 78% 100%),
   repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 2px, transparent 2px 6px), #789b68; }
 .p3-map-card[data-v="highlands"] .p3-map-preview { background:
-  linear-gradient(55deg, transparent 0 34%, #79827b 35% 41%, transparent 42% 100%),
-  linear-gradient(55deg, transparent 0 62%, #79827b 63% 68%, transparent 69% 100%),
+  linear-gradient(24deg, transparent 0 39%, #b7aa83 40% 42%, transparent 43% 100%),
+  linear-gradient(72deg, transparent 0 48%, #b7aa83 49% 51%, transparent 52% 100%),
+  linear-gradient(58deg, transparent 0 25%, #767d78 26% 35%, #9a9f95 36% 39%, transparent 40% 100%),
+  linear-gradient(58deg, transparent 0 52%, #6f7672 53% 61%, #9aa094 62% 65%, transparent 66% 100%),
+  radial-gradient(ellipse at 34% 54%, rgba(170, 154, 102, .74) 0 20%, transparent 21%),
+  radial-gradient(ellipse at 70% 38%, rgba(170, 154, 102, .66) 0 24%, transparent 25%),
   repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 2px, transparent 2px 6px), #6f8a66; }
 .p3-map-card[data-v="badlands"] .p3-map-preview { background:
   radial-gradient(ellipse at 38% 45%, #a89b62 0 34%, transparent 35%),

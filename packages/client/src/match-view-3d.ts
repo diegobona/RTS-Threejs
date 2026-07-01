@@ -1293,6 +1293,7 @@ export class MatchView3D {
       case 'water': return '#2f6a8c';
       case 'ridge': return '#6a716a';
       case 'sand': return '#8a7a56';
+      case 'highground': return '#8c8462';
       case 'scorched': return '#3a3128';
       case 'shore': return '#9a8d73';
       case 'road': return '#9a8a76';

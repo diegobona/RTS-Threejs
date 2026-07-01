@@ -138,6 +138,64 @@ describe('fighter dual-role combat', () => {
   });
 });
 
+describe('high ground combat advantage', () => {
+  const terrainWorld = (highCells: ReadonlySet<number>): World => new World(
+    gridTerrain(40, 40, new Set(), (x, y) => highCells.has(y * 40 + x) ? 'highground' : 'grass'),
+    20260701,
+  );
+
+  function projectileDamageTaken(targetOnHighground: boolean): number {
+    const highCells = targetOnHighground ? new Set([20 * 40 + 20]) : new Set<number>();
+    const w = terrainWorld(highCells);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const shooter = w.spawnUnit(1, 'gi', 5, 5)!;
+    const target = w.spawnUnit(2, 'conscript', 20, 20)!;
+    w.applyCommands([{ kind: 'stance', entityIds: [target.id], stance: 'holdfire' }]);
+    w.projectiles.push({
+      id: 1,
+      x: shooter.x,
+      y: shooter.y,
+      targetId: target.id,
+      speed: 99999,
+      damage: 40,
+      warheadId: JSON.stringify({ none: 100 }),
+      splash: 0,
+      owner: shooter.owner,
+      shooterId: shooter.id,
+      weaponRole: 'gun',
+      targetDomains: ['infantry'],
+    });
+
+    w.step();
+
+    return target.maxHp - target.hp;
+  }
+
+  function firstShotDamageDealt(shooterOnHighground: boolean): number {
+    const highCells = shooterOnHighground ? new Set([5 * 40 + 5]) : new Set<number>();
+    const w = terrainWorld(highCells);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const shooter = w.spawnUnit(1, 'gi', 5, 5)!;
+    const target = w.spawnUnit(2, 'conscript', 6, 5)!;
+    w.applyCommands([{ kind: 'stance', entityIds: [target.id], stance: 'holdfire' }]);
+    w.applyCommands([{ kind: 'attack', entityIds: [shooter.id], targetId: target.id }]);
+
+    for (let i = 0; i < 20 && target.hp === target.maxHp; i++) w.step();
+
+    return target.maxHp - target.hp;
+  }
+
+  it('reduces incoming ground damage for infantry and vehicles holding high ground', () => {
+    expect(projectileDamageTaken(true)).toBeLessThan(projectileDamageTaken(false));
+  });
+
+  it('boosts outgoing ground attacks from infantry and vehicles on high ground', () => {
+    expect(firstShotDamageDealt(true)).toBeGreaterThan(firstShotDamageDealt(false));
+  });
+});
+
 describe('map construction placement', () => {
   it('places buildings immediately and completes construction on the map over time', () => {
     const w = baseWorld();

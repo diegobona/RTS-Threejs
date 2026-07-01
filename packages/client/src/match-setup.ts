@@ -160,10 +160,31 @@ const lakelandMarsh = subtract(
   merge(ellipse(28, 46, 11, 6), ellipse(85, 40, 11, 6), ellipse(64, 72, 10, 5)),
   merge(lakelandWater, lakelandRoads),
 );
-const highlandRidges = merge(
-  lineBand([{ x: 18, y: 6 }, { x: 28, y: 18 }, { x: 34, y: 32 }], 2),
-  lineBand([{ x: 47, y: 39 }, { x: 55, y: 51 }, { x: 62, y: 64 }], 2),
-  ellipse(36, 50, 5, 2),
+const highlandRoadsRaw = merge(
+  lineBand([{ x: 4, y: 70 }, { x: 22, y: 61 }, { x: 43, y: 50 }, { x: 65, y: 41 }, { x: 104, y: 28 }], 1),
+  lineBand([{ x: 9, y: 17 }, { x: 28, y: 22 }, { x: 45, y: 35 }, { x: 54, y: 44 }, { x: 72, y: 54 }, { x: 97, y: 73 }], 1),
+  lineBand([{ x: 52, y: 0 }, { x: 51, y: 18 }, { x: 54, y: 44 }, { x: 57, y: 67 }, { x: 56, y: 87 }], 1),
+);
+const highlandRidgeRaw = merge(
+  lineBand([{ x: 17, y: 4 }, { x: 26, y: 16 }, { x: 33, y: 30 }, { x: 42, y: 40 }], 3),
+  lineBand([{ x: 42, y: 5 }, { x: 48, y: 21 }, { x: 58, y: 36 }, { x: 72, y: 48 }], 3),
+  lineBand([{ x: 69, y: 16 }, { x: 79, y: 29 }, { x: 88, y: 45 }, { x: 97, y: 61 }], 3),
+  lineBand([{ x: 25, y: 77 }, { x: 39, y: 67 }, { x: 51, y: 58 }, { x: 64, y: 51 }], 3),
+  ellipse(32, 51, 7, 3),
+  ellipse(76, 64, 8, 4),
+  ellipse(61, 17, 7, 3),
+);
+const highlandRidges = subtract(highlandRidgeRaw, grow(highlandRoadsRaw, 1));
+const highlandRoads = subtract(highlandRoadsRaw, highlandRidges);
+const highlandHighGround = subtract(
+  merge(
+    grow(highlandRidges, 3),
+    ellipse(26, 37, 13, 8),
+    ellipse(61, 31, 17, 9),
+    ellipse(82, 55, 16, 10),
+    ellipse(43, 67, 14, 7),
+  ),
+  merge(highlandRidges, highlandRoads),
 );
 const badlandsSand = merge(ellipse(24, 25, 16, 10), ellipse(49, 47, 14, 12), lineBand([{ x: 5, y: 44 }, { x: 66, y: 28 }], 3));
 const badlandsRidges = merge(ellipse(35, 35, 4, 2), ellipse(52, 22, 3, 4), ellipse(20, 51, 4, 3));
@@ -225,7 +246,11 @@ export const SKIRMISH_MAP_PRESETS: readonly SkirmishMapPreset[] = [
     height: MAP_H,
     seed: 20260612,
     blockedCells: highlandRidges,
-    terrainCells: cellsOf('ridge', highlandRidges),
+    terrainCells: {
+      highground: highlandHighGround,
+      road: highlandRoads,
+      ridge: highlandRidges,
+    },
     orePatches: baseOre(),
   },
   {

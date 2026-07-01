@@ -545,8 +545,8 @@ export function usesLowPolyInfantryModel3D(type: Pick<UnitType, 'id' | 'domain'>
   return type.domain === 'infantry' && (LOWPOLY_INFANTRY_UNIT_IDS as readonly string[]).includes(type.id);
 }
 
-export function entityRootAltitude3D(_type: Pick<UnitType, 'domain'>): number {
-  return 0;
+export function entityRootAltitude3D(type: Pick<UnitType, 'domain'>, terrainHeight = 0): number {
+  return type.domain === 'aircraft' ? 0 : terrainHeight;
 }
 
 export function commandIndicatorProfile3D(kind: CommandIndicatorKind3D): CommandIndicatorProfile3D {
@@ -1083,6 +1083,7 @@ export function terrainTileProfile3D(terrain: string | undefined, passable: bool
   switch (terrain) {
     case 'water': return { color: 0x3e91ad, opacity: 0.03 };
     case 'ridge': return { color: 0x7e857c, opacity: 0.48 };
+    case 'highground': return { color: 0xb7ad82, opacity: 0.11 };
     case 'sand': return { color: 0xaa9a66, opacity: 0.28 };
     case 'scorched': return { color: 0x493f32, opacity: 0.36 };
     case 'shore': return { color: 0xd7dcc2, opacity: 0.035 };
@@ -1132,6 +1133,8 @@ export interface TerrainSurfaceInfluence3D {
   shore: number;
   road: number;
   marsh: number;
+  highground?: number;
+  ridge?: number;
 }
 
 function blendChannel3D(a: number, b: number, t: number): number {
@@ -1150,12 +1153,31 @@ export function terrainSurfaceTextureColor3D(x: number, y: number, influence: Te
   let color = terrainGrassTextureColor3D(x, y);
   const grassShade = Math.sin(x * 0.048 + y * 0.031) * 0.035 + Math.sin((x - y) * 0.021) * 0.025;
   color = blendColor3D(color, { r: 103, g: 137, b: 102 }, Math.max(0, grassShade));
+  const highground = influence.highground ?? 0;
+  const ridge = influence.ridge ?? 0;
+  const highgroundNoise = Math.sin(x * 0.073 - y * 0.041) * 5 + Math.sin((x + y) * 0.029) * 4;
+  color = blendColor3D(
+    color,
+    { r: 150 + highgroundNoise * 0.35, g: 146 + highgroundNoise * 0.25, b: 117 + highgroundNoise * 0.16 },
+    highground * 0.68,
+  );
+  color = blendColor3D(color, { r: 118 + highgroundNoise * 0.24, g: 118 + highgroundNoise * 0.18, b: 104 + highgroundNoise * 0.12 }, ridge * 0.78);
   color = blendColor3D(color, { r: 98, g: 137, b: 91 }, influence.marsh * 0.55);
   color = blendColor3D(color, { r: 180, g: 168, b: 140 }, influence.road * 0.86);
   color = blendColor3D(color, { r: 188, g: 194, b: 154 }, influence.shore * 0.72);
   const waterNoise = Math.sin(x * 0.18 + y * 0.07) * 8 + Math.sin((x - y) * 0.09) * 5;
   color = blendColor3D(color, { r: 77 + waterNoise * 0.35, g: 137 + waterNoise * 0.45, b: 157 + waterNoise }, influence.water * 0.9);
   return color;
+}
+
+export function terrainHeightForInfluence3D(influence: TerrainSurfaceInfluence3D): number {
+  const highground = influence.highground ?? 0;
+  const ridge = influence.ridge ?? 0;
+  const roadCut = Math.min(0.82, influence.road * 0.82);
+  const shoreCut = Math.min(0.58, influence.shore * 0.58);
+  const waterDrop = influence.water * 0.25;
+  const mountainHeight = Math.max(highground * 2.35, ridge * 1.35 + highground * 0.55);
+  return mountainHeight * (1 - roadCut) * (1 - shoreCut) - waterDrop;
 }
 
 export class ThreeWorldRenderer {
@@ -1564,7 +1586,7 @@ export class ThreeWorldRenderer {
         const tile = new Mesh(this.tileGeo, m);
         const pos = cellToWorld3D(x, y);
         tile.rotation.x = -Math.PI / 2;
-        tile.position.set(pos.x, layers.tileY, pos.z);
+        tile.position.set(pos.x, layers.tileY + this.terrainHeightAtCell3D(x, y), pos.z);
         this.scene.add(tile);
       }
     }
@@ -1597,13 +1619,29 @@ export class ThreeWorldRenderer {
     const texture = this.createTerrainSurfaceTexture();
     if (!texture) return;
     const mat = new MeshLambertMaterial({ map: texture });
-    const mapW = this.world.terrain.width * THREE_CELL_SIZE;
-    const mapH = this.world.terrain.height * THREE_CELL_SIZE;
-    const surface = new Mesh(new PlaneGeometry(mapW, mapH), mat);
+    const surface = new Mesh(this.createTerrainSurfaceGeometry(centerX, centerZ), mat);
     surface.rotation.x = -Math.PI / 2;
     surface.position.set(centerX, layers.surfaceY, centerZ);
     this.scene.add(surface);
     this.drawWaterRipples(this.terrainCellsOf('water'), layers.waterRippleY);
+  }
+
+  private createTerrainSurfaceGeometry(centerX: number, centerZ: number): PlaneGeometry {
+    const mapW = this.world.terrain.width * THREE_CELL_SIZE;
+    const mapH = this.world.terrain.height * THREE_CELL_SIZE;
+    const segmentsX = Math.max(8, this.world.terrain.width * 2);
+    const segmentsY = Math.max(8, this.world.terrain.height * 2);
+    const geometry = new PlaneGeometry(mapW, mapH, segmentsX, segmentsY);
+    const position = geometry.getAttribute('position');
+    if (!position) return geometry;
+    for (let i = 0; i < position.count; i++) {
+      const worldX = centerX + position.getX(i);
+      const worldZ = centerZ - position.getY(i);
+      position.setZ(i, this.terrainHeightAtWorld3D(worldX, worldZ));
+    }
+    position.needsUpdate = true;
+    geometry.computeVertexNormals();
+    return geometry;
   }
 
   private createTerrainSurfaceTexture(): CanvasTexture | null {
@@ -1642,7 +1680,21 @@ export class ThreeWorldRenderer {
       shore: this.terrainInfluence(cellX, cellY, 'shore', 1.65),
       road: this.terrainInfluence(cellX, cellY, 'road', 1.28),
       marsh: this.terrainInfluence(cellX, cellY, 'marsh', 1.35),
+      highground: this.terrainInfluence(cellX, cellY, 'highground', 1.55),
+      ridge: this.terrainInfluence(cellX, cellY, 'ridge', 1.9),
     };
+  }
+
+  private terrainHeightAtWorld3D(worldX: number, worldZ: number): number {
+    return terrainHeightForInfluence3D(this.terrainSurfaceInfluence(worldX / THREE_CELL_SIZE, worldZ / THREE_CELL_SIZE));
+  }
+
+  private terrainHeightAtCell3D(cellX: number, cellY: number): number {
+    return terrainHeightForInfluence3D(this.terrainSurfaceInfluence(cellX + 0.5, cellY + 0.5));
+  }
+
+  private terrainHeightAtLepton3D(x: number, y: number): number {
+    return terrainHeightForInfluence3D(this.terrainSurfaceInfluence(x / 256, y / 256));
   }
 
   private terrainInfluence(cellX: number, cellY: number, kind: string, radius: number): number {
@@ -1795,21 +1847,22 @@ export class ThreeWorldRenderer {
         const limit = terrain === 'marsh' ? 0.42 : terrain === 'shore' ? 0.36 : 0.24;
         if (r > limit) continue;
         const pos = cellToWorld3D(x + this.randCell(x, y, 2) * 1.4 - 0.7, y + this.randCell(x, y, 3) * 1.4 - 0.7);
+        const groundY = this.terrainHeightAtWorld3D(pos.x, pos.z);
         if (r < 0.075) {
           const tree = this.createLandscapeTree(trunkMat, this.randCell(x, y, 4) > 0.45 ? crownMatA : crownMatB);
-          tree.position.set(pos.x, 0.05, pos.z);
+          tree.position.set(pos.x, groundY + 0.05, pos.z);
           tree.rotation.y = this.randCell(x, y, 5) * Math.PI * 2;
           tree.scale.setScalar(0.8 + this.randCell(x, y, 6) * 0.55);
           this.scene.add(tree);
         } else if (r < 0.115) {
           const rock = new Mesh(this.rockGeo, rockMat);
-          rock.position.set(pos.x, 0.2, pos.z);
+          rock.position.set(pos.x, groundY + 0.2, pos.z);
           rock.rotation.set(this.randCell(x, y, 7), this.randCell(x, y, 8) * Math.PI, this.randCell(x, y, 9));
           rock.scale.set(1.2, 0.55 + this.randCell(x, y, 10) * 0.35, 0.85);
           this.scene.add(rock);
         } else {
           const plant = this.createGrassClump(r < 0.18 ? shrubMat : flowerMat, dryGrassMat, x, y);
-          plant.position.set(pos.x, 0.04, pos.z);
+          plant.position.set(pos.x, groundY + 0.04, pos.z);
           plant.rotation.y = this.randCell(x, y, 11) * Math.PI * 2;
           this.scene.add(plant);
         }
@@ -1872,7 +1925,7 @@ export class ThreeWorldRenderer {
           const pos = cellToWorld3D(x, y);
           const ox = ((i * 37) % 9) / 9 - 0.5;
           const oz = ((i * 53) % 9) / 9 - 0.5;
-          c.position.set(pos.x + ox, 0.12, pos.z + oz);
+          c.position.set(pos.x + ox, this.terrainHeightAtWorld3D(pos.x + ox, pos.z + oz) + 0.12, pos.z + oz);
           c.scale.setScalar(0.75 + i * 0.08);
           this.scene.add(c);
         }
@@ -1908,12 +1961,14 @@ export class ThreeWorldRenderer {
 
       if (type.building) {
         const pos = cellToWorld3D(e.cellX + (type.building.footprintW - 1) / 2, e.cellY + (type.building.footprintH - 1) / 2);
-        view.root.position.set(pos.x, entityRootAltitude3D(type), pos.z);
+        view.root.position.set(pos.x, entityRootAltitude3D(type, this.terrainHeightAtWorld3D(pos.x, pos.z)), pos.z);
       } else {
         const last = view.root.userData.last as { x: number; y: number } | undefined;
         const lx = last?.x ?? e.x;
         const ly = last?.y ?? e.y;
-        const pos = leptonToWorld3D(lx + (e.x - lx) * alpha, ly + (e.y - ly) * alpha);
+        const interpolatedX = lx + (e.x - lx) * alpha;
+        const interpolatedY = ly + (e.y - ly) * alpha;
+        const pos = leptonToWorld3D(interpolatedX, interpolatedY);
         const loiterCenter =
           type.domain === 'aircraft' && e.airLoiterX >= 0 && e.airLoiterY >= 0
             ? cellToWorld3D(e.airLoiterX, e.airLoiterY)
@@ -1938,7 +1993,8 @@ export class ThreeWorldRenderer {
           e.id,
         );
         const orbiting = type.domain === 'aircraft' && (Math.abs(orbit.x) > 0.001 || Math.abs(orbit.z) > 0.001);
-        const desired = new Vector3(pos.x + orbit.x, entityRootAltitude3D(type) + orbit.y, pos.z + orbit.z);
+        const terrainHeight = this.terrainHeightAtLepton3D(interpolatedX, interpolatedY);
+        const desired = new Vector3(pos.x + orbit.x, entityRootAltitude3D(type, terrainHeight) + orbit.y, pos.z + orbit.z);
         if (type.domain === 'aircraft') {
           const lastVisual = view.root.userData.visualPosition as Vector3 | undefined;
           const lastVelocity = view.root.userData.visualVelocity as Vector3 | undefined;

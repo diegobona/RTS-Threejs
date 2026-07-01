@@ -17,6 +17,7 @@ import {
   entityConstructionProgress3D,
   entityYawForFacing3D,
   entityVisualAltitude3D,
+  terrainHeightForInfluence3D,
   isPickableEntityPart3D,
   LOWPOLY_FIGHTER_PART_IDS,
   LOWPOLY_FIGHTER_MODEL_SCALE,
@@ -72,6 +73,28 @@ describe('ThreeWorldRenderer terrain visuals', () => {
     expect(terrainSurfaceTextureColor3D(12, 18, { water: 0.45, shore: 0.75, road: 0, marsh: 0 }).r).toBeGreaterThan(
       terrainSurfaceTextureColor3D(12, 18, { water: 1, shore: 0, road: 0, marsh: 0 }).r,
     );
+    expect(terrainSurfaceTextureColor3D(12, 18, { water: 0, shore: 0, road: 0, marsh: 0, highground: 1 }).r).toBeGreaterThan(
+      terrainSurfaceTextureColor3D(12, 18, { water: 0, shore: 0, road: 0, marsh: 0, highground: 0 }).r,
+    );
+  });
+
+  it('gives passable high ground a visible but soft plateau overlay', () => {
+    const profile = terrainTileProfile3D('highground', true, true);
+
+    expect(profile.opacity).toBeGreaterThan(0.05);
+    expect(profile.opacity).toBeLessThan(0.18);
+  });
+
+  it('raises passable highground into the visible summit instead of making blocked ridges the top', () => {
+    const flat = terrainHeightForInfluence3D({ water: 0, shore: 0, road: 0, marsh: 0, highground: 0, ridge: 0 });
+    const plateau = terrainHeightForInfluence3D({ water: 0, shore: 0, road: 0, marsh: 0, highground: 1, ridge: 0 });
+    const ridge = terrainHeightForInfluence3D({ water: 0, shore: 0, road: 0, marsh: 0, highground: 0.3, ridge: 1 });
+    const lake = terrainHeightForInfluence3D({ water: 1, shore: 0, road: 0, marsh: 0, highground: 0, ridge: 0 });
+
+    expect(flat).toBeCloseTo(0);
+    expect(plateau).toBeGreaterThan(1.8);
+    expect(plateau).toBeGreaterThan(ridge);
+    expect(lake).toBeLessThan(0);
   });
 
   it('does not draw wide grass bands over distant terrain', () => {
@@ -129,6 +152,9 @@ describe('ThreeWorldRenderer aircraft altitude', () => {
 
   it('keeps the RTS entity root on the ground while rendering aircraft visibly in the sky', () => {
     expect(entityRootAltitude3D({ domain: 'aircraft' })).toBe(0);
+    expect(entityRootAltitude3D({ domain: 'vehicle' }, 1.25)).toBeCloseTo(1.25);
+    expect(entityRootAltitude3D({ domain: 'building' }, 1.1)).toBeCloseTo(1.1);
+    expect(entityRootAltitude3D({ domain: 'aircraft' }, 1.25)).toBe(0);
     expect(entityVisualAltitude3D({ domain: 'aircraft' })).toBeGreaterThanOrEqual(8);
     expect(entityVisualAltitude3D({ domain: 'vehicle' })).toBe(0);
     expect(entityVisualAltitude3D({ domain: 'building' })).toBe(0);

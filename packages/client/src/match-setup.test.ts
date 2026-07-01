@@ -87,4 +87,28 @@ describe('local skirmish map presets', () => {
       expect(world.terrain.passable(spawn.cellX, spawn.cellY)).toBe(true);
     }
   });
+
+  it('designs Highlands as a mountain battlefield with ridges, plateau ground, roads, and safe passes', () => {
+    const preset = skirmishMapPreset('highlands');
+    const ridge = preset.terrainCells.ridge ?? [];
+    const highground = (preset.terrainCells as Record<string, number[] | undefined>).highground ?? [];
+    const road = preset.terrainCells.road ?? [];
+    const config = localSkirmishConfig(0, 'highlands');
+    const world = createWorldFromConfig(config);
+    const ridgeCell = ridge[0]!;
+    const highgroundCell = highground[0]!;
+
+    expect(ridge.length).toBeGreaterThan(300);
+    expect(highground.length).toBeGreaterThan(260);
+    expect(road.length).toBeGreaterThan(120);
+    expect(config.blockedCells).toContain(ridgeCell);
+    expect(world.terrain.passable(ridgeCell % config.mapWidth, Math.floor(ridgeCell / config.mapWidth))).toBe(false);
+    expect(world.terrain.passable(54, 44)).toBe(true);
+    expect(world.terrain.terrainAt?.(54, 44)).not.toBe('ridge');
+    expect(world.terrain.passable(highgroundCell % config.mapWidth, Math.floor(highgroundCell / config.mapWidth))).toBe(true);
+    expect(world.terrain.terrainAt?.(highgroundCell % config.mapWidth, Math.floor(highgroundCell / config.mapWidth))).toBe('highground');
+    for (const spawn of config.spawns) {
+      expect(world.terrain.passable(spawn.cellX, spawn.cellY)).toBe(true);
+    }
+  });
 });
