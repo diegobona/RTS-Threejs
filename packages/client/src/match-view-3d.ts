@@ -1,4 +1,4 @@
-import { World, categoryOf, type CapacitySnapshot, type Command, type Entity, type ProdCategory, type UnitType } from '@ra2web/game';
+import { World, categoryOf, type CapacitySnapshot, type Command, type Entity, type GroundFormation, type ProdCategory, type UnitType } from '@ra2web/game';
 import { Vector3 } from 'three';
 import { audioBus } from './audio-bus';
 import { bgm } from './bgm';
@@ -102,6 +102,8 @@ export function productionClickPlan3D(
 }
 
 export const DEFAULT_GROUND_MOVE_MODE_3D: GroundMoveMode = 'move';
+export const DEFAULT_TANK_FORMATION_3D: GroundFormation = 'grid';
+export const TANK_FORMATIONS_3D = ['grid', 'line', 'wedge', 'column'] as const satisfies readonly GroundFormation[];
 
 export function groundMoveModeButtons3D(): { mode: GroundMoveMode; label: string; title: string }[] {
   const text = uiText().groundMoveModes;
@@ -112,6 +114,15 @@ export function groundMoveModeButtons3D(): { mode: GroundMoveMode; label: string
 }
 
 export const GROUND_MOVE_MODE_BUTTONS_3D = groundMoveModeButtons3D();
+
+export function tankFormationButtons3D(): { formation: GroundFormation; label: string; title: string }[] {
+  const text = uiText().tankFormations;
+  return TANK_FORMATIONS_3D.map((formation) => ({
+    formation,
+    label: text[formation].label,
+    title: text[formation].title,
+  }));
+}
 
 export type CapacitySelectionGroup3D = 'worker' | 'infantry' | 'vehicle' | 'missileTruck' | 'aircraft';
 
@@ -126,6 +137,10 @@ function controlGroupsHudLabel3D(): string {
 
 function attackModeHudLabel3D(): string {
   return uiText().hud.attackMode;
+}
+
+function tankFormationHudLabel3D(): string {
+  return uiText().hud.tankFormation;
 }
 
 function capacitySelectTooltip3D(): string {
@@ -143,6 +158,10 @@ export interface TacticalMissileAmmoSummary3D {
 
 function isMissileTruckUnitType3D(typeId: string, type: UnitType): boolean {
   return type.domain === 'vehicle' && (typeId === 'arty' || typeId === 'tel');
+}
+
+function isTankFormationUnitType3D(typeId: string, type: UnitType): boolean {
+  return type.domain === 'vehicle' && !isMissileTruckUnitType3D(typeId, type) && !!type.weapon && type.weapon.role !== 'missile';
 }
 
 export function capacitySummarySegments3D(capacity: CapacitySnapshot, missileAmmo?: TacticalMissileAmmoSummary3D): CapacitySummarySegment3D[] {
@@ -386,6 +405,15 @@ export const MATCH_3D_STYLE = `
 .mv3-orders button { min-height: 34px; padding: 0 11px; border: 1px solid rgba(125,150,165,.22); border-radius: 7px;
   background: #0b141a; color: #b3c0c8; cursor: pointer; font-size: 13px; font-weight: 750; }
 .mv3-orders button.on { color: #fff; border-color: var(--hud-edge-strong); background: linear-gradient(#1a4258, #132d3d); box-shadow: inset 0 0 0 1px rgba(104,200,255,.18); }
+.mv3-formations { position: fixed; left: 12px; top: 162px; z-index: 10; display: flex; gap: 6px;
+  align-items: center; padding: 6px; background: var(--hud-bg); border: 1px solid var(--hud-edge); border-radius: 9px;
+  box-shadow: 0 12px 35px rgba(0,0,0,.18); transition: opacity .15s ease, transform .15s ease; }
+.mv3-formations.is-hidden { opacity: 0; transform: translateY(-4px); pointer-events: none; }
+.mv3-formations .mv3-panel-label { min-height: 34px; padding-right: 8px; }
+.mv3-formations button { min-height: 34px; min-width: 50px; padding: 0 11px; border: 1px solid rgba(125,150,165,.22); border-radius: 7px;
+  background: #0b141a; color: #b3c0c8; cursor: pointer; font-size: 13px; font-weight: 750; }
+.mv3-formations button:hover { border-color: rgba(104,200,255,.58); color: #fff; }
+.mv3-formations button.on { color: #fff; border-color: rgba(101,224,139,.75); background: linear-gradient(#1c5139, #143429); box-shadow: inset 0 0 0 1px rgba(101,224,139,.2); }
 .mv3-build { position: fixed; left: 50%; right: auto; bottom: 12px; top: auto; transform: translateX(-50%); z-index: 10;
   width: fit-content; max-width: calc(100vw - 390px); overflow: visible;
   display: grid; grid-template-columns: 1fr; align-items: center; gap: 8px;
@@ -463,6 +491,7 @@ export const MATCH_3D_STYLE = `
   .mv3-groups-panel { top: auto; bottom: 108px; max-width: calc(100vw - 284px); }
   .mv3-groups { overflow: hidden; }
   .mv3-orders { top: auto; bottom: 58px; }
+  .mv3-formations { top: auto; bottom: 108px; left: 12px; max-width: calc(100vw - 284px); flex-wrap: wrap; }
   .mv3-build { left: 12px; right: 12px; bottom: 10px; transform: none; width: auto; max-width: none; grid-template-columns: 1fr; }
   .mv3-build-head { display: none; }
   .mv3-prod-list { overflow-x: auto; padding-bottom: 2px; }
@@ -495,6 +524,7 @@ export class MatchView3D {
   private capacityHudKey = '';
   private controlGroupsHudKey = '';
   private groundMoveMode: GroundMoveMode = DEFAULT_GROUND_MOVE_MODE_3D;
+  private tankFormation: GroundFormation = DEFAULT_TANK_FORMATION_3D;
   private over = false;
   private minimapCanvas!: HTMLCanvasElement;
   private minimapCtx!: CanvasRenderingContext2D;
@@ -565,6 +595,10 @@ export class MatchView3D {
       (button) =>
         `<button type="button" data-ground-mode="${button.mode}" title="${button.title}">${button.label}</button>`,
     ).join('');
+    const tankFormationButtons = tankFormationButtons3D().map(
+      (button) =>
+        `<button type="button" data-tank-formation="${button.formation}" title="${button.title}">${button.label}</button>`,
+    ).join('');
     this.root.insertAdjacentHTML(
       'beforeend',
       `<div class="mv3-top">
@@ -581,6 +615,10 @@ export class MatchView3D {
       <div class="mv3-orders" id="mv3-orders" aria-label="${attackModeHudLabel3D()}">
         <span class="mv3-panel-label">${attackModeHudLabel3D()}</span>
         ${groundModeButtons}
+      </div>
+      <div class="mv3-formations is-hidden" id="mv3-formations" aria-label="${tankFormationHudLabel3D()}">
+        <span class="mv3-panel-label">${tankFormationHudLabel3D()}</span>
+        ${tankFormationButtons}
       </div>
       <div class="mv3-build ${BUILD_PANEL_PLACEMENT_CLASS_3D}">
         <div class="mv3-tabs" id="mv3-tabs"></div>
@@ -616,10 +654,16 @@ export class MatchView3D {
     this.rebuildProductionPanel();
     this.buildRulesAndControlsPanel();
     this.refreshGroundMoveModeButtons();
+    this.refreshTankFormationButtons();
     this.root.querySelector('#mv3-orders')?.addEventListener('click', (e) => {
       const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-ground-mode]');
       const mode = button?.dataset.groundMode;
       if (mode === 'move' || mode === 'attackMove') this.setGroundMoveMode(mode);
+    });
+    this.root.querySelector('#mv3-formations')?.addEventListener('click', (e) => {
+      const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-tank-formation]');
+      const formation = button?.dataset.tankFormation as GroundFormation | undefined;
+      if (formation && (TANK_FORMATIONS_3D as readonly string[]).includes(formation)) this.setTankFormation(formation);
     });
     const help = this.root.querySelector('#mv3-help');
     help?.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -671,11 +715,26 @@ export class MatchView3D {
     }
   }
 
+  private setTankFormation(formation: GroundFormation): void {
+    this.tankFormation = formation;
+    this.refreshTankFormationButtons();
+  }
+
+  private refreshTankFormationButtons(): void {
+    const panel = this.root.querySelector<HTMLElement>('#mv3-formations');
+    if (!panel) return;
+    panel.classList.toggle('is-hidden', !this.hasSelectedTankFormationUnits());
+    for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-tank-formation]')) {
+      button.classList.toggle('on', button.dataset.tankFormation === this.tankFormation);
+    }
+  }
+
   private updateHud(): void {
     this.updateCapacityHud();
     this.updateControlGroupsHud();
     const sel = this.root.querySelector('#mv3-selected');
     if (sel) sel.textContent = this.selected.size > 0 ? uiText().hud.selected(this.selected.size) : '';
+    this.refreshTankFormationButtons();
     this.refreshBuildPanel();
     this.refreshProducerPanel();
     this.updateProductionAudio();
@@ -1035,6 +1094,30 @@ export class MatchView3D {
     return out.sort((a, b) => a - b);
   }
 
+  private selectedTankFormationIds(): number[] {
+    const out: number[] = [];
+    for (const id of this.selected) {
+      const e = this.world.entities.get(id);
+      const type = e && this.world.rules.units.get(e.typeId);
+      if (e?.owner === this.localPlayerId && type && isTankFormationUnitType3D(e.typeId, type)) out.push(id);
+    }
+    return out.sort((a, b) => a - b);
+  }
+
+  private hasSelectedTankFormationUnits(): boolean {
+    return this.selectedTankFormationIds().length > 1;
+  }
+
+  private tankFormationForOrder(selectedIds: readonly number[]): GroundFormation | undefined {
+    if (selectedIds.length <= 1) return undefined;
+    for (const id of selectedIds) {
+      const e = this.world.entities.get(id);
+      const type = e && this.world.rules.units.get(e.typeId);
+      if (!e || !type || !isTankFormationUnitType3D(e.typeId, type)) return undefined;
+    }
+    return this.tankFormation;
+  }
+
   private selectedProducerBuilding(): { id: number; entity: NonNullable<ReturnType<World['entities']['get']>> } | null {
     if (this.selected.size !== 1) return null;
     const id = [...this.selected][0]!;
@@ -1056,13 +1139,15 @@ export class MatchView3D {
       audioBus.play('move');
       return;
     }
+    const selectedIds = this.selectedMovableIds();
     const cmd = rightClickCommand({
-      selectedIds: this.selectedMovableIds(),
+      selectedIds,
       combatIds: this.selectedCombatIds(),
       target: target ? { id: target.id, owner: target.owner } : null,
       localPlayerId: this.localPlayerId,
       cell,
       groundMode: this.groundMoveMode,
+      formation: this.tankFormationForOrder(selectedIds),
     });
     if (cmd) {
       this.localCommands.push(cmd);

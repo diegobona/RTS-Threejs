@@ -16,6 +16,7 @@ export {
   type CapacitySlot,
   type Entity,
   type Command,
+  type GroundFormation,
   type Stance,
   type Player,
   type Projectile,

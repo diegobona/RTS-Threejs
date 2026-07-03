@@ -39,6 +39,19 @@ describe('3D right-click orders', () => {
     ).toEqual({ kind: 'move', entityIds: [3, 7], cellX: 10, cellY: 12 });
   });
 
+  it('passes selected tank formation through movement orders', () => {
+    expect(
+      rightClickCommand({
+        selectedIds: [7, 3],
+        combatIds: [7, 3],
+        target: null,
+        localPlayerId: 1,
+        cell: { x: 10, y: 12 },
+        formation: 'wedge',
+      }),
+    ).toEqual({ kind: 'move', entityIds: [3, 7], cellX: 10, cellY: 12, formation: 'wedge' });
+  });
+
   it('attack-moves selected combat units when the ground mode says to fight on contact', () => {
     expect(
       rightClickCommand({
@@ -48,8 +61,9 @@ describe('3D right-click orders', () => {
         localPlayerId: 1,
         cell: { x: 10, y: 12 },
         groundMode: 'attackMove',
+        formation: 'line',
       }),
-    ).toEqual({ kind: 'attackMove', entityIds: [3, 7], cellX: 10, cellY: 12 });
+    ).toEqual({ kind: 'attackMove', entityIds: [3, 7], cellX: 10, cellY: 12, formation: 'line' });
   });
 
   it('moves selected missile trucks when right-clicking empty ground', () => {

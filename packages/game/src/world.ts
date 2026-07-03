@@ -153,8 +153,8 @@ export type Command =
   | { kind: 'produce'; owner: number; typeId: string }
   | { kind: 'cancel'; owner: number; category: ProdCategory }
   | { kind: 'place'; owner: number; typeId: string; cellX: number; cellY: number }
-  | { kind: 'move'; entityIds: number[]; cellX: number; cellY: number }
-  | { kind: 'attackMove'; entityIds: number[]; cellX: number; cellY: number; targetId?: number }
+  | { kind: 'move'; entityIds: number[]; cellX: number; cellY: number; formation?: GroundFormation }
+  | { kind: 'attackMove'; entityIds: number[]; cellX: number; cellY: number; targetId?: number; formation?: GroundFormation }
   | { kind: 'patrol'; entityIds: number[]; cellX: number; cellY: number }
   | { kind: 'attack'; entityIds: number[]; targetId: number }
   | { kind: 'attackGround'; entityIds: number[]; cellX: number; cellY: number }
@@ -167,6 +167,8 @@ export type Command =
   | { kind: 'repair'; owner: number; entityId: number }
   | { kind: 'stance'; entityIds: number[]; stance: Stance }
   | { kind: 'stop'; entityIds: number[] };
+
+export type GroundFormation = 'grid' | 'line' | 'wedge' | 'column';
 
 const CATEGORY_PRODUCER: Record<ProdCategory, string> = {
   building: 'conyard',
@@ -365,7 +367,12 @@ export class World {
           // 多个单位：散开到目标周围不同格（队形展开），避免挤成一坨/互相挡路
           const ids = [...cmd.entityIds].sort((a, b) => a - b);
           const airFormation = this.allAircraft(ids);
-          const slots = ids.length > 1 ? this.spreadDestinations(cmd.cellX, cmd.cellY, ids.length, airFormation ? 5 : 1, airFormation) : [{ x: cmd.cellX, y: cmd.cellY }];
+          const tankFormation = !airFormation && this.allTankFormationUnits(ids) ? (cmd.formation ?? 'grid') : null;
+          const slots = ids.length > 1
+            ? tankFormation
+              ? this.tankFormationDestinations(cmd.cellX, cmd.cellY, ids, tankFormation)
+              : this.spreadDestinations(cmd.cellX, cmd.cellY, ids.length, airFormation ? 5 : 1, airFormation)
+            : [{ x: cmd.cellX, y: cmd.cellY }];
           ids.forEach((eid, i) => {
             const e = this.entities.get(eid);
             if (!e) return;
@@ -395,7 +402,9 @@ export class World {
               : this.passableNear(target.cellX, target.cellY) ?? { x: cmd.cellX, y: cmd.cellY }
             : { x: cmd.cellX, y: cmd.cellY };
           const slots = ids.length > 1
-            ? this.spreadDestinations(targetCell.x, targetCell.y, ids.length, airFormation ? 5 : 1, airFormation)
+            ? !airFormation && this.allTankFormationUnits(ids)
+              ? this.tankFormationDestinations(targetCell.x, targetCell.y, ids, cmd.formation ?? 'grid')
+              : this.spreadDestinations(targetCell.x, targetCell.y, ids.length, airFormation ? 5 : 1, airFormation)
             : [targetCell];
           ids.forEach((eid, i) => {
             const e = this.entities.get(eid);
@@ -1301,6 +1310,116 @@ export class World {
     return out;
   }
 
+  private tankFormationDestinations(cx: number, cy: number, ids: number[], formation: GroundFormation): { x: number; y: number }[] {
+    const units = ids.map((id) => this.entities.get(id)).filter((e): e is Entity => !!e);
+    if (units.length === 0) return this.spreadDestinations(cx, cy, ids.length, 3);
+    const spacing = 4;
+    const centroid = units.reduce((acc, e) => {
+      acc.x += e.cellX;
+      acc.y += e.cellY;
+      return acc;
+    }, { x: 0, y: 0 });
+    centroid.x /= units.length;
+    centroid.y /= units.length;
+    let forwardX = cx - centroid.x;
+    let forwardY = cy - centroid.y;
+    const forwardLen = Math.hypot(forwardX, forwardY);
+    if (forwardLen < 0.001) {
+      forwardX = 1;
+      forwardY = 0;
+    } else {
+      forwardX /= forwardLen;
+      forwardY /= forwardLen;
+    }
+    const sideX = -forwardY;
+    const sideY = forwardX;
+    const offsets = this.tankFormationOffsets(ids.length, formation, spacing);
+    const out: { x: number; y: number }[] = [];
+    const reserved = new Set<number>();
+    const reserve = (x: number, y: number): { x: number; y: number } | null => this.reserveFormationSlotNear(x, y, reserved, 5, 3);
+
+    for (const offset of offsets) {
+      const desiredX = Math.round(cx + sideX * offset.side + forwardX * offset.forward);
+      const desiredY = Math.round(cy + sideY * offset.side + forwardY * offset.forward);
+      const slot = reserve(desiredX, desiredY);
+      if (slot) out.push(slot);
+    }
+
+    if (out.length < ids.length) {
+      for (const slot of this.spreadDestinations(cx, cy, ids.length, spacing)) {
+        if (out.length >= ids.length) break;
+        const key = slot.y * this.terrain.width + slot.x;
+        if (reserved.has(key)) continue;
+        reserved.add(key);
+        out.push(slot);
+      }
+    }
+
+    const fallback = out[0] ?? { x: cx, y: cy };
+    while (out.length < ids.length) out.push(fallback);
+    return out;
+  }
+
+  private tankFormationOffsets(count: number, formation: GroundFormation, spacing: number): { side: number; forward: number }[] {
+    if (formation === 'line') {
+      return Array.from({ length: count }, (_, i) => ({ side: (i - (count - 1) / 2) * spacing, forward: 0 }));
+    }
+    if (formation === 'column') {
+      const columns = Math.min(2, Math.max(1, count));
+      return Array.from({ length: count }, (_, i) => ({
+        side: (i % columns - (columns - 1) / 2) * spacing,
+        forward: -Math.floor(i / columns) * spacing,
+      }));
+    }
+    if (formation === 'wedge') {
+      const out: { side: number; forward: number }[] = [{ side: 0, forward: 0 }];
+      for (let row = 1; out.length < count; row++) {
+        out.push({ side: -row * spacing, forward: -row * spacing });
+        if (out.length < count) out.push({ side: row * spacing, forward: -row * spacing });
+      }
+      return out;
+    }
+
+    const columns = Math.ceil(Math.sqrt(count));
+    const rows = Math.ceil(count / columns);
+    return Array.from({ length: count }, (_, i) => {
+      const row = Math.floor(i / columns);
+      const col = i % columns;
+      return {
+        side: (col - (columns - 1) / 2) * spacing,
+        forward: (row - (rows - 1) / 2) * spacing,
+      };
+    });
+  }
+
+  private reserveFormationSlotNear(cx: number, cy: number, reserved: Set<number>, maxR: number, minSpacing = 1): { x: number; y: number } | null {
+    const tryReserve = (x: number, y: number): { x: number; y: number } | null => {
+      if (x < 0 || y < 0 || x >= this.terrain.width || y >= this.terrain.height) return null;
+      if (this.isCellBlocked(x, y)) return null;
+      const key = y * this.terrain.width + x;
+      if (reserved.has(key)) return null;
+      for (const reservedKey of reserved) {
+        const rx = reservedKey % this.terrain.width;
+        const ry = Math.floor(reservedKey / this.terrain.width);
+        if (Math.hypot(rx - x, ry - y) < minSpacing) return null;
+      }
+      reserved.add(key);
+      return { x, y };
+    };
+    const center = tryReserve(cx, cy);
+    if (center) return center;
+    for (let r = 1; r <= maxR; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          const slot = tryReserve(cx + dx, cy + dy);
+          if (slot) return slot;
+        }
+      }
+    }
+    return null;
+  }
+
   private aircraftAttackDestinations(target: Entity, attackerType: UnitType, attackers: Entity[]): { x: number; y: number }[] {
     const targetType = this.rules.units.get(target.typeId);
     const weapon = targetType ? this.weaponForTarget(attackerType, targetType) : null;
@@ -1500,6 +1619,16 @@ export class World {
       const e = this.entities.get(id);
       const type = e && this.rules.units.get(e.typeId);
       if (type?.domain !== 'aircraft') return false;
+    }
+    return true;
+  }
+
+  private allTankFormationUnits(ids: number[]): boolean {
+    if (ids.length === 0) return false;
+    for (const id of ids) {
+      const e = this.entities.get(id);
+      const type = e && this.rules.units.get(e.typeId);
+      if (!type || type.domain !== 'vehicle' || isMissileTruckType(type) || !type.weapon || type.weapon.role === 'missile') return false;
     }
     return true;
   }

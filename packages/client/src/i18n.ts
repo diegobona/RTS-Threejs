@@ -1,3 +1,4 @@
+import type { GroundFormation } from '@ra2web/game';
 import type { GroundMoveMode } from './three-orders';
 import type { SkirmishMapId } from './match-setup';
 
@@ -81,6 +82,7 @@ export const UI_TEXT = {
       },
     },
     hud: {
+      tankFormation: '坦克队形',
       combatUnits: '作战单元',
       controlGroups: '编队',
       attackMode: '攻击模式',
@@ -116,6 +118,12 @@ export const UI_TEXT = {
         title: '选择后，右键移动会边走边攻击',
       },
     } satisfies Record<GroundMoveMode, { label: string; title: string }>,
+    tankFormations: {
+      grid: { label: '方阵', title: '默认：坦克保持宽间距方阵移动' },
+      line: { label: '横队', title: '坦克横向展开，适合正面推进' },
+      wedge: { label: '楔形', title: '坦克以尖锋阵型推进' },
+      column: { label: '纵队', title: '坦克纵向排列，适合穿过狭窄区域' },
+    } satisfies Record<GroundFormation, { label: string; title: string }>,
     capacity: {
       building: '建筑',
       worker: '工程师',
@@ -212,6 +220,7 @@ export const UI_TEXT = {
       },
     },
     hud: {
+      tankFormation: 'Tank Formation',
       combatUnits: 'Units',
       controlGroups: 'Groups',
       attackMode: 'Attack Mode',
@@ -247,6 +256,12 @@ export const UI_TEXT = {
         title: 'When selected, right-click movement attacks enemies along the route',
       },
     } satisfies Record<GroundMoveMode, { label: string; title: string }>,
+    tankFormations: {
+      grid: { label: 'Grid', title: 'Default: tanks keep a wide grid formation while moving' },
+      line: { label: 'Line', title: 'Spread tanks side by side for a frontal push' },
+      wedge: { label: 'Wedge', title: 'Advance tanks in a pointed wedge formation' },
+      column: { label: 'Column', title: 'Stack tanks in a long column for narrow routes' },
+    } satisfies Record<GroundFormation, { label: string; title: string }>,
     capacity: {
       building: 'Buildings',
       worker: 'Engineers',

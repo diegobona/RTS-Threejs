@@ -21,6 +21,7 @@ import {
   controlGroupIdsForSelection3D,
   controlGroupHudItems3D,
   DEFAULT_GROUND_MOVE_MODE_3D,
+  DEFAULT_TANK_FORMATION_3D,
   groundMoveModeButtons3D,
   initialCameraFocus3D,
   matchOutcomeText3D,
@@ -32,6 +33,7 @@ import {
   sameTypeVisibleSelectionIds3D,
   SELECTED_STATUS_CLASS_3D,
   supportedBuildButtonTypes3D,
+  tankFormationButtons3D,
   topHudText3D,
 } from './match-view-3d';
 
@@ -158,6 +160,13 @@ describe('MatchView3D ground order mode HUD', () => {
     expect(JSON.stringify(groundMoveModeButtons3D())).not.toContain('A');
     expect('isAttackMoveModifierKey3D' in matchView3D).toBe(false);
     expect('groundMoveModeForOrder3D' in matchView3D).toBe(false);
+  });
+});
+
+describe('MatchView3D tank formation HUD', () => {
+  it('offers a default wide grid plus alternate tank formations', () => {
+    expect(DEFAULT_TANK_FORMATION_3D).toBe('grid');
+    expect(tankFormationButtons3D().map((button) => button.formation)).toEqual(['grid', 'line', 'wedge', 'column']);
   });
 });
 
